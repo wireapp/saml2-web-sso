@@ -14,6 +14,7 @@ module SAML.WebSSO.Config where
 
 import Data.Aeson
 import Data.Monoid
+import Data.String.Conversions
 import GHC.Generics
 import Lens.Micro.TH
 import System.Environment
@@ -29,9 +30,11 @@ import SAML.WebSSO.XML (parseURI', renderURI)
 
 
 data Config = Config
-  { _cfgSPURI   :: URI
-  , _cfgIdPURI  :: URI
-  , _cfgVersion :: Version
+  { _cfgSPURI      :: URI
+  , _cfgIdPURI     :: URI
+  , _cfgVersion    :: Version
+  , _cfgServerHost :: String
+  , _cfgServerPort :: Int
   }
   deriving (Eq, Show, Generic, FromJSON, ToJSON)
 
@@ -53,9 +56,11 @@ makeLenses ''Config
 
 fallbackConfig :: Config
 fallbackConfig = Config
-  { _cfgSPURI   = either (error . show) id $ parseURI' "http://me.wire.com/"
-  , _cfgIdPURI  = either (error . show) id $ parseURI' "https://idptestbed/"
-  , _cfgVersion = Version_2_0
+  { _cfgSPURI      = either (error . show) id $ parseURI' "http://me.wire.com/"
+  , _cfgIdPURI     = either (error . show) id $ parseURI' "https://idptestbed/"
+  , _cfgVersion    = Version_2_0
+  , _cfgServerHost = "localhost"
+  , _cfgServerPort = 8081
   }
 
 {-# NOINLINE config #-}
@@ -66,10 +71,17 @@ configFilePath :: IO FilePath
 configFilePath = (</> "server.yaml") <$> getEnv "SAML2_WEB_SSO_ROOT"
 
 readConfig :: FilePath -> IO Config
-readConfig filepath = either (\err -> fallbackConfig <$ warn err) pure =<< Yaml.decodeFileEither filepath
+readConfig filepath =
+  either (\err -> fallbackConfig <$ warn err) (\cnf -> info cnf >> pure cnf)
+  =<< Yaml.decodeFileEither filepath
   where
+    info :: Config -> IO ()
+    info = hPutStrLn stderr . cs . Yaml.encode
+
     warn :: Yaml.ParseException -> IO ()
-    warn err = hPutStrLn stderr $ "*** could not read config file: " <> show err <> "  using default!  see SAML.WebSSO.Config for details!"
+    warn err = hPutStrLn stderr $
+      "*** could not read config file: " <> show err <>
+      "  using default!  see SAML.WebSSO.Config for details!"
 
 -- | Convenience function to write a config file if you don't already have one.  Writes to
 -- `$SAML2_WEB_SSO_ROOT/server.yaml`.  Warns if env does not contain the root.
