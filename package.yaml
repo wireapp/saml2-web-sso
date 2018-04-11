@@ -15,6 +15,7 @@ dependencies:
   - base
   - hsaml2
 
+  - aeson
   - base64-bytestring
   - containers
   - errors
@@ -37,6 +38,8 @@ dependencies:
   - xml-conduit-writer
   - xml-hamlet
   - xml-types
+  - yaml
+  - filepath
 
 library:
   source-dirs:

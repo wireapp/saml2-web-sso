@@ -18,3 +18,4 @@ tags
 *.tix
 *.pem
 saml2-web-sso.cabal
+server.yaml
