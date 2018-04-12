@@ -7,7 +7,7 @@ import Data.List.NonEmpty
 import Data.String.Conversions (ST)
 import Data.Time (UTCTime(..), formatTime, defaultTimeLocale)
 import Lens.Micro.TH
-import URI.ByteString
+import URI.ByteString  -- TODO: should saml2-web-sso also use the URI from http-types?  we already depend on that anyway.
 
 
 ----------------------------------------------------------------------
@@ -74,8 +74,8 @@ data IDPSSODescriptor = IDPSSODescriptor
   }
   deriving (Eq, Show)
 
--- | [4/2.2.2].  Both binding and location should be type 'URI', but that's not how MSAD reads the
--- standards.
+-- | [4/2.2.2].  Both binding and location should be type 'URI' according to standard, but Microsoft
+-- Active Directory has unparseable URIs for locations.
 data EndPoint rl = EndPoint
   { _epBinding          :: ST
   , _epLocation         :: URI
@@ -95,11 +95,15 @@ type EndPointAllowRespLoc = EndPoint (Maybe URI)
 -- interpretations of individual providers:
 -- - <https://docs.microsoft.com/en-us/azure/active-directory/develop/active-directory-single-sign-on-protocol-reference>
 data AuthnRequest = AuthnRequest
-  { _rqID               :: ID
+  { -- abstract xml type
+    _rqID               :: ID
   , _rqVersion          :: Version
   , _rqIssueInstant     :: Time
-  , _rqIssuer           :: URI
-  , _rqDestination      :: Maybe URI
+  , _rqIssuer           :: NameID  -- TODO: really?  did i miss that or dylan?
+  , _rqDestination      :: Maybe URI  -- TODO: is this also NameID?
+
+    -- extended xml type
+    -- ...
   }
   deriving (Eq, Show)
 
@@ -129,7 +133,7 @@ data Response payload = Response
   , _rspVersion      :: Version
   , _rspIssueInstant :: Time
   , _rspDestination  :: Maybe URI
-  , _rspIssuer       :: Maybe URI
+  , _rspIssuer       :: Maybe NameID
   , _rspStatus       :: Status
   , _rspAssertion    :: payload
   }
@@ -140,7 +144,7 @@ data Response payload = Response
 -- misc
 
 -- | [1/1.3.3] (we mostly introduce this type to override the unparseable default 'Show' instance.)
-newtype Time = Time UTCTime
+newtype Time = Time { renderTime :: UTCTime }
   deriving (Eq)
 
 timeFormat :: String
@@ -171,8 +175,8 @@ data Version = Version_2_0
 -- | [1/3.2.2.1;3.2.2.2]
 data Status =
     StatusSuccess
-  | StatusRequestDenied  -- ^ [2/3.5.6]
-  deriving (Eq, Show, Bounded, Enum)
+  | StatusFailure ST
+  deriving (Eq, Show)
 
 
 ----------------------------------------------------------------------
@@ -185,8 +189,8 @@ data Assertion
     { _assVersion       :: Version
     , _assID            :: ID
     , _assIssueInstant  :: Time
-    , _assIssuer        :: URI
-    , _assConditions    :: Conditions
+    , _assIssuer        :: NameID
+    , _assConditions    :: Maybe Conditions
     , _assContents      :: SubjectAndStatements
     }
   deriving (Eq, Show)
@@ -268,14 +272,14 @@ data Attribute =
     { _stattrName         :: ST
     , _stattrNameFormat   :: Maybe ST
     , _stattrFriendlyName :: Maybe ST
-    , _stattrValue        :: [AttributeValue]
+    , _stattrValues       :: [AttributeValue]
     }
   deriving (Eq, Show)
 
 -- ^ [1/2.7.3.1.1]
 data AttributeValue =
-    AttributeValueInt Int
-  | AttributeValueText ST
+    AttributeValueText ST
+  -- AttributeValueInt Int
   deriving (Eq, Show)
 
 

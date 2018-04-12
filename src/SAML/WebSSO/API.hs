@@ -26,7 +26,7 @@
 -- FUTUREWORK: servant-server is quite heavy.  we should have a cabal flag to exclude it.
 module SAML.WebSSO.API where
 
-import Lens.Micro
+import Control.Monad ((>=>))
 import qualified Data.ByteString.Base64.Lazy as EL
 import Data.EitherR
 import Data.Function
@@ -35,20 +35,24 @@ import qualified Data.Map as Map
 import Data.Proxy
 import Data.String.Conversions
 import qualified Data.Text as ST
+import Lens.Micro
 import Network.HTTP.Media ((//))
 import Network.HTTP.Types.Header
 import Network.Wai hiding (Response)
 import Network.Wai.Internal as Wai
+import Servant.API.ContentTypes
+import Servant.API hiding (URI)
+import Servant.Multipart
+import Servant.Server
+import Text.Hamlet.XML
+import Text.Show.Pretty (ppShow)
+import Text.XML
+import URI.ByteString
+
 import SAML.WebSSO.Config
 import SAML.WebSSO.SP
 import SAML.WebSSO.Types
 import SAML.WebSSO.XML
-import Servant.API.ContentTypes
-import Servant.API hiding (URI)
-import Servant.Server
-import Text.Hamlet.XML
-import Text.XML
-import URI.ByteString
 
 
 ----------------------------------------------------------------------
@@ -58,7 +62,7 @@ type API = APIMeta :<|> APIAuthReq :<|> APIAuthResp
 
 type APIMeta     = "meta" :> Get '[XML] EntityDescriptor
 type APIAuthReq  = "authreq" :> Get '[HTML] (FormRedirect AuthnRequest)
-type APIAuthResp = "authresp" :> ReqBody '[Base64XML] AuthnResponse :> Post '[] Void
+type APIAuthResp = MultipartForm Mem AuthnResponseBody :> Post '[PlainText] String
 
 api :: SP m => ServerT API m
 api = meta :<|> authreq :<|> authresp
@@ -84,16 +88,6 @@ instance HasXMLRoot a => MimeUnrender XML a where
   mimeUnrender Proxy = fmapL show . decode . cs
 
 
-data Base64XML  -- TODO: this will probably go away?  first take a look at what that body looks
-                -- like, then decide!
-
-instance Accept Base64XML where
-  contentType Proxy = undefined
-
-instance MimeUnrender Base64XML AuthnResponse where
-  mimeUnrender = undefined
-
-
 data Void
 
 instance AllCTRender '[] Void where
@@ -104,6 +98,16 @@ data HTML
 
 instance  Accept HTML where
   contentType Proxy = "text" // "html"
+
+
+newtype AuthnResponseBody = AuthnResponseBody AuthnResponse
+
+instance FromMultipart Mem AuthnResponseBody where
+  fromMultipart resp = AuthnResponseBody <$> (decodeBody =<< lookupInput "SAMLResponse" resp)
+    where
+      e2m = either (const Nothing) Just
+      decodeBody = e2m . EL.decode . cs >=> e2m . decode . cs
+
 
 -- | [2/3.5.4]
 data FormRedirect xml = FormRedirect URI xml
@@ -179,10 +183,10 @@ authreq = do
   req <- createAuthnRequest
   leaveH $ FormRedirect uri req
 
-authresp :: SP m => AuthnResponse -> m Void
-authresp resp = do
-  enterH $ "authresp: " <> show resp
-  undefined
+authresp :: SP m => AuthnResponseBody -> m String
+authresp (AuthnResponseBody resp) = do
+  enterH $ "authresp: " <> ppShow resp
+  pure (ppShow resp)
 
 
 ----------------------------------------------------------------------

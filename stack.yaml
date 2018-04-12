@@ -1,11 +1,12 @@
-resolver: lts-11.1
+resolver: lts-11.4
 
 packages:
 - .
 - location:
     git: https://github.com/wireapp/hsaml2
-    commit: 9d02d0b6c7747f25d53a617c27600beec6ec6392
+    commit: f3ef0f9f263d5e0301b81385f8958e94153d503e
   extra-dep: true
 
 extra-deps:
+- servant-multipart-0.11.1
 - invertible-hxt-0.1  # for hsaml2

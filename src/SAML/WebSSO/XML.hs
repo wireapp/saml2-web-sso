@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE GADTs               #-}
+{-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RankNTypes          #-}
@@ -17,18 +18,30 @@ module SAML.WebSSO.XML where
 
 import Control.Category (Category(..))
 import Control.Exception (ErrorCall(..))
+import Control.Monad
 import Control.Monad.Catch
+import Data.Maybe (fromMaybe, isNothing)
 import Data.Monoid ((<>))
 import Data.String.Conversions
 import qualified Data.Text as ST
 import Data.Typeable (Proxy(Proxy), Typeable, typeOf)
-import Prelude hiding ((.))
+import GHC.Stack
+import Lens.Micro
+import Prelude hiding ((.), id)
+import Text.Show.Pretty
 import Text.XML hiding (renderText)
 import qualified Text.XML
 import Text.XML.Cursor
 import URI.ByteString
 
 import SAML.WebSSO.Types
+
+import qualified Data.Tree.NTree.TypeDefs as HS
+import qualified Network.URI as HS
+import qualified SAML2.Core as HS
+import qualified SAML2.Core.Protocols as HS
+import qualified SAML2.XML as HS
+import qualified Text.XML.HXT.DOM.TypeDefs as HS
 
 
 ----------------------------------------------------------------------
@@ -71,6 +84,9 @@ defNameSpaces =
   ]
 
 
+-- TODO: perhaps we want to split this up: HasXML (for nameSpaces), and HasXMLParse, HasXMLRender,
+-- and drop the assymetric, little used render function from HasXML?
+
 class HasXML a where
   nameSpaces :: Proxy a -> [(ST, ST)]
   nameSpaces Proxy = defNameSpaces
@@ -102,24 +118,279 @@ renderURI = cs . serializeURIRef'
 parseURI' :: MonadThrow m => ST -> m URI  -- TODO: find a better name.  make renderURI match that name.
 parseURI' = either (die (Proxy @URI)) pure . parseURI laxURIParserOptions . cs . ST.strip
 
+-- | fmap an outer computation into an inner computation that may fail, then flip inner @n@ and
+-- outer @m@.  (except for the flip, this is just 'fmap'.)
+fmapFlipM :: (Monad m, Traversable n) => (a -> m b) -> n a -> m (n b)
+fmapFlipM f = sequence . fmap f
+
 
 ----------------------------------------------------------------------
 -- hack: use hsaml2 parsers and convert from SAMLProtocol instances
 
-instance HasXML EntityDescriptor where
-  parse = undefined
+wrapParse :: forall (m :: * -> *) them us.
+             (HasCallStack, MonadThrow m, HS.SAMLProtocol them, HasXMLRoot us, Typeable us)
+          => (them -> m us) -> Cursor -> m us
+wrapParse imprt cursor = either (die (Proxy @us) . (, cursor)) imprt $ HS.xmlToSAML (renderCursor cursor)
 
-instance HasXMLRoot EntityDescriptor where
-  renderRoot = undefined
+renderCursor :: HasCallStack => Cursor -> LBS
+renderCursor (node -> NodeElement el) = renderLBS def $ Document defPrologue el defMiscellaneous
+renderCursor bad = error $ "internal error: " <> show bad
 
-instance HasXML AuthnRequest where
-  parse = undefined
+wrapRender :: forall them us.
+              (HasCallStack, HS.SAMLProtocol them, HasXMLRoot us)
+           => (us -> them) -> us -> Element
+wrapRender exprt = parseElement (Proxy @us) . HS.samlToXML . exprt
 
-instance HasXMLRoot AuthnRequest where
-  renderRoot = undefined
+parseElement :: HasCallStack => Proxy a -> LBS -> Element
+parseElement proxy lbs = case parseLBS def lbs of
+  Right (Document _ el _) -> el
+  Left msg  -> error $ show (proxy, msg)
 
-instance HasXML AuthnResponse where
-  parse = undefined
 
-instance HasXMLRoot AuthnResponse where
-  renderRoot = undefined
+instance HasXML     EntityDescriptor where parse      = wrapParse importEntityDescriptor
+instance HasXMLRoot EntityDescriptor where renderRoot = wrapRender exportEntityDescriptor
+instance HasXML     AuthnRequest     where parse      = wrapParse importAuthnRequest
+instance HasXMLRoot AuthnRequest     where renderRoot = wrapRender exportAuthnRequest
+instance HasXML     AuthnResponse    where parse      = wrapParse importAuthnResponse
+instance HasXMLRoot AuthnResponse    where renderRoot = wrapRender exportAuthnResponse
+
+
+importEntityDescriptor :: (HasCallStack, MonadThrow m) => HS.Response -> m EntityDescriptor
+importEntityDescriptor = error . ppShow
+
+exportEntityDescriptor :: HasCallStack => EntityDescriptor -> HS.Response
+exportEntityDescriptor = error . ppShow
+
+
+importAuthnRequest :: MonadThrow m => HS.AuthnRequest -> m AuthnRequest
+importAuthnRequest req = do
+  let proto = HS.requestProtocol $ HS.authnRequest req
+  x0 :: ID        <- importID $ HS.protocolID proto
+  x1 :: Version   <- importVersion $ HS.protocolVersion proto
+  x2 :: Time      <- importTime $ HS.protocolIssueInstant proto
+  x3 :: NameID    <- importRequiredIssuer $ HS.protocolIssuer proto
+  x4 :: Maybe URI <- fmapFlipM importURI $ HS.protocolDestination proto
+
+  -- TODO: make sure everything in HS.AuthnRequest that might change the interpreation of the data
+  -- we know is 'Nothing'.  also do this on all other 'import*' functions.  (or should we only do
+  -- this once we have our own parsers only based on stack-prism and xml-conduit?)
+  pure AuthnRequest
+    { _rqID           = x0
+    , _rqVersion      = x1
+    , _rqIssueInstant = x2
+    , _rqIssuer       = x3
+    , _rqDestination  = x4
+    }
+
+exportAuthnRequest :: AuthnRequest -> HS.AuthnRequest
+exportAuthnRequest req = defAuthnRequest proto
+  where
+    proto = (defProtocolType (exportID $ req ^. rqID) (exportTime $ req ^. rqIssueInstant))
+      { HS.protocolVersion = exportVersion $ req ^. rqVersion
+      , HS.protocolIssuer = exportRequiredIssuer $ req ^. rqIssuer
+      , HS.protocolDestination = exportURI <$> req ^. rqDestination
+      }
+
+defAuthnRequest :: HS.ProtocolType -> HS.AuthnRequest
+defAuthnRequest proto = HS.AuthnRequest
+  { HS.authnRequest = HS.RequestAbstractType proto
+  , HS.authnRequestForceAuthn = False
+  , HS.authnRequestIsPassive = False
+  , HS.authnRequestAssertionConsumerService = HS.AssertionConsumerServiceURL Nothing Nothing
+  , HS.authnRequestAssertionConsumingServiceIndex = Nothing
+  , HS.authnRequestProviderName = Nothing
+  , HS.authnRequestSubject = Nothing
+  , HS.authnRequestNameIDPolicy = Nothing
+  , HS.authnRequestConditions = Nothing
+  , HS.authnRequestRequestedAuthnContext = Nothing
+  , HS.authnRequestScoping = Nothing
+  }
+
+defProtocolType :: HS.ID -> HS.DateTime -> HS.ProtocolType
+defProtocolType pid iinst = HS.ProtocolType
+  { HS.protocolID = pid
+  , HS.protocolVersion = HS.SAML20
+  , HS.protocolIssueInstant = iinst
+  , HS.protocolDestination = Nothing
+  , HS.protocolConsent = HS.Identified HS.ConsentUnspecified
+  , HS.protocolIssuer = Nothing
+  , HS.protocolSignature = Nothing
+  , HS.protocolExtensions = []
+  , HS.relayState = Nothing
+  }
+
+
+importAuthnResponse :: (HasCallStack, MonadThrow m) => HS.Response -> m AuthnResponse
+importAuthnResponse rsp = do
+  let rsptyp :: HS.StatusResponseType = HS.response rsp
+      proto  :: HS.ProtocolType       = HS.statusProtocol rsptyp
+
+  x0 :: ID           <- importID $ HS.protocolID proto
+  x1 :: ID           <- maybe (die (Proxy @AuthnResponse)
+                                   ("statusInResponseTo" :: String, HS.statusInResponseTo rsptyp))
+                              (importID . cs)
+                        $ HS.statusInResponseTo rsptyp
+  x2 :: Version      <- importVersion $ HS.protocolVersion proto
+  x3 :: Time         <- importTime $ HS.protocolIssueInstant proto
+  x4 :: Maybe URI    <- fmapFlipM importURI $ HS.protocolDestination proto
+  x5 :: Maybe NameID <- importOptionalIssuer $ HS.protocolIssuer proto
+  x6 :: Status       <- importStatus $ HS.status rsptyp
+  x7 :: [Assertion]  <- importAssertion `mapM` HS.responseAssertions rsp
+
+  pure Response
+    { _rspID           = x0
+    , _rspInRespTo     = x1
+    , _rspVersion      = x2
+    , _rspIssueInstant = x3
+    , _rspDestination  = x4
+    , _rspIssuer       = x5
+    , _rspStatus       = x6
+    , _rspAssertion    = x7
+    }
+
+exportAuthnResponse :: HasCallStack => AuthnResponse -> HS.Response
+exportAuthnResponse = error . ppShow
+
+
+importAssertion :: (HasCallStack, MonadThrow m) => HS.PossiblyEncrypted HS.Assertion -> m Assertion
+importAssertion bad@(HS.SoEncrypted _) = die (Proxy @Assertion) bad  -- encrypted asseritons are not implemented
+importAssertion (HS.NotEncrypted ass) = do
+  x0 <- importVersion $ HS.assertionVersion ass
+  x1 <- importID $ HS.assertionID ass
+  x2 <- importTime $ HS.assertionIssueInstant ass
+  x3 <- importIssuer $ HS.assertionIssuer ass
+  x4 <- fmapFlipM importConditions $ HS.assertionConditions ass
+  x5 <- fmap StatementsOnly $ importStatement `mapM` HS.assertionStatement ass
+
+  unless (null $ HS.assertionAdvice ass) $
+    die (Proxy @Assertion) (HS.assertionAdvice ass)
+
+  pure Assertion
+    { _assVersion      = x0 :: Version
+    , _assID           = x1 :: ID
+    , _assIssueInstant = x2 :: Time
+    , _assIssuer       = x3 :: NameID
+    , _assConditions   = x4 :: Maybe Conditions
+    , _assContents     = x5 :: SubjectAndStatements
+    }
+
+
+importConditions :: (HasCallStack, MonadThrow m) => HS.Conditions -> m Conditions
+importConditions conds = do
+  x0 <- fmapFlipM importTime $ HS.conditionsNotBefore conds
+  x1 <- fmapFlipM importTime $ HS.conditionsNotOnOrAfter conds
+  let x2 = HS.OneTimeUse `elem` HS.conditions conds
+
+  unless (HS.conditions conds `notElem` [[], [HS.OneTimeUse]]) $
+    die (Proxy @Conditions) ("unsupported conditions" :: String, HS.conditions conds)
+
+  pure Conditions
+    { _condNotBefore    = x0
+    , _condNotOnOrAfter = x1
+    , _condOneTimeUse   = x2
+    }
+
+
+importStatement :: (HasCallStack, MonadThrow m)
+                => HS.Statement -> m Statement
+importStatement (HS.StatementAttribute st) =
+  AttributeStatement <$> (importAttribute `mapM` HS.attributeStatement st)
+importStatement (HS.StatementAuthn st) = do
+  x0 <- importTime $ HS.authnStatementInstant st
+  let x1 = cs <$> HS.authnStatementSessionIndex st
+  pure AuthnStatement
+    { _astAuthnInstant        = x0 :: Time
+    , _astSessionIndex        = x1 :: Maybe ST
+    , _astSessionNotOnOrAfter = Nothing
+    , _astSubjectLocality     = Nothing
+    }
+importStatement bad = die (Proxy @Statement) bad
+
+
+importAttribute :: (HasCallStack, MonadThrow m)
+                => HS.PossiblyEncrypted HS.Attribute -> m Attribute
+importAttribute bad@(HS.SoEncrypted _) = die (Proxy @Attribute) bad  -- encrypted asseritons are not implemented
+importAttribute (HS.NotEncrypted ass) = do
+  unless (HS.attributeNameFormat ass == HS.Identified HS.AttributeNameFormatUnspecified) $
+    die (Proxy @Attribute) ("unsupported format" :: String, ass)
+
+  unless (isNothing $ HS.attributeFriendlyName ass) $
+    die (Proxy @Attribute) ("friendly names are not supported" :: String, ass)
+
+  unless (null $ HS.attributeAttrs ass) $
+    die (Proxy @Attribute) ("attributes are not supported" :: String, ass)
+
+  let nm = cs $ HS.attributeName ass
+  vals <- importAttributeValue `mapM` HS.attributeValues ass
+
+  pure $ Attribute nm Nothing Nothing vals
+
+importAttributeValue :: (HasCallStack, MonadThrow m) => HS.Nodes -> m AttributeValue
+importAttributeValue [HS.NTree (HS.XText txt) []] = pure . AttributeValueText $ cs txt
+importAttributeValue bad = die (Proxy @AttributeValue) bad
+
+
+importID :: (HasCallStack, MonadThrow m) => HS.ID -> m ID
+importID = pure . ID . cs
+
+exportID :: HasCallStack => ID -> HS.ID
+exportID (ID t) = cs t
+
+importNameID :: (HasCallStack, MonadThrow m) => HS.NameID -> m NameID
+importNameID (HS.NameID (HS.BaseID Nothing Nothing i) (HS.Identified HS.NameIDFormatEntity) Nothing)
+  = pure . NameID . cs $ i
+importNameID bad
+  = die (Proxy @NameID) bad
+
+exportNameID :: HasCallStack => NameID -> HS.NameID
+exportNameID (NameID i) = HS.NameID
+  { HS.nameBaseID = HS.BaseID Nothing Nothing (cs i)
+  , HS.nameIDFormat = HS.Identified HS.NameIDFormatEntity
+  , HS.nameSPProvidedID = Nothing
+  }
+
+importVersion :: (HasCallStack, MonadThrow m) => HS.SAMLVersion -> m Version
+importVersion HS.SAML20 = pure Version_2_0
+importVersion bad = die (Proxy @Version) bad
+
+exportVersion :: HasCallStack => Version -> HS.SAMLVersion
+exportVersion Version_2_0 = HS.SAML20
+
+importTime :: (HasCallStack, MonadThrow m) => HS.DateTime -> m Time
+importTime = pure . Time
+
+exportTime :: HasCallStack => Time -> HS.DateTime
+exportTime = renderTime
+
+importURI :: (HasCallStack, MonadThrow m) => HS.URI -> m URI
+importURI uri = parseURI' . cs $ HS.uriToString id uri mempty
+
+exportURI :: HasCallStack => URI -> HS.URI
+exportURI uri = fromMaybe err . HS.parseURIReference . cs . renderURI $ uri
+  where err = error $ "internal error: " <> show uri
+
+importStatus :: (HasCallStack, MonadThrow m) => HS.Status -> m Status
+importStatus (HS.Status (HS.StatusCode HS.StatusSuccess []) Nothing Nothing) = pure StatusSuccess
+importStatus x = pure . StatusFailure . cs . show $ x
+
+exportStatus :: HasCallStack => Status -> HS.Status
+exportStatus StatusSuccess = HS.Status (HS.StatusCode HS.StatusSuccess []) Nothing Nothing
+exportStatus bad = error $ "not implemented: " <> show bad
+
+importIssuer :: (HasCallStack, MonadThrow m) => HS.Issuer -> m NameID
+importIssuer = importNameID . HS.issuer
+
+exportIssuer :: HasCallStack => NameID -> HS.Issuer
+exportIssuer = HS.Issuer . exportNameID
+
+importOptionalIssuer :: (HasCallStack, MonadThrow m) => Maybe HS.Issuer -> m (Maybe NameID)
+importOptionalIssuer = fmapFlipM importIssuer
+
+exportOptionalIssuer :: HasCallStack => Maybe NameID -> Maybe HS.Issuer
+exportOptionalIssuer = fmap exportIssuer
+
+importRequiredIssuer :: (HasCallStack, MonadThrow m) => Maybe HS.Issuer -> m NameID
+importRequiredIssuer = maybe (die (Proxy @AuthnRequest) ("no issuer id" :: String)) importIssuer
+
+exportRequiredIssuer :: HasCallStack => NameID -> Maybe HS.Issuer
+exportRequiredIssuer = Just . exportIssuer

@@ -13,7 +13,6 @@ ghc-options: -j -O2 -Wall -Wno-redundant-constraints -fwarn-tabs -Werror
 
 dependencies:
   - base
-  - hsaml2
 
   - aeson
   - base64-bytestring
@@ -25,7 +24,9 @@ dependencies:
   - microlens
   - microlens-th
   - mtl
+  - network-uri
   - servant
+  - servant-multipart
   - servant-server
   - string-conversions
   - text
@@ -40,6 +41,11 @@ dependencies:
   - xml-types
   - yaml
   - filepath
+
+  # temporary, for debugging & dev
+  - hsaml2
+  - hxt
+  - pretty-show
 
 library:
   source-dirs:
