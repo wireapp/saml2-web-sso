@@ -20,10 +20,12 @@ import Control.Category (Category(..))
 import Control.Exception (ErrorCall(..))
 import Control.Monad
 import Control.Monad.Catch
+import qualified Data.List as List
 import Data.Maybe (fromMaybe, isNothing)
 import Data.Monoid ((<>))
 import Data.String.Conversions
 import qualified Data.Text as ST
+import Data.Time
 import Data.Typeable (Proxy(Proxy), Typeable, typeOf)
 import GHC.Stack
 import Lens.Micro
@@ -111,6 +113,28 @@ instance HasXMLRoot Document where
 
 ----------------------------------------------------------------------
 -- util
+
+-- | Do not use this in production!  It works, but it's slow and failures are a bit violent.
+unsafeReadTime :: HasCallStack => String -> Time
+unsafeReadTime s = fromMaybe (error ("decodeTime: " <> show s)) $ decodeTime s
+
+decodeTime :: (MonadThrow m, ConvertibleStrings s String) => s -> m Time
+decodeTime (cs -> s) = case parseTimeM True defaultTimeLocale timeFormat s of
+  Just t  -> pure $ Time t
+  Nothing -> die (Proxy @Time) (s, timeFormat)
+
+renderTime :: Time -> ST
+renderTime (Time utctime) =
+  cs . accomodateMSAD $ formatTime defaultTimeLocale timeFormat utctime
+  where
+    -- more than 7 decimal points make Active Directory choke.
+    accomodateMSAD :: String -> String
+    accomodateMSAD s = case List.elemIndex '.' s of
+      Nothing -> s
+      Just i -> case List.splitAt i s of
+        (t, u) -> case List.splitAt 8 u of
+          (_, "") -> t <> u
+          (v, _)  -> t <> v <> "Z"
 
 renderURI :: URI -> ST
 renderURI = cs . serializeURIRef'
@@ -360,7 +384,7 @@ importTime :: (HasCallStack, MonadThrow m) => HS.DateTime -> m Time
 importTime = pure . Time
 
 exportTime :: HasCallStack => Time -> HS.DateTime
-exportTime = renderTime
+exportTime = fromTime
 
 importURI :: (HasCallStack, MonadThrow m) => HS.URI -> m URI
 importURI uri = parseURI' . cs $ HS.uriToString id uri mempty

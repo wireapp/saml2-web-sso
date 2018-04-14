@@ -34,7 +34,6 @@ import Data.List
 import qualified Data.Map as Map
 import Data.Proxy
 import Data.String.Conversions
-import qualified Data.Text as ST
 import Lens.Micro
 import Network.HTTP.Media ((//))
 import Network.HTTP.Types.Header
@@ -74,7 +73,7 @@ app = setHttpCachePolicy
 
 
 ----------------------------------------------------------------------
--- servant plumbing
+-- servant, wai plumbing
 
 data XML
 
@@ -121,7 +120,7 @@ instance HasFormRedirect AuthnRequest where
 
 instance HasXMLRoot xml => MimeRender HTML (FormRedirect xml) where
   mimeRender (Proxy :: Proxy HTML)
-             (FormRedirect (cs . serializeURIRef' -> uri) (base64xml -> value))
+             (FormRedirect (cs . serializeURIRef' -> uri) (cs . EL.encode . cs . encode -> value))
     = renderLBS def doc
     where
       doc      = Document (Prologue [] (Just doctyp) []) root []
@@ -141,13 +140,6 @@ instance HasXMLRoot xml => MimeRender HTML (FormRedirect xml) where
                      <noscript>
                        <input type="submit" value="Continue">
              |]
-
-base64xml :: HasXMLRoot xml => xml -> ST
-base64xml = break64 . cs . EL.encode . cs . encode
-  where
-    break64 t = case ST.splitAt 64 t of
-      (x, "") -> x <> "\n"
-      (x, x') -> x <> "\n" <> break64 x'
 
 
 -- | [3.5.5.1] Caching

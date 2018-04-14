@@ -144,7 +144,7 @@ data Response payload = Response
 -- misc
 
 -- | [1/1.3.3] (we mostly introduce this type to override the unparseable default 'Show' instance.)
-newtype Time = Time { renderTime :: UTCTime }
+newtype Time = Time { fromTime :: UTCTime }
   deriving (Eq)
 
 timeFormat :: String

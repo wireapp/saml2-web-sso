@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE QuasiQuotes         #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
@@ -15,8 +14,9 @@ import Servant
 import System.Process
 import Test.Tasty
 import Test.Tasty.HUnit
-import Text.Hamlet.XML
 import Text.XML as XML
+
+import qualified Data.ByteString.Base64.Lazy as EL
 
 import SAML.WebSSO
 
@@ -38,22 +38,22 @@ tests :: TestTree
 tests = testGroup "API"
   [ testGroup "base64 encoding"
     [ testCase "compatible with /usr/bin/base64" $ do
-        let check :: Document -> IO ()
-            check doc = do
-              let ours = base64xml $ SomeSAMLRequest doc
-              theirs <- cs <$> readProcess "/usr/bin/base64" ["--wrap", "64"] (cs $ renderText def doc)
-              assertEqual "failed" ours theirs
+        let check :: LBS -> Test.Tasty.HUnit.Assertion
+            check input = do
+              o <- ours input
+              t <- theirs input
+              assertEqual "failed" o t
 
-            tree = [xml|
-                       <blurp rough="13r-dfityhnhv-eufy9a" holiday="...">
-                         <bloo>
-                           <bloo/>
-                           <bla>
-                             <blaa/>
-                   |]
+            ours, theirs :: LBS -> IO LBS
+            ours   = pure . chomp . EL.encode
+            theirs = fmap (chomp . cs) . readProcess "/usr/bin/base64" ["--wrap", "0"] . cs
 
-        check $ Document (Prologue [] Nothing []) (XML.Element "a" mempty mempty) []
-        check $ Document (Prologue [] Nothing []) (XML.Element "a" mempty tree) []
+            chomp = cs . reverse . dropWhile (== '\n') . reverse . cs
+
+        check ""
+        check "..."
+        check "foiy0t019061.........|||"
+        check (cs $ replicate 1000 '_')
     ]
 
   , testGroup "MimeRender HTML FormRedirect"
@@ -83,29 +83,18 @@ tests = testGroup "API"
                 -- <> " value=\"0043bfc1bc45110dae17004005b13a2b\"/>"
                 <>       "<input type=\"hidden\" name=\"SAMLRequest\""
                 -- the original encoding, differing in irrelevant nit-picks.
-                -- <> " value=\"PHNhbWxwOkxvZ291dFJlcXVlc3QgeG1sbnM6c2FtbHA9InVybjpvYXNpczpuYW1l\n"
-                -- <> "czp0YzpTQU1MOjIuMDpwcm90b2NvbCIgeG1sbnM9InVybjpvYXNpczpuYW1lczp0\n"
-                -- <> "YzpTQU1MOjIuMDphc3NlcnRpb24iDQogICAgSUQ9ImQyYjdjMzg4Y2VjMzZmYTdj\n"
-                -- <> "MzljMjhmZDI5ODY0NGE4IiBJc3N1ZUluc3RhbnQ9IjIwMDQtMDEtMjFUMTk6MDA6\n"
-                -- <> "NDlaIiBWZXJzaW9uPSIyLjAiPg0KICAgIDxJc3N1ZXI+aHR0cHM6Ly9JZGVudGl0\n"
-                -- <> "eVByb3ZpZGVyLmNvbS9TQU1MPC9Jc3N1ZXI+DQogICAgPE5hbWVJRCBGb3JtYXQ9\n"
-                -- <> "InVybjpvYXNpczpuYW1lczp0YzpTQU1MOjIuMDpuYW1laWQtZm9ybWF0OnBlcnNp\n"
-                -- <> "c3RlbnQiPjAwNWEwNmUwLWFkODItMTEwZC1hNTU2LTAwNDAwNWIxM2EyYjwvTmFt\n"
-                -- <> "ZUlEPg0KICAgIDxzYW1scDpTZXNzaW9uSW5kZXg+MTwvc2FtbHA6U2Vzc2lvbklu\n"
+                -- <> " value=\"PHNhbWxwOkxvZ291dFJlcXVlc3QgeG1sbnM6c2FtbHA9InVybjpvYXNpczpuYW1l"
+                -- <> "czp0YzpTQU1MOjIuMDpwcm90b2NvbCIgeG1sbnM9InVybjpvYXNpczpuYW1lczp0"
+                -- <> "YzpTQU1MOjIuMDphc3NlcnRpb24iDQogICAgSUQ9ImQyYjdjMzg4Y2VjMzZmYTdj"
+                -- <> "MzljMjhmZDI5ODY0NGE4IiBJc3N1ZUluc3RhbnQ9IjIwMDQtMDEtMjFUMTk6MDA6"
+                -- <> "NDlaIiBWZXJzaW9uPSIyLjAiPg0KICAgIDxJc3N1ZXI+aHR0cHM6Ly9JZGVudGl0"
+                -- <> "eVByb3ZpZGVyLmNvbS9TQU1MPC9Jc3N1ZXI+DQogICAgPE5hbWVJRCBGb3JtYXQ9"
+                -- <> "InVybjpvYXNpczpuYW1lczp0YzpTQU1MOjIuMDpuYW1laWQtZm9ybWF0OnBlcnNp"
+                -- <> "c3RlbnQiPjAwNWEwNmUwLWFkODItMTEwZC1hNTU2LTAwNDAwNWIxM2EyYjwvTmFt"
+                -- <> "ZUlEPg0KICAgIDxzYW1scDpTZXNzaW9uSW5kZXg+MTwvc2FtbHA6U2Vzc2lvbklu"
                 -- <> "ZGV4Pg0KPC9zYW1scDpMb2dvdXRSZXF1ZXN0Pg==\"/>"
                 -- copied from test failure (this is ok assuming that the base64 tests above have passed)
-                <> " value=\"PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz48c2FtbHA6TG9n\n"
-                <> "b3V0UmVxdWVzdCBJRD0iZDJiN2MzODhjZWMzNmZhN2MzOWMyOGZkMjk4NjQ0YTgi\n"
-                <> "IElzc3VlSW5zdGFudD0iMjAwNC0wMS0yMVQxOTowMDo0OVoiIFZlcnNpb249IjIu\n"
-                <> "MCIgeG1sbnM6c2FtbHA9InVybjpvYXNpczpuYW1lczp0YzpTQU1MOjIuMDpwcm90\n"
-                <> "b2NvbCI+ICAgIDxJc3N1ZXIgeG1sbnM9InVybjpvYXNpczpuYW1lczp0YzpTQU1M\n"
-                <> "OjIuMDphc3NlcnRpb24iPmh0dHBzOi8vSWRlbnRpdHlQcm92aWRlci5jb20vU0FN\n"
-                <> "TDwvSXNzdWVyPiAgICA8TmFtZUlEIEZvcm1hdD0idXJuOm9hc2lzOm5hbWVzOnRj\n"
-                <> "OlNBTUw6Mi4wOm5hbWVpZC1mb3JtYXQ6cGVyc2lzdGVudCIgeG1sbnM9InVybjpv\n"
-                <> "YXNpczpuYW1lczp0YzpTQU1MOjIuMDphc3NlcnRpb24iPjAwNWEwNmUwLWFkODIt\n"
-                <> "MTEwZC1hNTU2LTAwNDAwNWIxM2EyYjwvTmFtZUlEPiAgICA8c2FtbHA6U2Vzc2lv\n"
-                <> "bkluZGV4PjE8L3NhbWxwOlNlc3Npb25JbmRleD48L3NhbWxwOkxvZ291dFJlcXVl\n"
-                <> "c3Q+\n\"/>"
+                <> " value=\"PHNhbWxwOkxvZ291dFJlcXVlc3QgSUQ9ImQyYjdjMzg4Y2VjMzZmYTdjMzljMjhmZDI5ODY0NGE4IiBJc3N1ZUluc3RhbnQ9IjIwMDQtMDEtMjFUMTk6MDA6NDlaIiBWZXJzaW9uPSIyLjAiIHhtbG5zOnNhbWxwPSJ1cm46b2FzaXM6bmFtZXM6dGM6U0FNTDoyLjA6cHJvdG9jb2wiPiAgICA8SXNzdWVyIHhtbG5zPSJ1cm46b2FzaXM6bmFtZXM6dGM6U0FNTDoyLjA6YXNzZXJ0aW9uIj5odHRwczovL0lkZW50aXR5UHJvdmlkZXIuY29tL1NBTUw8L0lzc3Vlcj4gICAgPE5hbWVJRCBGb3JtYXQ9InVybjpvYXNpczpuYW1lczp0YzpTQU1MOjIuMDpuYW1laWQtZm9ybWF0OnBlcnNpc3RlbnQiIHhtbG5zPSJ1cm46b2FzaXM6bmFtZXM6dGM6U0FNTDoyLjA6YXNzZXJ0aW9uIj4wMDVhMDZlMC1hZDgyLTExMGQtYTU1Ni0wMDQwMDViMTNhMmI8L05hbWVJRD4gICAgPHNhbWxwOlNlc3Npb25JbmRleD4xPC9zYW1scDpTZXNzaW9uSW5kZXg+PC9zYW1scDpMb2dvdXRSZXF1ZXN0Pg==\"/>"
                 <>       "<noscript>"
                 <>           "<input type=\"submit\" value=\"Continue\"/>"
                 <>       "</noscript>"
