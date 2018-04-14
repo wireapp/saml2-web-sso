@@ -62,7 +62,7 @@ type API = APIMeta :<|> APIAuthReq :<|> APIAuthResp
 
 type APIMeta     = "meta" :> Get '[XML] EntityDescriptor
 type APIAuthReq  = "authreq" :> Get '[HTML] (FormRedirect AuthnRequest)
-type APIAuthResp = MultipartForm Mem AuthnResponseBody :> Post '[PlainText] String
+type APIAuthResp = "authresp" :> MultipartForm Mem AuthnResponseBody :> Post '[PlainText] String
 
 api :: SP m => ServerT API m
 api = meta :<|> authreq :<|> authresp
