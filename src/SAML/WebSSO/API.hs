@@ -63,6 +63,9 @@ type APIMeta     = "meta" :> Get '[XML] EntityDescriptor
 type APIAuthReq  = "authreq" :> Get '[HTML] (FormRedirect AuthnRequest)
 type APIAuthResp = "authresp" :> MultipartForm Mem AuthnResponseBody :> Post '[PlainText] String
 
+-- TODO: respond with redirect in case of success, instead of responding with Void and handleing all
+-- cases with exceptions: https://github.com/haskell-servant/servant/issues/117
+
 api :: SP m => ServerT API m
 api = meta :<|> authreq :<|> authresp
 

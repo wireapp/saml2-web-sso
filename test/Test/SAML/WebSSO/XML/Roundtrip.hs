@@ -188,7 +188,7 @@ genResponse genPayload = do
     , _rspDestination  = x4 :: Maybe URI
     , _rspIssuer       = x5 :: Maybe NameID
     , _rspStatus       = x7 :: Status
-    , _rspAssertion    = x8 :: payload
+    , _rspPayload      = x8 :: payload
     }
 
 genAssertion :: Gen Assertion

@@ -269,7 +269,7 @@ importAuthnResponse rsp = do
     , _rspDestination  = x4
     , _rspIssuer       = x5
     , _rspStatus       = x6
-    , _rspAssertion    = x7
+    , _rspPayload      = x7
     }
 
 exportAuthnResponse :: HasCallStack => AuthnResponse -> HS.Response

@@ -9,7 +9,7 @@
 
 module Test.Util where
 
-import Control.Monad (unless)
+import Control.Monad
 import Data.EitherR
 import Data.List
 import Data.Generics.Uniplate.Data
@@ -43,8 +43,14 @@ render' = renderText $ def
 rerender' :: LT -> LT
 rerender' = render' . parseText_ def
 
+showFile :: FilePath -> IO String
+showFile fp = cs . rerender' . cs . dropWhile (/= '<') <$> Prelude.readFile fp
+
+dumpFile :: FilePath -> IO ()
+dumpFile = showFile >=> putStrLn
+
 rerenderFile :: FilePath -> IO ()
-rerenderFile fp = Prelude.writeFile (fp <> "-") =<< (cs . rerender' . cs . dropWhile (/= '<') <$> Prelude.readFile fp)
+rerenderFile fp = showFile fp >>= Prelude.writeFile (fp <> "-")
 
 mkURI :: String -> URI
 mkURI = (\(Just x) -> x) . parseURI' . cs

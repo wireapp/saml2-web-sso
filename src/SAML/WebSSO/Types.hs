@@ -7,7 +7,23 @@ import Data.List.NonEmpty
 import Data.String.Conversions (ST)
 import Data.Time (UTCTime(..), formatTime, defaultTimeLocale)
 import Lens.Micro.TH
-import URI.ByteString  -- TODO: should saml2-web-sso also use the URI from http-types?  we already depend on that anyway.
+import URI.ByteString  -- TODO: should saml2-web-sso also use the URI from http-types?  we already
+                       -- depend on that via xml-conduit anyway.  (is it a probley though that it is
+                       -- string-based?  is it less of a problem because we need it anyway?)
+
+
+----------------------------------------------------------------------
+-- high-level
+
+data AccessVerdict =
+    AccessDenied
+    { _avReasons :: [ST]
+    }
+  | AccessGranted
+    { _avName :: ST
+    , _avNick :: ST
+    }
+  deriving (Eq, Show)
 
 
 ----------------------------------------------------------------------
@@ -135,7 +151,7 @@ data Response payload = Response
   , _rspDestination  :: Maybe URI
   , _rspIssuer       :: Maybe NameID
   , _rspStatus       :: Status
-  , _rspAssertion    :: payload
+  , _rspPayload      :: payload
   }
   deriving (Eq, Show)
 
@@ -145,7 +161,7 @@ data Response payload = Response
 
 -- | [1/1.3.3] (we mostly introduce this type to override the unparseable default 'Show' instance.)
 newtype Time = Time { fromTime :: UTCTime }
-  deriving (Eq)
+  deriving (Eq, Ord)
 
 timeFormat :: String
 timeFormat = "%Y-%m-%dT%H:%M:%S%QZ"
@@ -208,7 +224,7 @@ data Conditions
 data SubjectAndStatements
   = SubjectAndStatements Subject [Statement]
   | SubjectOnly Subject
-  | StatementsOnly [Statement]
+  | StatementsOnly [Statement]  -- TODO: NonEmpty?
   deriving (Eq, Show)
 
 -- | Information about the client and/or user attempting to authenticate / authorize against the SP.
@@ -295,6 +311,7 @@ normalizeAssertion = error "normalizeAssertion: not implemented"
 ----------------------------------------------------------------------
 -- record field lenses
 
+makeLenses ''AccessVerdict
 makeLenses ''Assertion
 makeLenses ''Attribute
 makeLenses ''AttributeValue

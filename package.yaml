@@ -31,6 +31,7 @@ dependencies:
   - string-conversions
   - text
   - time
+  - transformers
   - uri-bytestring
   - uuid
   - wai
@@ -45,6 +46,7 @@ dependencies:
   # temporary, for debugging & dev
   - hsaml2
   - hxt
+  - lens
   - pretty-show
 
 library:
