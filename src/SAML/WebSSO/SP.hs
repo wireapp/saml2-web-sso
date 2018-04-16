@@ -170,6 +170,8 @@ judge' resp = do
     []                           -> giveup ["no assertions"]
     _:_                          -> giveup ["not supported: more than one assertion"]
 
+  -- TODO: [3/4.1.4.2] AuthnStatement must be present!  Subject must be present!  also other requirements!
+
   -- TODO: in case of error, log response (would xml be better?) and SP context for extraction of
   -- failing test cases in case of prod failures.
 

@@ -37,6 +37,7 @@ import Text.XML.Cursor
 import URI.ByteString
 
 import SAML.WebSSO.Types
+import Text.XML.Util
 
 import qualified Data.Tree.NTree.TypeDefs as HS
 import qualified Network.URI as HS
@@ -59,13 +60,7 @@ decode = either throwM parseFromDocument . parseText def
 
 
 renderToDocument :: HasXMLRoot a => a -> Document
-renderToDocument (renderRoot -> el) = Document defPrologue el defMiscellaneous
-
-defPrologue :: Prologue
-defPrologue = Prologue [] Nothing []
-
-defMiscellaneous :: [Miscellaneous]
-defMiscellaneous = []
+renderToDocument = mkDocument . renderRoot
 
 
 parseFromDocument :: (HasXML a, MonadThrow m) => Document -> m a

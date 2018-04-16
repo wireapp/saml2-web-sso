@@ -4,7 +4,7 @@ packages:
 - .
 - location:
     git: https://github.com/wireapp/hsaml2
-    commit: f3ef0f9f263d5e0301b81385f8958e94153d503e
+    commit: 60cbde9805bfc6a39d8064ad323c4a009bbc6187
   extra-dep: true
 
 extra-deps:

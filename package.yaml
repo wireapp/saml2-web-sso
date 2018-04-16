@@ -15,10 +15,14 @@ dependencies:
   - base
 
   - aeson
+  - asn1-encoding
+  - asn1-parse
+  - asn1-types
   - base64-bytestring
   - binary
   - containers
   - cookie
+  - cryptonite
   - errors
   - exceptions
   - http-media
@@ -50,6 +54,7 @@ dependencies:
   - hxt
   - lens
   - pretty-show
+  - x509
 
 library:
   source-dirs:
@@ -69,6 +74,7 @@ tests:
       - saml2-web-sso
 
       - hedgehog
+      - hspec
       - pretty-show
       - process
       - tasty
