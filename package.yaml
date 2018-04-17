@@ -16,7 +16,9 @@ dependencies:
 
   - aeson
   - base64-bytestring
+  - binary
   - containers
+  - cookie
   - errors
   - exceptions
   - http-media

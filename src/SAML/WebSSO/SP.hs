@@ -24,7 +24,9 @@ import Data.String.Conversions
 import Data.Time
 import Data.UUID (UUID)
 import GHC.Stack
+import Network.HTTP.Types.Header
 import Servant.Server
+import URI.ByteString
 
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
@@ -34,6 +36,7 @@ import SAML.WebSSO.Types
 import SAML.WebSSO.XML
 
 
+-- | Application logic of the service provider.
 class Monad m => SP m where
   logger :: String -> m ()
   default logger :: MonadIO m => String -> m ()
@@ -47,10 +50,19 @@ class Monad m => SP m where
   default getNow :: MonadIO m => m Time
   getNow = Time <$> liftIO getCurrentTime
 
+-- | HTTP handling of the service provider.
 class SP m => SPNT m where
   nt :: forall x. m x -> Handler x
   default nt :: m ~ Handler => (forall x. m x -> Handler x)
   nt = id
+
+  redirect :: URI -> [Header] -> m void
+  default redirect :: m ~ Handler => URI -> [Header] -> m void
+  redirect uri extra = throwError err302 { errHeaders = ("Location", cs $ renderURI uri) : extra }
+
+  reject :: m void
+  default reject :: m ~ Handler => m void
+  reject = throwError err403
 
 instance SP IO
 instance SP Handler
@@ -73,7 +85,7 @@ createAuthnRequest = do
   x0 <- createID
   let x1 = config ^. cfgVersion
   x2 <- getNow
-  let x3 = NameID . renderURI $ config ^. cfgSPURI
+  let x3 = NameID $ getPath' SsoPathAuthnResp
 
   pure AuthnRequest
     { _rqID               = x0 :: ID
@@ -128,6 +140,8 @@ instance SP m => SP (JudgeT m) where
   getNow     = JudgeT . lift . lift $ getNow
 
 
+-- TODO: 'judge' must only accept 'AuthResponse' values wrapped in 'SignaturesVerified', which can
+-- only be constructed by "Text.XML.DSig".
 judge :: (SP m) => AuthnResponse -> m AccessVerdict
 judge resp = runJudgeT (judge' resp)
 
@@ -188,15 +202,6 @@ judgeConditions (Conditions lowlimit uplimit onetimeonly) = do
   deny ["violation of NotBefore condition"    | maybe False (now <)  lowlimit]
   deny ["violation of NotOnOrAfter condition" | maybe False (now >=) uplimit]
   deny ["unsupported flag: OneTimeUse" | onetimeonly]
-
-
-----------------------------------------------------------------------
--- handle (accumulated) access verdict
-
--- | If access is denied, return False . Otherwise: check if user exists; create if not; return
--- True.
-executeVerdict :: SP m => AccessVerdict -> m Bool
-executeVerdict = undefined
 
 
 ----------------------------------------------------------------------

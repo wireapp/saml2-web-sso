@@ -106,4 +106,16 @@ tests = testGroup "API"
         in
           assertEqual "" (Right want) (fmapL show . parseText def . cs $ mimeRender (Proxy @HTML) (FormRedirect uri doc))
     ]
+
+  , let c1 = togglecookie Nothing
+        c2 = togglecookie (Just "nick")
+        roundtrip
+          = headerValueToCookie
+          . cs . snd
+          . cookieToHeader
+
+    in testGroup "cookies"
+    [ testCase "roundtrip-1" $ assertEqual (show c1) (Left "missing cookie value") (roundtrip c1)
+    , testCase "roundtrip-2" $ assertEqual (show c2) (Right c2) (roundtrip c2)
+    ]
   ]

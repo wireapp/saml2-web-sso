@@ -1,9 +1,12 @@
-{-# LANGUAGE TemplateHaskell    #-}
-{-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE FlexibleContexts   #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE LambdaCase         #-}
 {-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE Strict, StrictData #-}
+{-# LANGUAGE TemplateHaskell    #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -13,9 +16,12 @@
 module SAML.WebSSO.Config where
 
 import Data.Aeson
+import Data.Maybe (fromJust)
 import Data.Monoid
 import Data.String.Conversions
 import GHC.Generics
+import GHC.Stack
+import Lens.Micro
 import Lens.Micro.TH
 import System.Environment
 import System.FilePath
@@ -30,11 +36,12 @@ import SAML.WebSSO.XML (parseURI', renderURI)
 
 
 data Config = Config
-  { _cfgSPURI      :: URI
-  , _cfgIdPURI     :: URI
-  , _cfgVersion    :: Version
-  , _cfgServerHost :: String
-  , _cfgServerPort :: Int
+  { _cfgVersion           :: Version
+  , _cfgServerHost        :: String
+  , _cfgServerPort        :: Int
+  , _cfgSPAppURI          :: URI
+  , _cfgSPSsoURI          :: URI
+  , _cfgIdPURI            :: URI
   }
   deriving (Eq, Show, Generic, FromJSON, ToJSON)
 
@@ -56,11 +63,12 @@ makeLenses ''Config
 
 fallbackConfig :: Config
 fallbackConfig = Config
-  { _cfgSPURI      = either (error . show) id $ parseURI' "http://me.wire.com/"
-  , _cfgIdPURI     = either (error . show) id $ parseURI' "https://idptestbed/"
-  , _cfgVersion    = Version_2_0
-  , _cfgServerHost = "localhost"
-  , _cfgServerPort = 8081
+  { _cfgVersion           = Version_2_0
+  , _cfgServerHost        = "localhost"
+  , _cfgServerPort        = 8081
+  , _cfgSPAppURI          = either (error . show) id $ parseURI' "https://me.wire.com/sp"
+  , _cfgSPSsoURI          = either (error . show) id $ parseURI' "https://me.wire.com/sso"
+  , _cfgIdPURI            = either (error . show) id $ parseURI' "https://idptestbed/"
   }
 
 {-# NOINLINE config #-}
@@ -87,3 +95,29 @@ readConfig filepath =
 -- `$SAML2_WEB_SSO_ROOT/server.yaml`.  Warns if env does not contain the root.
 writeConfig :: Config -> IO ()
 writeConfig cfg = (`Yaml.encodeFile` cfg) =<< configFilePath
+
+
+----------------------------------------------------------------------
+-- uri paths
+
+data Path = SpPathHome | SpPathLocalLogout | SpPathSingleLogout
+          | SsoPathMeta | SsoPathAuthnReq | SsoPathAuthnResp
+  deriving (Eq, Show)
+
+
+getPath :: HasCallStack => Path -> URI
+getPath = fromJust . parseURI' . getPath'
+
+getPath' :: ConvertibleStrings SBS s => Path -> s
+getPath' = \case
+  SpPathHome         -> sp  ""
+  SpPathLocalLogout  -> sp  "/logout/local"
+  SpPathSingleLogout -> sp  "/logout/single"
+  SsoPathMeta        -> sso "/meta"
+  SsoPathAuthnReq    -> sso "/authreq"
+  SsoPathAuthnResp   -> sso "/authresp"
+  where
+    sp  = appendpath (config ^. cfgSPAppURI)
+    sso = appendpath (config ^. cfgSPSsoURI)
+    appendpath uri path = norm uri { uriPath = uriPath uri <> path }
+    norm = cs . normalizeURIRef' httpNormalization

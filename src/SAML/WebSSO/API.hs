@@ -1,14 +1,19 @@
 {-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE QuasiQuotes           #-}
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE ViewPatterns          #-}
+
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 -- | This is a partial implementation of Web SSO using the HTTP Post Binding [2/3.5].
 --
@@ -26,17 +31,17 @@
 -- FUTUREWORK: servant-server is quite heavy.  we should have a cabal flag to exclude it.
 module SAML.WebSSO.API where
 
+import Control.Monad.Except (throwError)
 import Control.Monad ((>=>))
-import qualified Data.ByteString.Base64.Lazy as EL
+import Data.Binary.Builder (toLazyByteString)
 import Data.EitherR
 import Data.Function
 import Data.List
-import qualified Data.Map as Map
 import Data.Proxy
 import Data.String.Conversions
+import GHC.Stack
 import Lens.Micro
 import Network.HTTP.Media ((//))
-import Network.HTTP.Types.Header
 import Network.Wai hiding (Response)
 import Network.Wai.Internal as Wai
 import Servant.API.ContentTypes
@@ -47,6 +52,12 @@ import Text.Hamlet.XML
 import Text.Show.Pretty (ppShow)
 import Text.XML
 import URI.ByteString
+import Web.Cookie
+
+import qualified Data.ByteString.Base64.Lazy as EL
+import qualified Data.Map as Map
+import qualified Data.Text as ST
+import qualified Network.HTTP.Types.Header as HttpTypes
 
 import SAML.WebSSO.Config
 import SAML.WebSSO.SP
@@ -55,45 +66,112 @@ import SAML.WebSSO.XML
 
 
 ----------------------------------------------------------------------
--- the api
+-- examples app
+
+-- TODO: move this section to "SAML.WebSSO.API.Example"
+
+-- | The most straight-forward 'Application' that can be constructed from 'api', 'API'.
+app :: Application
+app = setHttpCachePolicy
+    $ serve (Proxy @APPAPI) (hoistServer (Proxy @APPAPI) (nt @Handler) appapi :: Server APPAPI)
+
+type SPAPI =
+       Header "Cookie" SetCookie :> Get '[HTML] LoginStatus
+  :<|> "logout" :> "local" :> GetVoid
+  :<|> "logout" :> "single" :> GetVoid
+
+type APPAPI =
+       "sp"  :> SPAPI
+  :<|> "sso" :> API
+
+spapi :: (SP m, SPNT m) => ServerT SPAPI m
+spapi = loginStatus :<|> localLogout :<|> singleLogout
+
+appapi :: (SP m, SPNT m) => ServerT APPAPI m
+appapi = spapi :<|> api
+
+loginStatus :: SP m => Maybe SetCookie -> m LoginStatus
+loginStatus = pure . maybe NotLoggedIn (LoggedInAs . cs . setCookieValue)
+
+-- | only logout on this SP.
+localLogout :: (SP m, SPNT m) => m Void
+localLogout = redirect (getPath SpPathHome) [cookieToHeader $ togglecookie Nothing]
+
+-- | as in [3/4.4]
+singleLogout :: (HasCallStack, SP m) => m Void
+singleLogout = error "not implemented."
+
+data LoginStatus = NotLoggedIn | LoggedInAs ST
+  deriving (Eq, Show)
+
+instance FromHttpApiData SetCookie where
+  parseUrlPiece = headerValueToCookie
+
+instance MimeRender HTML LoginStatus where
+  mimeRender Proxy NotLoggedIn
+    = mkHtml
+      [xml|
+        <body>
+          [not logged in]
+          <form action=#{getPath' SsoPathAuthnReq} method="get">
+            <input type="submit" value="login">
+      |]
+  mimeRender Proxy (LoggedInAs name)
+    = mkHtml
+      [xml|
+        <body>
+        [logged in as #{name}]
+          <form action=#{getPath' SpPathLocalLogout} method="get">
+            <input type="submit" value="logout">
+          <p>
+            (this is local logout; logout via IdP is not implemented.)
+      |]
+
+
+----------------------------------------------------------------------
+-- saml web-sso api
 
 type API = APIMeta :<|> APIAuthReq :<|> APIAuthResp
 
 type APIMeta     = "meta" :> Get '[XML] EntityDescriptor
 type APIAuthReq  = "authreq" :> Get '[HTML] (FormRedirect AuthnRequest)
-type APIAuthResp = "authresp" :> MultipartForm Mem AuthnResponseBody :> Post '[PlainText] String
+type APIAuthResp = "authresp" :> MultipartForm Mem AuthnResponseBody :> PostVoid
 
--- TODO: respond with redirect in case of success, instead of responding with Void and handleing all
--- cases with exceptions: https://github.com/haskell-servant/servant/issues/117
+-- FUTUREWORK: respond with redirect in case of success, instead of responding with Void and
+-- handling all cases with exceptions: https://github.com/haskell-servant/servant/issues/117
 
-api :: SP m => ServerT API m
+api :: (SP m, SPNT m) => ServerT API m
 api = meta :<|> authreq :<|> authresp
-
--- | The most straight-forward 'Application' that can be constructed from 'api', 'API'.
-app :: Application
-app = setHttpCachePolicy
-    $ serve (Proxy @API) (hoistServer (Proxy @API) (nt @Handler) api :: Server API)
 
 
 ----------------------------------------------------------------------
 -- servant, wai plumbing
+
+type GetVoid  = Get  '[HTML, JSON, XML] Void
+type PostVoid = Post '[HTML, JSON, XML] Void
 
 data XML
 
 instance Accept XML where
   contentType Proxy = "application" // "xml"
 
-instance HasXMLRoot a => MimeRender XML a where
+instance {-# OVERLAPPABLE #-} HasXMLRoot a => MimeRender XML a where
   mimeRender Proxy = cs . encode
 
-instance HasXMLRoot a => MimeUnrender XML a where
+instance {-# OVERLAPPABLE #-} HasXMLRoot a => MimeUnrender XML a where
   mimeUnrender Proxy = fmapL show . decode . cs
 
 
 data Void
 
-instance AllCTRender '[] Void where
-  handleAcceptH _ _ (_ :: Void) = error "impossible"
+instance MimeRender HTML Void where
+  mimeRender Proxy = error "absurd"
+
+instance {-# OVERLAPS #-} MimeRender JSON Void where
+  mimeRender Proxy = error "absurd"
+
+instance {-# OVERLAPS #-} MimeRender XML Void where
+  mimeRender Proxy = error "absurd"
 
 
 data HTML
@@ -124,14 +202,7 @@ instance HasFormRedirect AuthnRequest where
 instance HasXMLRoot xml => MimeRender HTML (FormRedirect xml) where
   mimeRender (Proxy :: Proxy HTML)
              (FormRedirect (cs . serializeURIRef' -> uri) (cs . EL.encode . cs . encode -> value))
-    = renderLBS def doc
-    where
-      doc      = Document (Prologue [] (Just doctyp) []) root []
-      doctyp   = Doctype "html" (Just $ PublicID "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd")
-      root     = Element "html" rootattr html
-      rootattr = Map.fromList [("xmlns", "http://www.w3.org/1999/xhtml"), ("xml:lang", "en")]
-
-      html = [xml|
+    = mkHtml [xml|
                  <body onload="document.forms[0].submit()">
                    <noscript>
                      <p>
@@ -144,15 +215,23 @@ instance HasXMLRoot xml => MimeRender HTML (FormRedirect xml) where
                        <input type="submit" value="Continue">
              |]
 
+mkHtml :: [Node] -> LBS
+mkHtml nodes = renderLBS def doc
+  where
+    doc      = Document (Prologue [] (Just doctyp) []) root []
+    doctyp   = Doctype "html" (Just $ PublicID "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd")
+    root     = Element "html" rootattr nodes
+    rootattr = Map.fromList [("xmlns", "http://www.w3.org/1999/xhtml"), ("xml:lang", "en")]
+
 
 -- | [3.5.5.1] Caching
 setHttpCachePolicy :: Middleware
 setHttpCachePolicy ap rq respond = ap rq $ respond . addHeadersToResponse httpCachePolicy
   where
-    httpCachePolicy :: ResponseHeaders
+    httpCachePolicy :: HttpTypes.ResponseHeaders
     httpCachePolicy = [("Cache-Control", "no-cache, no-store"), ("Pragma", "no-cache")]
 
-    addHeadersToResponse ::  ResponseHeaders -> Wai.Response -> Wai.Response
+    addHeadersToResponse :: HttpTypes.ResponseHeaders -> Wai.Response -> Wai.Response
     addHeadersToResponse extraHeaders resp = case resp of
       ResponseFile status hdrs filepath part -> ResponseFile status (updH hdrs) filepath part
       ResponseBuilder status hdrs builder    -> ResponseBuilder status (updH hdrs) builder
@@ -178,10 +257,16 @@ authreq = do
   req <- createAuthnRequest
   leaveH $ FormRedirect uri req
 
-authresp :: SP m => AuthnResponseBody -> m String
+authresp :: (SP m, SPNT m) => AuthnResponseBody -> m Void
 authresp (AuthnResponseBody resp) = do
   enterH $ "authresp: " <> ppShow resp
-  pure (ppShow resp)
+  verdict <- judge resp
+  logger $ show verdict
+
+  case verdict of
+    AccessDenied _reasons -> reject
+    AccessGranted _name nick
+      -> redirect (getPath SpPathHome) [cookieToHeader . togglecookie . Just $ nick]
 
 
 ----------------------------------------------------------------------
@@ -195,3 +280,39 @@ leaveH :: (Show a, SP m) => a -> m a
 leaveH x = do
   logger $ "leaving handler: " <> show x
   pure x
+
+
+----------------------------------------------------------------------
+-- cookies
+
+cookiename :: SBS
+cookiename = "saml2-web-sso_sp_credentials"
+
+togglecookie :: Maybe ST -> SetCookie
+togglecookie = \case
+  Just nick -> cookie
+    { setCookieValue = cs nick
+    }
+  Nothing -> cookie
+    { setCookieValue = ""
+    , setCookieExpires = Just . fromTime $ unsafeReadTime "1970-01-01T00:00:00Z"
+    , setCookieMaxAge = Just (-1)
+    }
+  where
+    cookie = defaultSetCookie
+      { setCookieName = cookiename
+      , setCookieSecure = True
+      , setCookiePath = Just "/"
+      }
+
+cookieToHeader :: SetCookie -> HttpTypes.Header
+cookieToHeader = ("set-cookie",) . cs . toLazyByteString . renderSetCookie
+
+headerValueToCookie :: ST -> Either ST SetCookie
+headerValueToCookie txt = do
+  let cookie = parseSetCookie $ cs txt
+  case ["missing cookie name"  | setCookieName cookie == ""] <>
+       ["wrong cookie name"    | setCookieName cookie /= cookiename] <>
+       ["missing cookie value" | setCookieValue cookie == ""]
+    of errs@(_:_) -> throwError $ ST.intercalate ", " errs
+       []         -> pure cookie
