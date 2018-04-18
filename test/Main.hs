@@ -14,6 +14,7 @@ import qualified Test.SAML.WebSSO.SP
 import qualified Test.SAML.WebSSO.XML.Examples
 import qualified Test.SAML.WebSSO.XML.Roundtrip
 import qualified Test.Text.XML.DSig
+import qualified Test.Text.XML.Iso
 
 main :: IO ()
 main = hspec spec
@@ -28,4 +29,5 @@ mainTasty = defaultMain $ testGroup "Tests"
   , Test.SAML.WebSSO.XML.Examples.tests
   , Test.SAML.WebSSO.XML.Roundtrip.tests
   , Test.Text.XML.DSig.tests
+  , Test.Text.XML.Iso.tests
   ]

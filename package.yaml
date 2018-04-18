@@ -25,6 +25,7 @@ dependencies:
   - cryptonite
   - errors
   - exceptions
+  - filepath
   - http-media
   - http-types
   - microlens
@@ -34,6 +35,7 @@ dependencies:
   - servant
   - servant-multipart
   - servant-server
+  - stack-prism
   - string-conversions
   - text
   - time
@@ -42,19 +44,18 @@ dependencies:
   - uuid
   - wai
   - warp
+  - x509
   - xml-conduit
   - xml-conduit-writer
   - xml-hamlet
   - xml-types
   - yaml
-  - filepath
 
   # temporary, for debugging & dev
   - hsaml2
   - hxt
   - lens
   - pretty-show
-  - x509
 
 library:
   source-dirs:

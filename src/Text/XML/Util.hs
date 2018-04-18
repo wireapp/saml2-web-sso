@@ -6,6 +6,11 @@ module Text.XML.Util
 where
 
 import Text.XML
+import Data.Map as Map
+import Data.String.Conversions
+
+
+type Attrs = Map.Map Name ST
 
 
 mkDocument :: Element -> Document

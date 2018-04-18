@@ -6,6 +6,10 @@ packages:
     git: https://github.com/wireapp/hsaml2
     commit: 60cbde9805bfc6a39d8064ad323c4a009bbc6187
   extra-dep: true
+- location:
+    git: https://github.com/wireapp/stack-prism
+    commit: 631978447e3a1d658613f606ce7a679d7cce2294
+  extra-dep: true
 
 extra-deps:
 - servant-multipart-0.11.1

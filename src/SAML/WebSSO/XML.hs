@@ -30,13 +30,14 @@ import Data.Typeable (Proxy(Proxy), Typeable, typeOf)
 import GHC.Stack
 import Lens.Micro
 import Prelude hiding ((.), id)
-import Text.Show.Pretty
+import Text.Show.Pretty (ppShow)
 import Text.XML hiding (renderText)
 import qualified Text.XML
 import Text.XML.Cursor
 import URI.ByteString
 
 import SAML.WebSSO.Types
+import Text.XML.Iso
 import Text.XML.Util
 
 import qualified Data.Tree.NTree.TypeDefs as HS
@@ -70,15 +71,6 @@ parseFromDocument = parse . fromDocument
 die :: forall a b c m. (Typeable a, Show b, MonadThrow m) => Proxy a -> b -> m c
 die Proxy msg = throwM . ErrorCall $
   "HasXML: could not parse " <> show (typeOf @a undefined) <> ": " <> show msg
-
-
-defNameSpaces :: [(ST, ST)]
-defNameSpaces =
-  [ ("samlp", "urn:oasis:names:tc:SAML:2.0:protocol")
-  , ("samla", "urn:oasis:names:tc:SAML:2.0:assertion")
-  , ("samlm", "urn:oasis:names:tc:SAML:2.0:metadata")
-  , ("ds", "http://www.w3.org/2000/09/xmldsig#")
-  ]
 
 
 -- TODO: perhaps we want to split this up: HasXML (for nameSpaces), and HasXMLParse, HasXMLRender,
@@ -390,7 +382,7 @@ exportURI uri = fromMaybe err . HS.parseURIReference . cs . renderURI $ uri
 
 importStatus :: (HasCallStack, MonadThrow m) => HS.Status -> m Status
 importStatus (HS.Status (HS.StatusCode HS.StatusSuccess []) Nothing Nothing) = pure StatusSuccess
-importStatus x = pure . StatusFailure . cs . show $ x
+importStatus status = pure . StatusFailure . cs . show $ status
 
 exportStatus :: HasCallStack => Status -> HS.Status
 exportStatus StatusSuccess = HS.Status (HS.StatusCode HS.StatusSuccess []) Nothing Nothing
