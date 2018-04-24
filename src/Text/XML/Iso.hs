@@ -42,7 +42,7 @@ import Text.XML.Util
 
 
 import Debug.Trace
--- import Data.Typeable
+import Data.Typeable
 
 
 ----------------------------------------------------------------------
@@ -56,7 +56,7 @@ import Debug.Trace
 parseXml :: (HasCallStack, IsoXML 'CtxElem a) => Element -> Maybe a
 parseXml = parseElem (unstack isoXml)
 
-renderXml :: (HasCallStack, IsoXML 'CtxElem a) => a -> Maybe Element
+renderXml :: (HasCallStack, IsoXML 'CtxElem a, Typeable a) => a -> Maybe Element
 renderXml = renderElem (unstack isoXml)
 
 
@@ -164,6 +164,26 @@ data Grammar (ctx :: Ctx) doc val where
   Cont :: Grammar 'CtxCont t1 t2
 
 
+-- | (for error reporting)
+instance (Typeable t1, Typeable t2, Show t1, Show t2) => Show (Grammar ctx t1 t2) where
+  show gr = struct <> " @(" <> types <> ")"
+    where
+      types, struct :: String
+      types = show (typeOf (undefined :: (t1, t2)))  -- TODO: show ctx of kind non-type
+
+      struct = case gr of
+        Id -> "Id"
+        (_g1 :. _g2) -> unwords ["(" <> "<<show g1>>", ":.", "<<show g2>>" <> ")"]  -- TODO: i thinks g1, g2, can be constrained to have 'Show'.
+        Empty -> "Empty"
+        (g1 :<> g2) -> unwords ["(" <> show g1, ":<>", show g2 <> ")"]
+        Pure _ _ -> "(Pure <<fun>> <<fun>>)"
+        Many g1 -> "(Many " <> show g1 <> ")"
+        Node g1 g2 -> unwords ["(Node", show g1, show g2 <> ")"]
+        Elem pn _g1 _g2 -> unwords ["(Elem", show pn, "<<show g1>>", "<<show g2>>", ")"]
+        Attr pn g1 -> unwords ["(Attr", show pn, show g1, ")"]
+        Cont -> "Cont"
+
+
 -- | The '.' operator is the main way to compose two grammars.
 instance Category (Grammar (c :: Ctx)) where
   id = Id
@@ -243,7 +263,16 @@ matchAVal = matchPure f g
 ----------------------------------------------------------------------
 -- grammar to render
 
-renderElem :: forall t1 t2. HasCallStack => Grammar 'CtxElem t1 t2 -> t2 -> Maybe t1
+renderElem :: forall t1 t2 gr gr1 gr2 t3.
+              ( HasCallStack, Typeable t1, Typeable t2
+              -- >>> ??
+              , gr ~ Grammar 'CtxElem t1 t2
+              , gr1 ~ Grammar 'CtxElem t3 t2
+              , gr2 ~ Grammar 'CtxElem t1 t3
+              , Typeable t3
+              -- <<< ??
+              )
+           => Grammar 'CtxElem t1 t2 -> t2 -> Maybe t1
 renderElem = \case
   Id         -> Just
   g1 :. g2   -> renderElem g1 >=> renderElem g2
@@ -304,16 +333,17 @@ renderNodes = \case
   Pure _ rdr   -> \(nodes, t) -> (nodes,) <$> rdr t
   Many g       -> manyM (renderNodes g)
 
-  Node grel grcnt -> \(nodes :: [Node], t2) -> do
+  gr@(Node grel grcnt) -> \(nodes :: [Node], t2) -> do
     let runel  = (\(el  :- t) -> NodeElement el  :- t) <$> renderElem    grel  t2
         runcnt = (\(txt :- t) -> NodeContent txt :- t) <$> renderContent grcnt t2
         -- ...
-    nd :- t1 <- runel <|> runcnt -- <|> ...
+    nd :- t1 <- runel <|> runcnt {- <|> ... -} <|> renderFailed "nothing matched" gr t2
     pure (nd : nodes, t1)
 
 
-renderFailed :: HasCallStack => String -> grammar -> stack -> Maybe a
-renderFailed msg _grammar _stack = trace msg Nothing
+renderFailed :: (HasCallStack, Show grammar) => String -> grammar -> stack -> Maybe a
+renderFailed msg grammar _stack = error (show (msg, grammar))
+                                $ trace msg Nothing
 
 
 ----------------------------------------------------------------------
