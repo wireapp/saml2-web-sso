@@ -230,35 +230,39 @@ data SubjectAndStatements
 -- | Information about the client and/or user attempting to authenticate / authorize against the SP.
 -- [1/2.4]
 data Subject = Subject
-  { _subjectID            :: Maybe SubjectID
+  { _subjectID            :: SubjectID
   , _subjectConfirmations :: [SubjectConfirmation]
   }
   deriving (Eq, Show)
 
 -- | See 'Subject'.  [1/2.4]
-data SubjectID
-  = SubjectBaseID BaseID
-  | SubjectNameID NameID
+data SubjectID = SubjectID ST
   deriving (Eq, Show)
 
 -- | Information about the kind of proof of identity the 'Subject' provided to the IdP.  [1/2.4]
 data SubjectConfirmation = SubjectConfirmation
-  { _scMethod :: ST
-  , _scID     :: Maybe SubjectID
+  { _scMethod :: SubjectConfirmationMethod
   , _scData   :: [SubjectConfirmationData]
   }
   deriving (Eq, Show)
 
--- | See 'SubjectConfirmation'.  [1/2.4.1.2]
+-- | [3/4.1.4.2]
+data SubjectConfirmationMethod
+  = SubjectConfirmationMethodBearer  -- ^ @"urn:oasis:names:tc:SAML:2.0:cm:bearer"@
+  deriving (Eq, Show, Enum, Bounded)
+
+-- | See 'SubjectConfirmation'.  [1/2.4.1.2], [3/4.1.4.2]
 data SubjectConfirmationData = SubjectConfirmationData
   { _scdNotBefore    :: Maybe Time
-  , _scdNotOnOrAfter :: Maybe Time
-  , _scdRecipient    :: Maybe URI
+  , _scdNotOnOrAfter :: Time
+  , _scdRecipient    :: URI
   , _scdInResponseTo :: Maybe ID
-  , _scdAddress      :: Maybe ST
+  , _scdAddress      :: Maybe IP
   }
   deriving (Eq, Show)
 
+newtype IP = IP ST
+  deriving (Eq, Show)
 
 -- | The core content of the 'Assertion'.  [1/2.7]
 data Statement

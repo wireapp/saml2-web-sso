@@ -203,28 +203,27 @@ genSubjectAndStatements = do
 
 genSubject :: Gen Subject
 genSubject = Subject
-  <$> Gen.maybe genSubjectID
+  <$> genSubjectID
   <*> Gen.list (Range.linear 0 8) genSubjectConfirmation
 
 genSubjectID :: Gen SubjectID
-genSubjectID = Gen.choice
-  [ SubjectBaseID . BaseID <$> genNiceWord
-  , SubjectNameID . NameID <$> genNiceWord
-  ]
+genSubjectID = SubjectID <$> genNiceWord
 
 genSubjectConfirmation :: Gen SubjectConfirmation
 genSubjectConfirmation = SubjectConfirmation
-  <$> genNiceWord
-  <*> Gen.maybe genSubjectID
+  <$> genSubjectConfirmationMethod
   <*> Gen.list (Range.linear 1 8) genSubjectConfirmationData
+
+genSubjectConfirmationMethod :: Gen SubjectConfirmationMethod
+genSubjectConfirmationMethod = Gen.enumBounded
 
 genSubjectConfirmationData :: Gen SubjectConfirmationData
 genSubjectConfirmationData = do
   x0 <- Gen.maybe genTime
-  x1 <- Gen.maybe genTime
-  x2 <- Gen.maybe genURI
+  x1 <- genTime
+  x2 <- genURI
   x3 <- Gen.maybe genID
-  x4 <- Gen.maybe (genNiceText $ Range.linear 1 10)
+  x4 <- Gen.maybe genIP
 
   pure SubjectConfirmationData
     { _scdNotBefore    = x0
@@ -233,6 +232,9 @@ genSubjectConfirmationData = do
     , _scdInResponseTo = x3
     , _scdAddress      = x4
     }
+
+genIP :: Gen IP
+genIP = IP <$> (genNiceText $ Range.linear 1 10)
 
 genStatement :: Gen Statement
 genStatement = Gen.choice

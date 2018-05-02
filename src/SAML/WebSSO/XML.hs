@@ -21,7 +21,7 @@ import Control.Exception (ErrorCall(..))
 import Control.Monad
 import Control.Monad.Catch
 import qualified Data.List as List
-import Data.Maybe (fromMaybe, isNothing)
+import Data.Maybe (fromMaybe, isNothing, maybeToList)
 import Data.Monoid ((<>))
 import Data.String.Conversions
 import qualified Data.Text as ST
@@ -44,6 +44,7 @@ import qualified Data.Tree.NTree.TypeDefs as HS
 import qualified Network.URI as HS
 import qualified SAML2.Core as HS
 import qualified SAML2.Core.Protocols as HS
+import qualified SAML2.Profiles as HS
 import qualified SAML2.XML as HS
 import qualified Text.XML.HXT.DOM.TypeDefs as HS
 
@@ -271,7 +272,12 @@ importAssertion (HS.NotEncrypted ass) = do
   x2 <- importTime $ HS.assertionIssueInstant ass
   x3 <- importIssuer $ HS.assertionIssuer ass
   x4 <- fmapFlipM importConditions $ HS.assertionConditions ass
-  x5 <- fmap StatementsOnly $ importStatement `mapM` HS.assertionStatement ass
+  x5 <- do
+    subj  <- importSubject $ HS.assertionSubject ass
+    stmts <- importStatement `mapM` HS.assertionStatement ass
+    pure $ case stmts of
+      []  -> SubjectOnly subj
+      _:_ -> SubjectAndStatements subj stmts
 
   unless (null $ HS.assertionAdvice ass) $
     die (Proxy @Assertion) (HS.assertionAdvice ass)
@@ -284,6 +290,46 @@ importAssertion (HS.NotEncrypted ass) = do
     , _assConditions   = x4 :: Maybe Conditions
     , _assContents     = x5 :: SubjectAndStatements
     }
+
+
+importSubject :: (HasCallStack, MonadThrow m) => HS.Subject -> m Subject
+importSubject (HS.Subject Nothing _) = die (Proxy @Subject) ("need to provide a subject" :: String)
+importSubject (HS.Subject (Just (HS.SoEncrypted _)) _) = die (Proxy @Subject) ("encrypted subjects not supported" :: String)
+importSubject (HS.Subject (Just (HS.NotEncrypted sid)) scs) = case sid of
+  HS.IdentifierName HS.NameID
+    { HS.nameBaseID = HS.BaseID _ _ (SubjectID . cs -> uid)
+    , HS.nameIDFormat = HS.Identified HS.NameIDFormatPersistent
+    , HS.nameSPProvidedID = Nothing
+    } -> Subject uid <$> importSubjectConfirmation uid `mapM` scs
+  bad -> die (Proxy @Subject) ("unsupported subject identifier: " <> show bad)
+
+importSubjectConfirmation :: (HasCallStack, MonadThrow m) => SubjectID -> HS.SubjectConfirmation -> m SubjectConfirmation
+importSubjectConfirmation = go
+  where
+    go _ (HS.SubjectConfirmation meth _ _) | meth /= HS.Identified HS.ConfirmationMethodBearer
+      = die (Proxy @SubjectConfirmation) ("unsupported confirmation method: " <> show meth)
+    go (SubjectID uid) (HS.SubjectConfirmation _ (Just (HS.NotEncrypted (HS.IdentifierName (HS.NameID _ _ (Just (cs -> uid')))))) _) | uid /= uid'
+      = die (Proxy @SubjectConfirmation) ("uid mismatch: " <> show (uid, uid'))
+    go _ (HS.SubjectConfirmation _ (Just bad) _)
+      = die (Proxy @SubjectConfirmation) ("unsupported identifier: " <> show bad)
+    go _ (HS.SubjectConfirmation _ _ confdata)
+      = SubjectConfirmation SubjectConfirmationMethodBearer <$> importSubjectConfirmationData `mapM` maybeToList confdata
+
+importSubjectConfirmationData :: (HasCallStack, MonadThrow m) => HS.SubjectConfirmationData -> m SubjectConfirmationData
+importSubjectConfirmationData (HS.SubjectConfirmationData notbefore (Just notonorafter) (Just recipient) inresp confaddr _ _) =
+  SubjectConfirmationData
+  <$> (importTime `fmapFlipM` notbefore)
+  <*> importTime notonorafter
+  <*> importURI recipient
+  <*> importID `fmapFlipM` inresp
+  <*> importIP `fmapFlipM` confaddr
+importSubjectConfirmationData bad@(HS.SubjectConfirmationData _ Nothing _ _ _ _ _) =
+  die (Proxy @SubjectConfirmationData) ("missing NotOnOrAfter: " <> show bad)
+importSubjectConfirmationData bad@(HS.SubjectConfirmationData _ _ Nothing _ _ _ _) =
+  die (Proxy @SubjectConfirmationData) ("missing Recipient: " <> show bad)
+
+importIP :: (HasCallStack, MonadThrow m) => HS.IP -> m IP
+importIP = pure . IP . cs
 
 
 importConditions :: (HasCallStack, MonadThrow m) => HS.Conditions -> m Conditions
