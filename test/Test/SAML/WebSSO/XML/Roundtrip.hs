@@ -193,13 +193,7 @@ genConditions = Conditions
   <*> Gen.bool
 
 genSubjectAndStatements :: Gen SubjectAndStatements
-genSubjectAndStatements = do
-  msub <- Gen.choice [Right <$> genSubject, Left <$> genStatement]
-  sts  <- Gen.list (Range.linear 1 15) genStatement
-  case (msub, sts) of
-    (Right sub, _:_) -> pure $ SubjectAndStatements sub sts
-    (Right sub, [])  -> pure $ SubjectOnly sub
-    (Left st, _)     -> pure $ StatementsOnly (st : sts)
+genSubjectAndStatements = SubjectAndStatements <$> genSubject <*> genNonEmpty (Range.linear 0 15) genStatement
 
 genSubject :: Gen Subject
 genSubject = Subject

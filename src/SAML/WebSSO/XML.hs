@@ -21,6 +21,7 @@ import Control.Exception (ErrorCall(..))
 import Control.Monad
 import Control.Monad.Catch
 import qualified Data.List as List
+import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Maybe (fromMaybe, isNothing, maybeToList)
 import Data.Monoid ((<>))
 import Data.String.Conversions
@@ -265,7 +266,7 @@ exportAuthnResponse = error . ppShow
 
 
 importAssertion :: (HasCallStack, MonadThrow m) => HS.PossiblyEncrypted HS.Assertion -> m Assertion
-importAssertion bad@(HS.SoEncrypted _) = die (Proxy @Assertion) bad  -- encrypted asseritons are not implemented
+importAssertion bad@(HS.SoEncrypted _) = die (Proxy @Assertion) bad
 importAssertion (HS.NotEncrypted ass) = do
   x0 <- importVersion $ HS.assertionVersion ass
   x1 <- importID $ HS.assertionID ass
@@ -274,10 +275,10 @@ importAssertion (HS.NotEncrypted ass) = do
   x4 <- fmapFlipM importConditions $ HS.assertionConditions ass
   x5 <- do
     subj  <- importSubject $ HS.assertionSubject ass
-    stmts <- importStatement `mapM` HS.assertionStatement ass
-    pure $ case stmts of
-      []  -> SubjectOnly subj
-      _:_ -> SubjectAndStatements subj stmts
+    when (null $ HS.assertionStatement ass) $
+      die (Proxy @Assertion) ("no statements" :: String)
+    stmt:stmts <- importStatement `mapM` HS.assertionStatement ass
+    pure $ SubjectAndStatements subj (stmt :| stmts)
 
   unless (null $ HS.assertionAdvice ass) $
     die (Proxy @Assertion) (HS.assertionAdvice ass)

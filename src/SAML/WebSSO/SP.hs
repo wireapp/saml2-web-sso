@@ -140,8 +140,6 @@ instance SP m => SP (JudgeT m) where
   getNow     = JudgeT . lift . lift $ getNow
 
 
--- TODO: 'judge' must only accept 'AuthResponse' values wrapped in 'SignaturesVerified', which can
--- only be constructed by "Text.XML.DSig".
 judge :: (SP m) => AuthnResponse -> m AccessVerdict
 judge resp = runJudgeT (judge' resp)
 
@@ -157,7 +155,7 @@ judge' resp = do
 
   case resp ^. rspPayload of
     [ass] -> case ass ^. assContents of
-      StatementsOnly stmts -> do
+      SubjectAndStatements _subj (toList -> stmts) -> do
         checkAuthnStatement stmts
         let attrs = getAttributeStatements stmts
             nameKey = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name"
@@ -165,10 +163,11 @@ judge' resp = do
         AccessGranted <$> requireAttributeText nameKey attrs
                       <*> requireAttributeText nickKey attrs
 
-      bad@SubjectOnly{}          -> giveup ["subject not supported: " <> cs (show bad)]
-      bad@SubjectAndStatements{} -> giveup ["subject not supported: " <> cs (show bad)]
     []                           -> giveup ["no assertions"]
     _:_                          -> giveup ["not supported: more than one assertion"]
+
+  -- TODO: 'judge' must only accept 'AuthResponse' values wrapped in 'SignaturesVerified', which can
+  -- only be constructed by "Text.XML.DSig".
 
   -- TODO: [3/4.1.4.2] AuthnStatement must be present!  Subject must be present!  also other requirements!
 

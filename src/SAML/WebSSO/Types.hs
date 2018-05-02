@@ -220,11 +220,8 @@ data Conditions
     }
   deriving (Eq, Show)
 
--- | [1/2.3.3]
-data SubjectAndStatements
-  = SubjectAndStatements Subject [Statement]
-  | SubjectOnly Subject
-  | StatementsOnly [Statement]  -- TODO: NonEmpty?
+-- | [1/2.3.3], [3/4.1.4.2]
+data SubjectAndStatements = SubjectAndStatements Subject (NonEmpty Statement)
   deriving (Eq, Show)
 
 -- | Information about the client and/or user attempting to authenticate / authorize against the SP.
