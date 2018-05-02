@@ -356,6 +356,7 @@ importStatement (HS.StatementAttribute st) =
 importStatement (HS.StatementAuthn st) = do
   x0 <- importTime $ HS.authnStatementInstant st
   let x1 = cs <$> HS.authnStatementSessionIndex st
+  -- TODO: make sure HS.AuthnContext doesn't hold anything that we need to take into account
   pure AuthnStatement
     { _astAuthnInstant        = x0 :: Time
     , _astSessionIndex        = x1 :: Maybe ST

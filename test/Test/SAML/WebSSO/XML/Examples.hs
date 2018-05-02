@@ -57,36 +57,36 @@ tests = testGroup "XML serialization"
     , ignoreTest $
       let want = readXmlSample "microsoft-authnresponse-1.xml"
           have = Test.Samples.microsoft_authnresponse_1
-      in roundtrip 1 want have
+      in roundtrip 2 want have
 
     , ignoreTest $
       let want = readXmlSample "microsoft-authnresponse-2.xml"
           have = Test.Samples.microsoft_authnresponse_2
-      in roundtrip 1 want have
+      in roundtrip 3 want have
 
     , ignoreTest $
       let want = readXmlSample "microsoft-meta-2.xml"
           have = Test.Samples.microsoft_meta_2
-      in roundtrip 2 want have
+      in roundtrip 4 want have
 
     , ignoreTest $
       let want = readXmlSample "onelogin-request-1.xml"
           have = Test.Samples.onelogin_request_1
-      in roundtrip 3 want have
+      in roundtrip 5 want have
 
     , ignoreTest $
       let want = readXmlSample "onelogin-response-1.xml"
           have = undefined :: AuthnResponse
-      in roundtrip 4 want have
+      in roundtrip 6 want have
 
     , ignoreTest $
       let want = readXmlSample "onelogin-response-2.xml"
           have = undefined :: AuthnResponse
-      in roundtrip 5 want have
+      in roundtrip 7 want have
 
     , ignoreTest $
       let want = readXmlSample "onelogin-response-3.xml"
           have = undefined :: AuthnResponse
-      in roundtrip 6 want have
+      in roundtrip 8 want have
     ]
   ]

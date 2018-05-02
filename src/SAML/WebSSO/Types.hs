@@ -175,15 +175,15 @@ data Duration = Duration  -- TODO: https://www.w3.org/TR/xmlschema-2/#duration
 
 -- | IDs must be globally unique between all communication parties and adversaries with a negligible
 -- failure probability.  [1/1.3.4]
-newtype ID = ID { renderID :: ST }
+newtype ID = ID { renderID :: ST }  -- TODO: it might be more complicated than this.  see hsaml2.
   deriving (Eq, Show)
 
 -- | [1/2.2.1]
-newtype BaseID = BaseID { renderBaseID :: ST }
+newtype BaseID = BaseID { renderBaseID :: ST }  -- TODO: it is more complicated than this.  see hsaml2.
   deriving (Eq, Show)
 
 -- | [1/2.2.3]
-newtype NameID = NameID { renderNameID :: ST }
+newtype NameID = NameID { renderNameID :: ST }  -- TODO: it is more complicated than this.  see hsaml2.
   deriving (Eq, Show)
 
 data Version = Version_2_0
