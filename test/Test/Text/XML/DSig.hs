@@ -13,10 +13,10 @@ import Text.XML
 
 import qualified Crypto.PubKey.RSA as RSA
 
-import Test.Util
+import Util
 import Text.XML.DSig
 
-import qualified Test.Samples
+import qualified Samples
 
 
 tests :: TestTree
@@ -24,7 +24,7 @@ tests = testGroup "xml:dsig"
   [ testGroup "key handling"
     [ testCase "parseKeyInfo" $ do
         let keyinfo = readXmlSample "microsoft-idp-keyinfo.xml"
-            want = Test.Samples.microsoft_idp_keyinfo
+            want = Samples.microsoft_idp_keyinfo
         have <- parseKeyInfo keyinfo
         assertEqual "microsoft-idp-keyinfo.xml" have want
 
@@ -44,7 +44,7 @@ tests = testGroup "xml:dsig"
 
 verificationSample :: IO (RSA.PublicKey, Element, Verified Element)
 verificationSample = do
-  let key = Test.Samples.microsoft_idp_keyinfo
+  let key = Samples.microsoft_idp_keyinfo
       Right (Document _ (el :: Element) _) =
         parseLBS def . cs $ readXmlSample "microsoft-signed-assertion.xml"
   vf <- verify key el

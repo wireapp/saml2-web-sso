@@ -5,11 +5,11 @@
 -- NOTE: be reluctant to update anything in this module.  always prefer to add new definitions.
 -- different parts of the test suite depend on this in different ways, and you may need to update
 -- those depending tests as well.
-module Test.Samples where
+module Samples where
 
 import Data.List.NonEmpty (NonEmpty((:|)))
 import SAML.WebSSO
-import Test.Util
+import Util
 
 import qualified Crypto.PubKey.RSA as RSA
 

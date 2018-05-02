@@ -19,8 +19,8 @@ import Test.Tasty.ExpectedFailure (ignoreTest)
 import Text.XML
 import URI.ByteString
 
-import Test.Util
-import qualified Test.Samples
+import Util
+import qualified Samples
 import SAML.WebSSO
 
 
@@ -46,32 +46,32 @@ tests = testGroup "XML serialization"
             (renderTime $ unsafeReadTime bad)
 
     , let want = readXmlSample "microsoft-authnrequest-1.xml"
-          have = Test.Samples.microsoft_authnrequest_1
+          have = Samples.microsoft_authnrequest_1
       in roundtrip 0 want have
 
     , ignoreTest $
       let want = readXmlSample "microsoft-authnresponse-0.xml"
-          have = Test.Samples.microsoft_authnresponse_0
+          have = Samples.microsoft_authnresponse_0
       in roundtrip 1 want have
 
     , ignoreTest $
       let want = readXmlSample "microsoft-authnresponse-1.xml"
-          have = Test.Samples.microsoft_authnresponse_1
+          have = Samples.microsoft_authnresponse_1
       in roundtrip 2 want have
 
     , ignoreTest $
       let want = readXmlSample "microsoft-authnresponse-2.xml"
-          have = Test.Samples.microsoft_authnresponse_2
+          have = Samples.microsoft_authnresponse_2
       in roundtrip 3 want have
 
     , ignoreTest $
       let want = readXmlSample "microsoft-meta-2.xml"
-          have = Test.Samples.microsoft_meta_2
+          have = Samples.microsoft_meta_2
       in roundtrip 4 want have
 
     , ignoreTest $
       let want = readXmlSample "onelogin-request-1.xml"
-          have = Test.Samples.onelogin_request_1
+          have = Samples.onelogin_request_1
       in roundtrip 5 want have
 
     , ignoreTest $

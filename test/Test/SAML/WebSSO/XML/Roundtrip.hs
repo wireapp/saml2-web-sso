@@ -17,7 +17,7 @@ import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 import SAML.WebSSO
 import Test.Tasty
-import Test.Util
+import Util
 import Text.XML
 import URI.ByteString
 

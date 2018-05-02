@@ -39,7 +39,7 @@ import Text.XML
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
-import Test.Util
+import Util
 import Text.XML.Iso
 import Text.XML.Util
 

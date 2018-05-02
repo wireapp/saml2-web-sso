@@ -7,7 +7,7 @@
 
 {-# OPTIONS_GHC -Wno-unused-binds #-}
 
-module Test.Util where
+module Util where
 
 import Control.Monad
 import Data.EitherR
@@ -70,7 +70,7 @@ haskellCodeFromXML :: forall a. (Typeable a, Show a, HasXMLRoot a) => Proxy a ->
 haskellCodeFromXML Proxy ifilepath_ = do
   root <- getEnv "SAML2_WEB_SSO_ROOT"
   let ifilepath = root </> "test/xml" </> ifilepath_
-      ofilepath = root </> "test/Test/Samples.hs"
+      ofilepath = root </> "test/Samples.hs"
 
       f :: String -> IO a
       f = decode . cs

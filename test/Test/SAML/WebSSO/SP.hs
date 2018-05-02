@@ -17,7 +17,7 @@ import Lens.Micro.TH
 import Test.Tasty
 import Test.Tasty.HUnit
 
-import qualified Test.Samples
+import qualified Samples
 import SAML.WebSSO
 
 
@@ -104,7 +104,7 @@ tests = testGroup "SP"
         assertEqual (show verdict) verdict (AccessDenied ["wef", "eeek"])
     ]
 
-  , let resp = Test.Samples.microsoft_authnresponse_1
+  , let resp = Samples.microsoft_authnresponse_1
                & rspPayload . ix 0 . assConditions . _Just . condNotBefore    .~ Just timeNow
                & rspPayload . ix 0 . assConditions . _Just . condNotOnOrAfter .~ Just timeIn20minutes
 
