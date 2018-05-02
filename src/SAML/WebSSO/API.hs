@@ -264,9 +264,10 @@ authresp (AuthnResponseBody resp) = do
   logger $ show verdict
 
   case verdict of
-    AccessDenied _reasons -> reject
-    AccessGranted _name nick
-      -> redirect (getPath SpPathHome) [cookieToHeader . togglecookie . Just $ nick]
+    AccessDenied reasons
+      -> logger (show reasons) >> reject
+    AccessGranted uid
+      -> redirect (getPath SpPathHome) [cookieToHeader . togglecookie . Just . cs . show $ uid]
 
 
 ----------------------------------------------------------------------

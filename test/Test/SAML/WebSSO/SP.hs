@@ -79,20 +79,20 @@ tests = testGroup "SP"
   , testGroup "JudgetT"
     [ testCase "no msgs" $ do
         verdict <- runJudgeT $ do
-          pure $ AccessGranted "" ""
-        assertEqual (show verdict) verdict (AccessGranted "" "")
+          pure $ AccessGranted (UserId "" "")
+        assertEqual (show verdict) verdict (AccessGranted (UserId "" ""))
 
     , testCase "1 msg" $ do
         verdict <- runJudgeT $ do
           deny ["wef"]
-          pure $ AccessGranted "" ""
+          pure $ AccessGranted (UserId "" "")
         assertEqual (show verdict) verdict (AccessDenied ["wef"])
 
     , testCase "2 msg" $ do
         verdict <- runJudgeT $ do
           deny ["wef"]
           deny ["phoo", "gna"]
-          pure $ AccessGranted "" ""
+          pure $ AccessGranted (UserId "" "")
         assertEqual (show verdict) verdict (AccessDenied ["wef", "phoo", "gna"])
 
     , testCase "1 msg, then giveup, then send another message" $ do
@@ -100,7 +100,7 @@ tests = testGroup "SP"
           deny ["wef"]
           () <- giveup ["eeek"]
           deny ["phoo"]
-          pure $ AccessGranted "" ""
+          pure $ AccessGranted (UserId "" "")
         assertEqual (show verdict) verdict (AccessDenied ["wef", "eeek"])
     ]
 
@@ -134,7 +134,8 @@ tests = testGroup "SP"
 
     , testCase "status success yields name, nick" $ do
         verdict <- testSP defaultCtx $ judge (resp & rspStatus .~ StatusSuccess)
-        assertEqual (show verdict) (AccessGranted "fisxt1@azurewire.onmicrosoft.com" "fisxt1") verdict
+        let uid = UserId "https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/" "E3hQDDZoObpyTDplO8Ax8uC8ObcQmREdfps3TMpaI84"
+        assertEqual (show verdict) (AccessGranted uid) verdict
 
     -- check the rest of the AuthnResponse type: what do we have to take into account?  what can we
     -- delete?  keeping values parsed and enforce some default where we don't need to do anything

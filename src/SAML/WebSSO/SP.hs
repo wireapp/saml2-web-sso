@@ -20,6 +20,7 @@ import Control.Monad.Writer
 import Control.Monad.Except
 import Data.Foldable (toList)
 import Data.Maybe
+import Data.List
 import Data.String.Conversions
 import Data.Time
 import Data.UUID (UUID)
@@ -153,23 +154,27 @@ judge' resp = do
     StatusSuccess -> pure ()
     bad -> deny ["status: " <> cs (show bad)]
 
+  -- issuer must be present and unique in assertions
+  NameID issuer <- case nub $ (^. assIssuer) <$> resp ^. rspPayload of
+    [i] -> pure i
+    [] -> giveup ["no statement issuer"]
+    bad@(_:_:_) -> giveup ["multiple statement issuers not supported", cs $ show bad]
+
   case resp ^. rspPayload of
     [ass] -> case ass ^. assContents of
-      SubjectAndStatements _subj (toList -> stmts) -> do
+      SubjectAndStatements (Subject (SubjectID subject) subjconds) (toList -> stmts) -> do
         checkAuthnStatement stmts
-        let attrs = getAttributeStatements stmts
-            nameKey = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name"
-            nickKey = "http://schemas.microsoft.com/identity/claims/displayname"  -- TODO: don't use this field?
-        AccessGranted <$> requireAttributeText nameKey attrs
-                      <*> requireAttributeText nickKey attrs
-
+        checkSubjectConditions subjconds
+        pure . AccessGranted $ UserId issuer subject
     []                           -> giveup ["no assertions"]
-    _:_                          -> giveup ["not supported: more than one assertion"]
+    _:_:_                        -> giveup ["not supported: more than one assertion"]
 
   -- TODO: 'judge' must only accept 'AuthResponse' values wrapped in 'SignaturesVerified', which can
   -- only be constructed by "Text.XML.DSig".
 
-  -- TODO: [3/4.1.4.2] AuthnStatement must be present!  Subject must be present!  also other requirements!
+  -- TODO: implement 'checkSubjectConditions'!
+
+  -- TODO: check requirements in [3/4.1.4.2]!
 
   -- TODO: in case of error, log response (would xml be better?) and SP context for extraction of
   -- failing test cases in case of prod failures.
@@ -181,6 +186,10 @@ checkAuthnStatement = mapM_ go
     go (AuthnStatement _ _ Nothing Nothing) = pure ()
     go (bad@AuthnStatement{})               = giveup ["bad AuthnStatement: " <> cs (show bad)]
     go _                                    = pure ()
+
+
+checkSubjectConditions :: MonadJudge m => [SubjectConfirmation] -> m ()
+checkSubjectConditions _ = pure ()
 
 
 getAttributeStatements :: [Statement] -> [Attribute]

@@ -20,11 +20,12 @@ data AccessVerdict =
     { _avReasons :: [ST]
     }
   | AccessGranted
-    { _avName :: ST
-    , _avNick :: ST
+    { _avUserId :: UserId
     }
   deriving (Eq, Show)
 
+data UserId = UserId { _uidTenant :: ST, _uidSubject :: ST }
+  deriving (Eq, Show)
 
 ----------------------------------------------------------------------
 -- meta
@@ -344,4 +345,5 @@ makeLenses ''SubjectConfirmation
 makeLenses ''SubjectConfirmationData
 makeLenses ''SubjectID
 makeLenses ''Time
+makeLenses ''UserId
 makeLenses ''Version
