@@ -8,10 +8,10 @@
 
 module Test.SAML.WebSSO.API (tests) where
 
+import Shelly
 import Data.EitherR
 import Data.String.Conversions
 import Servant
-import System.Process
 import Test.Tasty
 import Test.Tasty.HUnit
 import Text.XML as XML
@@ -34,21 +34,22 @@ instance HasXML SomeSAMLRequest where
 instance HasXMLRoot SomeSAMLRequest where
   renderRoot (SomeSAMLRequest doc) = renderRoot doc
 
+base64ours, base64theirs :: HasCallStack => SBS -> IO SBS
+base64ours = pure . cs . EL.encode . cs
+base64theirs sbs = shelly . silently $ cs <$> (setStdin (cs sbs) >> run "/usr/bin/base64" ["--wrap", "0"])
+
+
 tests :: TestTree
 tests = testGroup "API"
   [ testGroup "base64 encoding"
     [ testCase "compatible with /usr/bin/base64" $ do
         let check :: LBS -> Test.Tasty.HUnit.Assertion
             check input = do
-              o <- ours input
-              t <- theirs input
-              assertEqual "failed" o t
+              o <- base64ours (cs input)
+              t <- base64theirs (cs input)
+              assertEqual "failed" (chomp o) (chomp t)
 
-            ours, theirs :: LBS -> IO LBS
-            ours   = pure . chomp . EL.encode
-            theirs = fmap (chomp . cs) . readProcess "/usr/bin/base64" ["--wrap", "0"] . cs
-
-            chomp = cs . reverse . dropWhile (== '\n') . reverse . cs
+            chomp = reverse . dropWhile (== '\n') . reverse . cs
 
         check ""
         check "..."

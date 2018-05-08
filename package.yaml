@@ -78,6 +78,7 @@ tests:
       - hspec
       - pretty-show
       - process
+      - shelly
       - tasty
       - tasty-expected-failure
       - tasty-hunit
