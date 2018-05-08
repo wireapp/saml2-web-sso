@@ -49,48 +49,48 @@ tests = testGroup "XML serialization"
             (renderTime $ unsafeReadTime good)
             (renderTime $ unsafeReadTime bad)
 
-    , let want = readXmlSample "microsoft-authnrequest-1.xml"
-          have = Samples.microsoft_authnrequest_1
-      in roundtrip 0 want have
+    , let have = readXmlSample "microsoft-authnrequest-1.xml"
+          want = Samples.microsoft_authnrequest_1
+      in roundtrip 0 have want
 
     , ignoreTest $
-      let want = readXmlSample "microsoft-authnresponse-0.xml"
-          have = Samples.microsoft_authnresponse_0
-      in roundtrip 1 want have
+      let have = readXmlSample "microsoft-authnresponse-0.xml"
+          want = Samples.microsoft_authnresponse_0
+      in roundtrip 1 have want
 
     , ignoreTest $
-      let want = readXmlSample "microsoft-authnresponse-1.xml"
-          have = Samples.microsoft_authnresponse_1
-      in roundtrip 2 want have
+      let have = readXmlSample "microsoft-authnresponse-1.xml"
+          want = Samples.microsoft_authnresponse_1
+      in roundtrip 2 have want
 
     , ignoreTest $
-      let want = readXmlSample "microsoft-authnresponse-2.xml"
-          have = Samples.microsoft_authnresponse_2
-      in roundtrip 3 want have
+      let have = readXmlSample "microsoft-authnresponse-2.xml"
+          want = Samples.microsoft_authnresponse_2
+      in roundtrip 3 have want
 
     , ignoreTest $
-      let want = readXmlSample "microsoft-meta-2.xml"
-          have = Samples.microsoft_meta_2
-      in roundtrip 4 want have
+      let have = readXmlSample "microsoft-meta-2.xml"
+          want = Samples.microsoft_meta_2
+      in roundtrip 4 have want
 
     , ignoreTest $
-      let want = readXmlSample "onelogin-request-1.xml"
-          have = Samples.onelogin_request_1
-      in roundtrip 5 want have
+      let have = readXmlSample "onelogin-request-1.xml"
+          want = Samples.onelogin_request_1
+      in roundtrip 5 have want
 
     , ignoreTest $
-      let want = readXmlSample "onelogin-response-1.xml"
-          have = undefined :: AuthnResponse
-      in roundtrip 6 want have
+      let have = readXmlSample "onelogin-response-1.xml"
+          want = undefined :: AuthnResponse
+      in roundtrip 6 have want
 
     , ignoreTest $
-      let want = readXmlSample "onelogin-response-2.xml"
-          have = undefined :: AuthnResponse
-      in roundtrip 7 want have
+      let have = readXmlSample "onelogin-response-2.xml"
+          want = undefined :: AuthnResponse
+      in roundtrip 7 have want
 
     , ignoreTest $
-      let want = readXmlSample "onelogin-response-3.xml"
-          have = undefined :: AuthnResponse
-      in roundtrip 8 want have
+      let have = readXmlSample "onelogin-response-3.xml"
+          want = undefined :: AuthnResponse
+      in roundtrip 8 have want
     ]
   ]
