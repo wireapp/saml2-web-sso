@@ -7,21 +7,25 @@
 
 module Test.SAML.WebSSO.XML.Examples (tests) where
 
+import Text.Show.Pretty (ppShow)
 import Control.Monad (forM_)
+import Control.Monad.IO.Class (liftIO)
 import Data.List.NonEmpty
-import qualified Data.List as List
-import qualified Data.Map as Map
 import Data.String.Conversions
+import SAML.WebSSO
+import System.Environment (setEnv)
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty
-import Test.Tasty.HUnit
 import Test.Tasty.ExpectedFailure (ignoreTest)
+import Test.Tasty.HUnit
 import Text.XML
 import URI.ByteString
-
 import Util
+
+import qualified Data.ByteString.Base64.Lazy as EL
+import qualified Data.List as List
+import qualified Data.Map as Map
 import qualified Samples
-import SAML.WebSSO
 
 
 tests :: TestTree

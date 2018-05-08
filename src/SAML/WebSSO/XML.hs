@@ -65,7 +65,6 @@ decode = either throwM parseFromDocument . parseText def
 renderToDocument :: HasXMLRoot a => a -> Document
 renderToDocument = mkDocument . renderRoot
 
-
 parseFromDocument :: (HasXML a, MonadThrow m) => Document -> m a
 parseFromDocument = parse . fromDocument
 
