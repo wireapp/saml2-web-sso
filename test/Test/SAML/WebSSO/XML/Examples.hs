@@ -92,5 +92,32 @@ tests = testGroup "XML serialization"
       let have = readXmlSample "onelogin-response-3.xml"
           want = undefined :: AuthnResponse
       in roundtrip 8 have want
+
+    , ignoreTest $
+      let base64raw :: LT = readXmlSample "centrify-response-1.base64"
+
+          -- (this blob is just to demonstrate that centrify responses can be parsed; should be a
+          -- simple roundtrip once we're done fixing things.)
+
+          Right (xmlraw :: LBS)
+              = EL.decode
+              . cs @String @LBS
+              . List.filter (`notElem` ("\r\n" :: [Char]))
+              . cs @LT @String
+              $ base64raw
+          Right (xmldoc :: Document) = parseText def $ cs xmlraw
+          Right (saml2doc :: AuthnRequest) = parseFromDocument xmldoc
+
+          have = cs xmlraw :: LT
+          want = undefined :: AuthnResponse
+
+      in testGroup "centrify"
+         [ testCase "response-1" . liftIO $ do
+             print base64raw
+             print xmlraw
+             putStrLn (ppShow xmldoc)
+             putStrLn (ppShow saml2doc)
+         , roundtrip 9 have want
+         ]
     ]
   ]
