@@ -41,15 +41,7 @@ base64theirs sbs = shelly . silently $ cs <$> (setStdin (cs sbs) >> run "/usr/bi
 spec :: Spec
 spec = describe "API" $ do
   describe "base64 encoding" $ do
-    xdescribe "compatible with /usr/bin/base64" $ do
-      -- See https://github.com/wireapp/saml2-web-sso/issues/4.  If you run the test suite in a loop
-      -- (@for i in `seq 0 100`; do echo $i; stack test --fast; done@), after a few (<100) rounds
-      -- you get @Index (5) out of range ((0,3))@ from this test.  if you define @base64theirs =
-      -- base64ours@, everything seems to be fine.  reproduced with using 'Shelly.run' and
-      -- 'readProcess' and on debian and ubuntu.
-      --
-      -- If we want to re-enable this test case and not worry about this esoteric issue, we can just
-      -- copy the expected base64 output into string literals instead of calling base64 dynamically.
+    describe "compatible with /usr/bin/base64" $ do
       let check :: LBS -> Spec
           check input = it (show input) $ do
             o <- base64ours (cs input)
