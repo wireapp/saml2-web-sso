@@ -75,5 +75,5 @@ verificationSample = do
   let key = Samples.microsoft_idp_keyinfo
       Right (Document _ (el :: Element) _) =
         parseLBS def . cs $ readXmlSample "microsoft-signed-assertion.xml"
-  vf <- verify key el
+  vf <- verifyIO key el
   pure (key, el, vf)

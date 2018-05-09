@@ -10,7 +10,7 @@
 -- other dubious packages internally, but expose xml-types and cryptonite.
 module Text.XML.DSig
   ( parseKeyInfo
-  , verify, Verified, fmapVerified, unverify
+  , verify, verifyIO, Verified, fmapVerified, unverify
   , simpleVerifyAuthnResponse
   )
 where
@@ -22,6 +22,7 @@ import Data.List.NonEmpty
 import Data.Monoid ((<>))
 import Data.String.Conversions
 import GHC.Stack
+import System.IO.Unsafe (unsafePerformIO)
 import Text.XML
 
 import qualified Crypto.PubKey.RSA as RSA
@@ -84,14 +85,20 @@ q = [decodeASN1 DER, decodeASN1 BER] <*> [q1]
 -- signature verification
 
 -- | [1/5]
+--
+-- DEPRECATED: Verified "use 'simpleVerifyAuthnResponse' instead (less type safety, but more flexible and understandable)."
 newtype Verified a = Verified { unverify :: a }
   deriving (Eq, Show)
 
+verify :: forall m. (MonadError String m)
+       => RSA.PublicKey -> Element -> m (Verified Element)
+verify key el = either (throwError . show @SomeException) pure . unsafePerformIO . try $ verifyIO key el
+
 -- | Assumptions: the signedReference points to the root element; the signature is part of the
 -- signed tree (enveloped signature).
-verify :: forall m. (m ~ IO {- FUTUREWORK: allow this to be any MonadThrow instance -})
+verifyIO :: forall m. (m ~ IO {- FUTUREWORK: allow this to be any MonadThrow instance -})
        => RSA.PublicKey -> Element -> m (Verified Element)
-verify key el = do
+verifyIO key el = do
   el' <- maybe (err "no parse") pure mkel'
   sid <- maybe (err "no signed-ID") pure mkSid
   try (HS.verifySignature key' sid el') >>= \case
