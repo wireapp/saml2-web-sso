@@ -27,6 +27,7 @@ spec = describe "xml:dsig" $ do
       have <- parseKeyInfo keyinfo
       have `shouldBe` want
 
+  describe "verify" $ do
     it "verify" $ do
       (_, el, vf) <- verificationSample
       unverify vf `shouldBe` el
@@ -37,6 +38,12 @@ spec = describe "xml:dsig" $ do
           one = dothis . unverify
           two = unverify . fmapVerified dothis
       one vf `shouldBe` two vf
+
+  describe "simpleVerifyAuthnResponse" $ do
+    it "..." $ do
+      pending
+
+      -- simpleVerifyAuthnResponse
 
 
 verificationSample :: IO (RSA.PublicKey, Element, Verified Element)

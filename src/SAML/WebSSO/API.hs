@@ -31,8 +31,7 @@
 -- FUTUREWORK: servant-server is quite heavy.  we should have a cabal flag to exclude it.
 module SAML.WebSSO.API where
 
-import Control.Monad.Except (throwError)
-import Control.Monad ((>=>))
+import Control.Monad.Except hiding (ap)
 import Data.Binary.Builder (toLazyByteString)
 import Data.EitherR
 import Data.Function
@@ -54,6 +53,7 @@ import Text.XML
 import URI.ByteString
 import Web.Cookie
 
+import qualified Crypto.PubKey.RSA as RSA
 import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
 import qualified Data.Text as ST
@@ -63,6 +63,7 @@ import SAML.WebSSO.Config
 import SAML.WebSSO.SP
 import SAML.WebSSO.Types
 import SAML.WebSSO.XML
+import Text.XML.DSig
 
 
 ----------------------------------------------------------------------
@@ -180,13 +181,20 @@ instance  Accept HTML where
   contentType Proxy = "text" // "html"
 
 
-newtype AuthnResponseBody = AuthnResponseBody AuthnResponse
+-- | An 'AuthnResponseBody' contains a 'AuthnResponse', but you need to give it a trust base forn
+-- signature verification first, and you may get an error when you're looking at it.
+newtype AuthnResponseBody = AuthnResponseBody ((ST -> RSA.PublicKey) -> Either ServantErr AuthnResponse)
 
 instance FromMultipart Mem AuthnResponseBody where
-  fromMultipart resp = AuthnResponseBody <$> (decodeBody =<< lookupInput "SAMLResponse" resp)
-    where
-      e2m = either (const Nothing) Just
-      decodeBody = e2m . EL.decode . cs >=> e2m . decode . cs
+  fromMultipart resp = Just . AuthnResponseBody $ \lookupPublicKey -> do
+    base64 <- maybe (throwError err400 { errBody = "no SAMLResponse in the body" }) pure $
+              lookupInput "SAMLResponse" resp
+    xmltxt <- either (const $ throwError err400 { errBody = "bad base64 encoding in SAMLResponse" }) pure $
+              EL.decode (cs base64)
+    either (\ex -> throwError err400 { errBody = "invalid signature: " <> cs ex }) pure $
+      simpleVerifyAuthnResponse lookupPublicKey xmltxt
+    either (\ex -> throwError err400 { errBody = cs $ show ex }) pure $
+      decode (cs xmltxt)
 
 
 -- | [2/3.5.4]
@@ -258,16 +266,18 @@ authreq = do
   leaveH $ FormRedirect uri req
 
 authresp :: (SP m, SPNT m) => AuthnResponseBody -> m Void
-authresp (AuthnResponseBody resp) = do
-  enterH $ "authresp: " <> ppShow resp
-  verdict <- judge resp
-  logger $ show verdict
+authresp (AuthnResponseBody mkbody) = case mkbody undefined of
+  Left err -> throwError err
+  Right resp -> do
+    enterH $ "authresp: " <> ppShow resp
+    verdict <- judge resp
+    logger $ show verdict
 
-  case verdict of
-    AccessDenied reasons
-      -> logger (show reasons) >> reject
-    AccessGranted uid
-      -> redirect (getPath SpPathHome) [cookieToHeader . togglecookie . Just . cs . show $ uid]
+    case verdict of
+      AccessDenied reasons
+        -> logger (show reasons) >> reject
+      AccessGranted uid
+        -> redirect (getPath SpPathHome) [cookieToHeader . togglecookie . Just . cs . show $ uid]
 
 
 ----------------------------------------------------------------------

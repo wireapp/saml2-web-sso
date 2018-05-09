@@ -51,8 +51,8 @@ class Monad m => SP m where
   default getNow :: MonadIO m => m Time
   getNow = Time <$> liftIO getCurrentTime
 
--- | HTTP handling of the service provider.
-class SP m => SPNT m where
+-- | HTTP handling of the service provider.  TODO: rename to 'SPHandler'?
+class (SP m, MonadError ServantErr m) => SPNT m where
   nt :: forall x. m x -> Handler x
   default nt :: m ~ Handler => (forall x. m x -> Handler x)
   nt = id

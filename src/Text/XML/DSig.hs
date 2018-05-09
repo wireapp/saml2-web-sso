@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -10,11 +11,13 @@
 module Text.XML.DSig
   ( parseKeyInfo
   , verify, Verified, fmapVerified, unverify
+  , simpleVerifyAuthnResponse
   )
 where
 
 import Control.Exception (SomeException)
-import Control.Monad.Catch
+import Control.Monad.Catch  -- TODO: do we need this, or can we get away with 'Except' only?  and perhaps 'unsafePerformIO'?
+import Control.Monad.Except
 import Data.List.NonEmpty
 import Data.Monoid ((<>))
 import Data.String.Conversions
@@ -84,9 +87,9 @@ q = [decodeASN1 DER, decodeASN1 BER] <*> [q1]
 newtype Verified a = Verified { unverify :: a }
   deriving (Eq, Show)
 
--- | Assumptions: the signedReference points to the root element; the signature part of the signed
--- tree (enveloped signature).
-verify :: forall m. (m ~ IO {- TODO: allow this to be any MonadThrow instance -})
+-- | Assumptions: the signedReference points to the root element; the signature is part of the
+-- signed tree (enveloped signature).
+verify :: forall m. (m ~ IO {- FUTUREWORK: allow this to be any MonadThrow instance -})
        => RSA.PublicKey -> Element -> m (Verified Element)
 verify key el = do
   el' <- maybe (err "no parse") pure mkel'
@@ -113,6 +116,13 @@ verify key el = do
 -- want to first check the signature, then parse the application data.  Use with care!
 fmapVerified :: (a -> b) -> Verified a -> Verified b
 fmapVerified f (Verified a) = Verified $ f a
+
+
+-- | Pull assertions sub-forest and pass all trees in it to 'verify' individually.  The 'LBS'
+-- argument must be a valid 'AuthnResponse'.
+simpleVerifyAuthnResponse :: MonadError String m => (ST -> RSA.PublicKey) -> LBS -> m ()
+simpleVerifyAuthnResponse _lookupPublicKey _raw = undefined
+
 
 
 {-
