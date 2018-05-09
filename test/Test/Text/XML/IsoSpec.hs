@@ -19,7 +19,7 @@
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE ViewPatterns          #-}
 
-module Test.Text.XML.Iso (tests) where
+module Test.Text.XML.IsoSpec (spec) where
 
 import Control.Category (Category(..))
 import Control.Monad
@@ -31,9 +31,7 @@ import Data.String
 import Data.String.Conversions
 import Hedgehog
 import Prelude hiding (id, (.))
-import Test.Tasty
-import Test.Tasty.ExpectedFailure (ignoreTest)
-import Test.Tasty.HUnit
+import Test.Hspec
 import Text.XML
 
 import qualified Hedgehog.Gen as Gen
@@ -110,10 +108,10 @@ instance IsoXML 'CtxElem WBCList where
 ----------------------------------------------------------------------
 -- test plumbing
 
-tests :: TestTree
-tests = testGroup "IsoXML" $ trips : examples
+spec :: Spec
+spec = describe "IsoXML" $ trips >> examples
 
-trips :: TestTree
+trips :: Spec
 trips = hedgehog $ checkParallel $$(discover)
 
 mkprop :: forall a. (Eq a, Show a, IsoXML 'CtxElem a) => Gen a -> Property
@@ -135,23 +133,21 @@ _runcase = recheck 0 (Seed 0 0) . property . mktrip
 ----------------------------------------------------------------------
 -- test case list
 
-examples :: HasCallStack => [TestTree]
-examples =
-  [ testCase "1" $ assertEqual "..."
+examples :: HasCallStack => Spec
+examples = do
+  it "1" $ shouldBe
       "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Prod Number=\"3\" Text=\"whoof\"/>"
       (enc False $ Prod 3 "whoof")
-  , testCase "2" $ assertEqual "..."
+  it "2" $ shouldBe
       "<?xml version=\"1.0\" encoding=\"UTF-8\"?><SL><Bool val=\"False\"/><Prod Number=\"3\" Text=\"whoof\"/></SL>"
       (enc False [SumX (Prod 3 "whoof"), SumY False])
 
-  , testCase "3" $ assertEqual "..."
+  it "3" $ shouldBe
       "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Prod Number=\"3\" Text=\"whoof\"/>"
       (enc False $ WillBeElem (Prod 3 "whoof"))
-  , ignoreTest $
-    testCase "4" $ assertEqual "..."
+  xit "4" $ shouldBe
       ""
       (enc False $ WillBeContent "this is nice")
-  ]
 
 
 ----------------------------------------------------------------------

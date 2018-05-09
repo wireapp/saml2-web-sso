@@ -65,7 +65,7 @@ library:
 
 tests:
   spec:
-    main: Main.hs
+    main: Spec.hs
     source-dirs:
       - test
     include-dirs:
@@ -76,13 +76,10 @@ tests:
 
       - hedgehog
       - hspec
+      - hspec-discover
       - pretty-show
       - process
       - shelly
-      - tasty
-      - tasty-expected-failure
-      - tasty-hunit
-      - tasty-quickcheck
       - temporary
       - uniplate
 

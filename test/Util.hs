@@ -11,21 +11,21 @@ module Util where
 
 import Control.Monad
 import Data.EitherR
-import Data.List
 import Data.Generics.Uniplate.Data
+import Data.List
 import Data.String.Conversions
 import Data.Typeable
+import GHC.Stack
+import Hedgehog
 import System.Environment
 import System.FilePath
 import System.IO.Temp
 import System.IO.Unsafe (unsafePerformIO)
 import System.Process (system)
-import Test.Tasty
-import Test.Tasty.HUnit
+import Test.Hspec
 import Text.Show.Pretty
 import Text.XML
 import URI.ByteString
-import Hedgehog
 
 import qualified Data.Text as ST
 import qualified Data.Text.Lazy.IO as LT
@@ -56,13 +56,11 @@ dumpFile = showFile >=> putStrLn
 rerenderFile :: FilePath -> IO ()
 rerenderFile fp = showFile fp >>= Prelude.writeFile (fp <> "-")
 
-mkURI :: String -> URI
+mkURI :: HasCallStack => String -> URI
 mkURI = (\(Just x) -> x) . parseURI' . cs
 
--- TODO: this overwrites output of the other tests.  there must be a way in tasty to collect
--- stdout/stderr and add it to the output in a more orderly fashion.
-hedgehog :: IO Bool -> TestTree
-hedgehog ht = testCase "hedgehog tests" $ assertBool "failed" =<< ht
+hedgehog :: IO Bool -> Spec
+hedgehog = it "hedgehog tests" . (`shouldReturn` True)
 
 
 -- | Helper function for generating new tests cases.
@@ -96,29 +94,24 @@ readXmlSample fpath = unsafePerformIO $ do
   LT.readFile $ root </> "test/xml" </> fpath
 
 
-roundtrip :: forall a. (Eq a, Show a, HasXMLRoot a) => Int -> LT -> a -> TestTree
-roundtrip serial rendered parsed = testGroup ("roundtrip-" <> show serial)
-  [ testCase "encode" $ assertXmlRoundtrip "failed"
-      (fmapL show . parseText def $ rendered)
-      (fmapL show . parseText def $ encode parsed)
-
-  , testCase "decode" $ assertEqual "failed"
-      (Right parsed)
-      (fmapL show $ decode rendered)
-  ]
+roundtrip :: forall a. (Eq a, Show a, HasXMLRoot a) => Int -> LT -> a -> Spec
+roundtrip serial rendered parsed = describe ("roundtrip-" <> show serial) $ do
+  let tweak = fmapL show . parseText def
+  it "encode" $ tweak rendered `assertXmlRoundtrip` tweak (encode parsed)
+  it "decode" $ Right parsed `shouldBe` fmapL show (decode rendered)
 
 -- | If we get two XML structures that differ, compute the diff.
 assertXmlRoundtrip :: HasCallStack
-  => String -> Either String Document -> Either String Document -> Test.Tasty.HUnit.Assertion
-assertXmlRoundtrip msg (Right (normalizeDocument -> x)) (Right (normalizeDocument -> y))
-  = assertXmlRoundtripFailWithDiff msg x y
-assertXmlRoundtrip msg x y
-  = assertEqual msg x y
+  => Either String Document -> Either String Document -> Expectation
+assertXmlRoundtrip (Right (normalizeDocument -> x)) (Right (normalizeDocument -> y))
+  = assertXmlRoundtripFailWithDiff x y
+assertXmlRoundtrip x y
+  = x `shouldBe` y
 
 
 assertXmlRoundtripFailWithDiff :: HasCallStack
-  => String -> Document -> Document -> Test.Tasty.HUnit.Assertion
-assertXmlRoundtripFailWithDiff msg x y = unless (x == y) .
+  => Document -> Document -> Expectation
+assertXmlRoundtripFailWithDiff x y = unless (x == y) .
   withSystemTempDirectory "saml.web.sso.tmp" $ \tmpdir -> do
     let tmpx = tmpdir <> "/x"
         tmpy = tmpdir <> "/y"
@@ -127,7 +120,7 @@ assertXmlRoundtripFailWithDiff msg x y = unless (x == y) .
     y `seq` Prelude.writeFile tmpy (ppShow y)
     _ <- system $ "diff " <> tmpx <> " " <> tmpy <> " > " <> tmpd
     diff <- Prelude.readFile tmpd
-    assertBool (msg <> ": non-empty diff:\n" <> diff <> "\n\nyour output:\n" <> ppShow y) False
+    expectationFailure ("non-empty diff:\n" <> diff <> "\n\nyour output:\n" <> ppShow y)
 
 
 -- | Make two 'Document' values that are supposed to be equal easier to compare:

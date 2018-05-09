@@ -6,8 +6,7 @@
 
 {-# OPTIONS_GHC -Wno-unused-binds #-}
 
--- | FUTUREWORK: should we use <https://github.com/qfpl/tasty-hedgehog> to integrate this in "Main"?
-module Test.SAML.WebSSO.XML.Roundtrip (tests) where
+module Test.SAML.WebSSO.XML.RoundtripSpec (spec) where
 
 import Data.List.NonEmpty
 import qualified Data.Map as Map
@@ -16,15 +15,14 @@ import Hedgehog
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 import SAML.WebSSO
-import Test.Tasty
+import Test.Hspec
 import Util
 import Text.XML
 import URI.ByteString
 
 
-tests :: TestTree
-tests = hedgehog $ do
-  checkParallel $$(discover)
+spec :: Spec
+spec = hedgehog $ checkParallel $$(discover)
 
 mkprop :: (Eq a, Show a, HasXMLRoot a) => Gen a -> Property
 mkprop gen = property $ forAll gen >>= \v -> tripping v encode (decode @Maybe)
