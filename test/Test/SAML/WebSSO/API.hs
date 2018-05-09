@@ -8,11 +8,12 @@
 
 module Test.SAML.WebSSO.API (tests) where
 
-import Shelly
 import Data.EitherR
 import Data.String.Conversions
 import Servant
+import Shelly
 import Test.Tasty
+import Test.Tasty.ExpectedFailure (ignoreTest)
 import Test.Tasty.HUnit
 import Text.XML as XML
 
@@ -42,7 +43,16 @@ base64theirs sbs = shelly . silently $ cs <$> (setStdin (cs sbs) >> run "/usr/bi
 tests :: TestTree
 tests = testGroup "API"
   [ testGroup "base64 encoding"
-    [ testCase "compatible with /usr/bin/base64" $ do
+    [ ignoreTest $
+      -- See https://github.com/wireapp/saml2-web-sso/issues/4.  If you run the test suite in a loop
+      -- (@for i in `seq 0 100`; do echo $i; stack test --fast; done@), after a few (<100) rounds
+      -- you get @Index (5) out of range ((0,3))@ from this test.  if you define @base64theirs =
+      -- base64ours@, everything seems to be fine.  reproduced with using 'Shelly.run' and
+      -- 'readProcess' and on debian and ubuntu.
+      --
+      -- If we want to re-enable this test case and not worry about this esoteric issue, we can just
+      -- copy the expected base64 output into string literals instead of calling base64 dynamically.
+      testCase "compatible with /usr/bin/base64" $ do
         let check :: LBS -> Test.Tasty.HUnit.Assertion
             check input = do
               o <- base64ours (cs input)
