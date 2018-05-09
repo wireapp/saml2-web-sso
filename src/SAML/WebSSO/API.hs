@@ -183,7 +183,7 @@ instance  Accept HTML where
 
 -- | An 'AuthnResponseBody' contains a 'AuthnResponse', but you need to give it a trust base forn
 -- signature verification first, and you may get an error when you're looking at it.
-newtype AuthnResponseBody = AuthnResponseBody ((ST -> RSA.PublicKey) -> Either ServantErr AuthnResponse)
+newtype AuthnResponseBody = AuthnResponseBody ((ST -> Maybe RSA.PublicKey) -> Either ServantErr AuthnResponse)
 
 instance FromMultipart Mem AuthnResponseBody where
   fromMultipart resp = Just . AuthnResponseBody $ \lookupPublicKey -> do

@@ -6,6 +6,7 @@
 
 module Test.Text.XML.DSigSpec (spec) where
 
+import Data.Either
 import Data.String.Conversions
 import Test.Hspec
 import Text.XML
@@ -40,10 +41,33 @@ spec = describe "xml:dsig" $ do
       one vf `shouldBe` two vf
 
   describe "simpleVerifyAuthnResponse" $ do
-    it "..." $ do
-      pending
+    let check goodsig knownkey expectOutcome =
+          it (show expectOutcome) $ do
+            let respfile = if goodsig
+                  then "microsoft-authnresponse-2.xml"
+                  else "microsoft-authnresponse-2-badsig.xml"
 
-      -- simpleVerifyAuthnResponse
+            resp :: LBS           <- cs <$> readXmlSampleIO respfile
+            key  :: RSA.PublicKey <- parseKeyInfo =<< readXmlSampleIO "microsoft-idp-keyinfo.xml"
+
+            let lookupKey :: ST -> Maybe RSA.PublicKey
+                lookupKey "https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/" | knownkey = Just key
+                lookupKey _ = Nothing
+
+                go :: Either String ()
+                go = simpleVerifyAuthnResponse lookupKey resp
+
+            if expectOutcome
+              then go `shouldBe` Right ()
+              else go `shouldSatisfy` isLeft
+
+    context "good signature" $ do
+      context "known key"    $ check True True True
+      context "unknown key"  $ check True False False
+
+    context "bad signature"  $ do
+      context "known key"    $ check False True False
+      context "unknown key"  $ check False False False
 
 
 verificationSample :: IO (RSA.PublicKey, Element, Verified Element)

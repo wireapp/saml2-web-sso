@@ -120,7 +120,7 @@ fmapVerified f (Verified a) = Verified $ f a
 
 -- | Pull assertions sub-forest and pass all trees in it to 'verify' individually.  The 'LBS'
 -- argument must be a valid 'AuthnResponse'.
-simpleVerifyAuthnResponse :: MonadError String m => (ST -> RSA.PublicKey) -> LBS -> m ()
+simpleVerifyAuthnResponse :: MonadError String m => (ST -> Maybe RSA.PublicKey) -> LBS -> m ()
 simpleVerifyAuthnResponse _lookupPublicKey _raw = undefined
 
 

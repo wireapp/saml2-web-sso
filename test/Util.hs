@@ -89,7 +89,10 @@ haskellCodeFromXML Proxy ifilepath_ = do
 
 {-# NOINLINE readXmlSample #-}
 readXmlSample :: FilePath -> LT
-readXmlSample fpath = unsafePerformIO $ do
+readXmlSample = unsafePerformIO . readXmlSampleIO
+
+readXmlSampleIO :: FilePath -> IO LT
+readXmlSampleIO fpath = do
   root <- getEnv "SAML2_WEB_SSO_ROOT"
   LT.readFile $ root </> "test/xml" </> fpath
 
