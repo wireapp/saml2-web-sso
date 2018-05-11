@@ -12,6 +12,7 @@ import Test.Hspec
 import Text.XML
 
 import qualified Crypto.PubKey.RSA as RSA
+import qualified Data.X509 as X509
 
 import Util
 import Text.XML.DSig
@@ -25,7 +26,7 @@ spec = describe "xml:dsig" $ do
     it "parseKeyInfo" $ do
       let keyinfo = readXmlSample "microsoft-idp-keyinfo.xml"
           want = Samples.microsoft_idp_keyinfo
-      have <- parseKeyInfo keyinfo
+          Right (SignCreds _ (SignKeyRSA have)) = keyInfoToCreds =<< parseKeyInfo keyinfo
       have `shouldBe` want
 
   describe "verify" $ do
@@ -47,8 +48,9 @@ spec = describe "xml:dsig" $ do
                   then "microsoft-authnresponse-2.xml"
                   else "microsoft-authnresponse-2-badsig.xml"
 
-            resp :: LBS           <- cs <$> readXmlSampleIO respfile
-            key  :: RSA.PublicKey <- parseKeyInfo =<< readXmlSampleIO "microsoft-idp-keyinfo.xml"
+            resp :: LBS <- cs <$> readXmlSampleIO respfile
+            Right (cert :: X509.SignedCertificate) <- parseKeyInfo <$> readXmlSampleIO "microsoft-idp-keyinfo.xml"
+            let Right (SignCreds _ (SignKeyRSA (key :: RSA.PublicKey))) = keyInfoToCreds cert
 
             let lookupKey :: ST -> Maybe RSA.PublicKey
                 lookupKey "https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/" | knownkey = Just key

@@ -27,8 +27,12 @@ import System.Environment
 import System.FilePath
 import System.IO
 import System.IO.Unsafe (unsafePerformIO)
+import Text.XML.DSig
 import URI.ByteString
 
+import qualified Data.Map as Map
+import qualified Data.Text as ST
+import qualified Data.X509 as X509
 import qualified Data.Yaml as Yaml
 
 import SAML.WebSSO.Types
@@ -41,7 +45,14 @@ data Config = Config
   , _cfgServerPort        :: Int
   , _cfgSPAppURI          :: URI
   , _cfgSPSsoURI          :: URI
-  , _cfgIdPURI            :: URI
+  , _cfgIdPs              :: Map.Map ST IdPConfig
+  }
+  deriving (Eq, Show, Generic, FromJSON, ToJSON)
+
+data IdPConfig = IdPConfig
+  { _idpPath            :: ST
+  , _idpRequestUrl      :: URI
+  , _idpPublicKey       :: X509.SignedCertificate
   }
   deriving (Eq, Show, Generic, FromJSON, ToJSON)
 
@@ -59,7 +70,14 @@ instance FromJSON Version where
 instance ToJSON Version where
   toJSON Version_2_0 = String "SAML2.0"
 
+instance FromJSON X509.SignedCertificate where
+  parseJSON = withText "KeyInfo element" $ either fail pure . parseKeyInfo . cs
+
+instance ToJSON X509.SignedCertificate where
+  toJSON = String . cs . renderKeyInfo
+
 makeLenses ''Config
+makeLenses ''IdPConfig
 
 fallbackConfig :: Config
 fallbackConfig = Config
@@ -68,7 +86,7 @@ fallbackConfig = Config
   , _cfgServerPort        = 8081
   , _cfgSPAppURI          = either (error . show) id $ parseURI' "https://me.wire.com/sp"
   , _cfgSPSsoURI          = either (error . show) id $ parseURI' "https://me.wire.com/sso"
-  , _cfgIdPURI            = either (error . show) id $ parseURI' "https://idptestbed/"
+  , _cfgIdPs              = mempty
   }
 
 {-# NOINLINE config #-}

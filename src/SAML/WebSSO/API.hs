@@ -71,7 +71,7 @@ import Text.XML.DSig
 type API = APIMeta :<|> APIAuthReq :<|> APIAuthResp
 
 type APIMeta     = "meta" :> Get '[XML] EntityDescriptor
-type APIAuthReq  = "authreq" :> Get '[HTML] (FormRedirect AuthnRequest)
+type APIAuthReq  = "authreq" :> Capture "idp" ST :> Get '[HTML] (FormRedirect AuthnRequest)
 type APIAuthResp = "authresp" :> MultipartForm Mem AuthnResponseBody :> PostVoid
 
 -- FUTUREWORK: respond with redirect in case of success, instead of responding with Void and
@@ -194,21 +194,22 @@ meta = do
   enterH "meta"
   undefined
 
-authreq :: SP m => m (FormRedirect AuthnRequest)
-authreq = do
+authreq :: (SPNT m) => ST -> m (FormRedirect AuthnRequest)
+authreq idpname = do
   enterH "authreq"
-  let uri = config ^. cfgIdPURI
+  uri <- maybe (throwError err404 { errBody = "unknown IdP: " <> cs (show idpname) })
+               (pure . (^. idpRequestUrl))
+         $ Map.lookup idpname $ config ^. cfgIdPs
   req <- createAuthnRequest
   leaveH $ FormRedirect uri req
 
-authresp :: (SP m, SPNT m) => AuthnResponseBody -> m Void
+authresp :: (SPNT m) => AuthnResponseBody -> m Void
 authresp (AuthnResponseBody mkbody) = case mkbody undefined of
   Left err -> throwError err
   Right resp -> do
     enterH $ "authresp: " <> ppShow resp
     verdict <- judge resp
     logger $ show verdict
-
     case verdict of
       AccessDenied reasons
         -> logger (show reasons) >> reject

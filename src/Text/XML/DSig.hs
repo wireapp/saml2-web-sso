@@ -9,7 +9,9 @@
 -- | Partial implementation of <https://www.w3.org/TR/xmldsig-core/>.  We use hsaml2, hxt, x509 and
 -- other dubious packages internally, but expose xml-types and cryptonite.
 module Text.XML.DSig
-  ( parseKeyInfo
+  ( SignCreds(..), SignDigest(..), SignKey(..)
+  , parseKeyInfo, renderKeyInfo, keyInfoToCreds
+
   , verify, verifyIO, Verified, fmapVerified, unverify
   , simpleVerifyAuthnResponse
   )
@@ -30,12 +32,12 @@ import Text.XML.Cursor
 import qualified Crypto.PubKey.RSA as RSA
 import qualified Data.Map as Map
 import qualified Data.Text as ST
+import qualified Data.X509 as X509
 
 import Text.XML.Util
 
 -- imports we do not want to need:
 
-import qualified Data.X509 as X509
 -- import qualified SAML2.Core.Protocols as HS
 -- import qualified SAML2.Core.Signature as HS
 import qualified SAML2.XML as HS hiding (URI, Node)
@@ -57,22 +59,34 @@ import qualified Text.XML.HXT.Core as HXT
 -- for signing.  Tested for KeyInfo elements that contain an x509 certificate with a self-signed
 -- signing RSA key.
 --
--- TODO: verify self-signature.
-parseKeyInfo :: HasCallStack => LT -> IO RSA.PublicKey
+-- TODO: verify self-signature?
+parseKeyInfo :: (HasCallStack, MonadError String m) => LT -> m X509.SignedCertificate
 parseKeyInfo lt = case HS.xmlToSAML @HS.KeyInfo $ cs lt of
-  (Right (HS.keyInfoElements -> HS.X509Data (HS.X509Certificate (signed :: X509.SignedCertificate) :| []) :| [])) -> do
-    let signedObject    = X509.signedObject    $ X509.getSigned signed
-        signedAlg       = X509.signedAlg       $ X509.getSigned signed
-        _signedSignature = X509.signedSignature $ X509.getSigned signed
+  (Right (HS.keyInfoElements -> HS.X509Data (HS.X509Certificate cert :| []) :| [])) -> pure cert
+  bad -> throwError $ "unsupported: " <> show bad
 
-        convertKey (X509.PubKeyRSA pk) = pk
-        convertKey bad = error $ "unsupported: " <> show bad
+renderKeyInfo :: (HasCallStack) => X509.SignedCertificate -> LT
+renderKeyInfo cert = cs . HS.samlToXML . HS.KeyInfo Nothing $ HS.X509Data (HS.X509Certificate cert :| []) :| []
 
-    case signedAlg of
-      X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_RSA
-        -> pure $ convertKey . X509.certPubKey $ signedObject
-      bad -> error $ "unsupported: " <> show bad
-  bad -> error $ "unsupported: " <> show bad
+data SignCreds = SignCreds SignDigest SignKey
+  deriving (Eq, Show)
+
+data SignDigest = SignDigestSha256
+  deriving (Eq, Show, Bounded, Enum)
+
+data SignKey = SignKeyRSA RSA.PublicKey
+  deriving (Eq, Show)
+
+keyInfoToCreds :: (HasCallStack, MonadError String m) => X509.SignedCertificate -> m SignCreds
+keyInfoToCreds cert = do
+  digest <- case X509.signedAlg $ X509.getSigned cert of
+    X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_RSA -> pure SignDigestSha256
+    bad -> throwError $ "unsupported: " <> show bad
+  key <- case X509.certPubKey . X509.signedObject $ X509.getSigned cert of
+    X509.PubKeyRSA pk -> pure $ SignKeyRSA pk
+    bad -> throwError $ "unsupported: " <> show bad
+  pure $ SignCreds digest key
+
 
 {- TODO: this fails, but i don't know why.  it this base64 encoding after all?
 
