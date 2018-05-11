@@ -12,7 +12,7 @@ import Data.String
 import Lens.Micro ((&))
 import Network.Wai.Handler.Warp (runSettings, defaultSettings, setHost, setPort)
 
-import SAML.WebSSO.API (app)
+import SAML.WebSSO.API.Example (app)
 import SAML.WebSSO.Config
 
 main :: IO ()

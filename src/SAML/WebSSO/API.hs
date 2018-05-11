@@ -38,7 +38,6 @@ import Data.Function
 import Data.List
 import Data.Proxy
 import Data.String.Conversions
-import GHC.Stack
 import Lens.Micro
 import Network.HTTP.Media ((//))
 import Network.Wai hiding (Response)
@@ -64,69 +63,6 @@ import SAML.WebSSO.SP
 import SAML.WebSSO.Types
 import SAML.WebSSO.XML
 import Text.XML.DSig
-
-
-----------------------------------------------------------------------
--- examples app
-
--- TODO: move this section to "SAML.WebSSO.API.Example"
-
--- | The most straight-forward 'Application' that can be constructed from 'api', 'API'.
-app :: Application
-app = setHttpCachePolicy
-    $ serve (Proxy @APPAPI) (hoistServer (Proxy @APPAPI) (nt @Handler) appapi :: Server APPAPI)
-
-type SPAPI =
-       Header "Cookie" SetCookie :> Get '[HTML] LoginStatus
-  :<|> "logout" :> "local" :> GetVoid
-  :<|> "logout" :> "single" :> GetVoid
-
-type APPAPI =
-       "sp"  :> SPAPI
-  :<|> "sso" :> API
-
-spapi :: (SP m, SPNT m) => ServerT SPAPI m
-spapi = loginStatus :<|> localLogout :<|> singleLogout
-
-appapi :: (SP m, SPNT m) => ServerT APPAPI m
-appapi = spapi :<|> api
-
-loginStatus :: SP m => Maybe SetCookie -> m LoginStatus
-loginStatus = pure . maybe NotLoggedIn (LoggedInAs . cs . setCookieValue)
-
--- | only logout on this SP.
-localLogout :: (SP m, SPNT m) => m Void
-localLogout = redirect (getPath SpPathHome) [cookieToHeader $ togglecookie Nothing]
-
--- | as in [3/4.4]
-singleLogout :: (HasCallStack, SP m) => m Void
-singleLogout = error "not implemented."
-
-data LoginStatus = NotLoggedIn | LoggedInAs ST
-  deriving (Eq, Show)
-
-instance FromHttpApiData SetCookie where
-  parseUrlPiece = headerValueToCookie
-
-instance MimeRender HTML LoginStatus where
-  mimeRender Proxy NotLoggedIn
-    = mkHtml
-      [xml|
-        <body>
-          [not logged in]
-          <form action=#{getPath' SsoPathAuthnReq} method="get">
-            <input type="submit" value="login">
-      |]
-  mimeRender Proxy (LoggedInAs name)
-    = mkHtml
-      [xml|
-        <body>
-        [logged in as #{name}]
-          <form action=#{getPath' SpPathLocalLogout} method="get">
-            <input type="submit" value="logout">
-          <p>
-            (this is local logout; logout via IdP is not implemented.)
-      |]
 
 
 ----------------------------------------------------------------------
