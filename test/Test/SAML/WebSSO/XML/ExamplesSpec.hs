@@ -7,9 +7,11 @@
 
 module Test.SAML.WebSSO.XML.ExamplesSpec (spec) where
 
+import Control.Exception
 import Text.Show.Pretty (ppShow)
 import Control.Monad (forM_)
 import Control.Monad.IO.Class (liftIO)
+import Data.Either
 import Data.List.NonEmpty
 import Data.String.Conversions
 import SAML.WebSSO
@@ -54,9 +56,9 @@ spec = describe "XML serialization" $ do
     -- roundtrip 7 (readXmlSample "onelogin-response-2.xml") (undefined :: AuthnResponse)
     -- roundtrip 8 (readXmlSample "onelogin-response-3.xml") (undefined :: AuthnResponse)
 
-    xdescribe "centrify" $ do
+    describe "centrify" $ do
       -- (this blob is just to demonstrate that centrify responses can be parsed; should be a
-      -- simple roundtrip once we're done fixing things.)
+      -- simple roundtrip once we're done fixing things, except for the encoding.)
 
       let base64raw :: LT = readXmlSample "centrify-response-1.base64"
 
@@ -67,15 +69,16 @@ spec = describe "XML serialization" $ do
               . cs @LT @String
               $ base64raw
           Right (xmldoc :: Document) = parseText def $ cs xmlraw
-          Right (saml2doc :: AuthnRequest) = parseFromDocument xmldoc
+          Right (saml2doc :: AuthnResponse) = parseFromDocument xmldoc
 
           have = cs xmlraw :: LT
           want = undefined :: AuthnResponse
 
-      xit @Expectation "..." . liftIO $ do
-        print base64raw
-        print xmlraw
-        putStrLn (ppShow xmldoc)
-        putStrLn (ppShow saml2doc)
+      it @Expectation "parse succeeds" . liftIO $ do
+        -- print base64raw
+        -- print xmlraw
+        -- putStrLn (ppShow xmldoc)
+        parseFromDocument @AuthnResponse @(Either SomeException) xmldoc `shouldSatisfy` isRight
+        -- putStrLn (ppShow saml2doc)
 
-      roundtrip 9 have want
+      -- roundtrip 9 have want

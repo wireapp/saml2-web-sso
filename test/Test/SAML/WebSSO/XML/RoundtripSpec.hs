@@ -147,7 +147,7 @@ genAuthnResponse = genResponse $ Gen.list (Range.linear 0 100) genAssertion
 genResponse :: forall payload. Gen payload -> Gen (Response payload)
 genResponse genPayload = do
   x0 <- genID
-  x1 <- genID
+  x1 <- Gen.maybe genID
   x2 <- genVersion
   x3 <- genTime
   x4 <- Gen.maybe genURI
@@ -157,7 +157,7 @@ genResponse genPayload = do
 
   pure Response
     { _rspID           = x0 :: ID
-    , _rspInRespTo     = x1 :: ID
+    , _rspInRespTo     = x1 :: Maybe ID
     , _rspVersion      = x2 :: Version
     , _rspIssueInstant = x3 :: Time
     , _rspDestination  = x4 :: Maybe URI

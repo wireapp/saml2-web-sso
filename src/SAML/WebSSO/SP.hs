@@ -175,6 +175,7 @@ judge' resp = do
   -- TODO: implement 'checkSubjectConditions'!
 
   -- TODO: check requirements in [3/4.1.4.2]!
+  -- (resp ^. rspInRespTo, if Just, must match request ID.  and other rules.)
 
   -- TODO: in case of error, log response (would xml be better?) and SP context for extraction of
   -- failing test cases in case of prod failures.

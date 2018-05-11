@@ -146,7 +146,7 @@ type AuthnResponse = Response [Assertion]
 -- | [1/3.2.2]
 data Response payload = Response
   { _rspID           :: ID
-  , _rspInRespTo     :: ID
+  , _rspInRespTo     :: Maybe ID
   , _rspVersion      :: Version
   , _rspIssueInstant :: Time
   , _rspDestination  :: Maybe URI
