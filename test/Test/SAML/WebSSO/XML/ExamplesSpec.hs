@@ -46,21 +46,21 @@ spec = describe "XML serialization" $ do
             good = "2013-03-18T03:28:54" <> List.take 8 decimals <> "Z"
         renderTime (unsafeReadTime good) `shouldBe` renderTime (unsafeReadTime bad)
 
-    roundtrip 0 (readXmlSample "microsoft-authnrequest-1.xml") Samples.microsoft_authnrequest_1
-    -- roundtrip 1 (readXmlSample "microsoft-authnresponse-0.xml") Samples.microsoft_authnresponse_0
-    -- roundtrip 2 (readXmlSample "microsoft-authnresponse-1.xml") Samples.microsoft_authnresponse_1
-    -- roundtrip 3 (readXmlSample "microsoft-authnresponse-2.xml") Samples.microsoft_authnresponse_2
-    -- roundtrip 4 (readXmlSample "microsoft-meta-2.xml") Samples.microsoft_meta_2
-    -- roundtrip 5 (readXmlSample "onelogin-request-1.xml") Samples.onelogin_request_1
-    -- roundtrip 6 (readXmlSample "onelogin-response-1.xml") (undefined :: AuthnResponse)
-    -- roundtrip 7 (readXmlSample "onelogin-response-2.xml") (undefined :: AuthnResponse)
-    -- roundtrip 8 (readXmlSample "onelogin-response-3.xml") (undefined :: AuthnResponse)
+    roundtrip 0 (readSample "microsoft-authnrequest-1.xml") Samples.microsoft_authnrequest_1
+    -- roundtrip 1 (readSample "microsoft-authnresponse-0.xml") Samples.microsoft_authnresponse_0
+    -- roundtrip 2 (readSample "microsoft-authnresponse-1.xml") Samples.microsoft_authnresponse_1
+    -- roundtrip 3 (readSample "microsoft-authnresponse-2.xml") Samples.microsoft_authnresponse_2
+    -- roundtrip 4 (readSample "microsoft-meta-2.xml") Samples.microsoft_meta_2
+    -- roundtrip 5 (readSample "onelogin-request-1.xml") Samples.onelogin_request_1
+    -- roundtrip 6 (readSample "onelogin-response-1.xml") (undefined :: AuthnResponse)
+    -- roundtrip 7 (readSample "onelogin-response-2.xml") (undefined :: AuthnResponse)
+    -- roundtrip 8 (readSample "onelogin-response-3.xml") (undefined :: AuthnResponse)
 
     describe "centrify" $ do
       -- (this blob is just to demonstrate that centrify responses can be parsed; should be a
       -- simple roundtrip once we're done fixing things, except for the encoding.)
 
-      let base64raw :: LT = readXmlSample "centrify-response-1.base64"
+      let base64raw :: LT = readSample "centrify-response-1.base64"
 
           Right (xmlraw :: LBS)
               = EL.decode

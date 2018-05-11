@@ -24,7 +24,7 @@ spec :: Spec
 spec = describe "xml:dsig" $ do
   describe "key handling" $ do
     it "parseKeyInfo" $ do
-      let keyinfo = readXmlSample "microsoft-idp-keyinfo.xml"
+      let keyinfo = readSample "microsoft-idp-keyinfo.xml"
           want = Samples.microsoft_idp_keyinfo
           Right (SignCreds _ (SignKeyRSA have)) = keyInfoToCreds =<< parseKeyInfo keyinfo
       have `shouldBe` want
@@ -48,8 +48,8 @@ spec = describe "xml:dsig" $ do
                   then "microsoft-authnresponse-2.xml"
                   else "microsoft-authnresponse-2-badsig.xml"
 
-            resp :: LBS <- cs <$> readXmlSampleIO respfile
-            Right (cert :: X509.SignedCertificate) <- parseKeyInfo <$> readXmlSampleIO "microsoft-idp-keyinfo.xml"
+            resp :: LBS <- cs <$> readSampleIO respfile
+            Right (cert :: X509.SignedCertificate) <- parseKeyInfo <$> readSampleIO "microsoft-idp-keyinfo.xml"
             let Right (SignCreds _ (SignKeyRSA (key :: RSA.PublicKey))) = keyInfoToCreds cert
 
             let lookupKey :: ST -> Maybe RSA.PublicKey
@@ -76,6 +76,6 @@ verificationSample :: IO (RSA.PublicKey, Element, Verified Element)
 verificationSample = do
   let key = Samples.microsoft_idp_keyinfo
       Right (Document _ (el :: Element) _) =
-        parseLBS def . cs $ readXmlSample "microsoft-signed-assertion.xml"
+        parseLBS def . cs $ readSample "microsoft-signed-assertion.xml"
   vf <- verifyIO key el
   pure (key, el, vf)

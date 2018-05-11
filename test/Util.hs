@@ -87,14 +87,14 @@ haskellCodeFromXML Proxy ifilepath_ = do
   Prelude.appendFile ofilepath $ g typ
 
 
-{-# NOINLINE readXmlSample #-}
-readXmlSample :: FilePath -> LT
-readXmlSample = unsafePerformIO . readXmlSampleIO
+{-# NOINLINE readSample #-}
+readSample :: FilePath -> LT
+readSample = unsafePerformIO . readSampleIO
 
-readXmlSampleIO :: FilePath -> IO LT
-readXmlSampleIO fpath = do
+readSampleIO :: FilePath -> IO LT
+readSampleIO fpath = do
   root <- getEnv "SAML2_WEB_SSO_ROOT"
-  LT.readFile $ root </> "test/xml" </> fpath
+  LT.readFile $ root </> "test/samples" </> fpath
 
 
 roundtrip :: forall a. (Eq a, Show a, HasXMLRoot a) => Int -> LT -> a -> Spec
