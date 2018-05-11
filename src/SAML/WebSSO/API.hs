@@ -212,7 +212,8 @@ authresp (AuthnResponseBody mkbody) = case mkbody undefined of
       AccessDenied reasons
         -> logger (show reasons) >> reject
       AccessGranted uid
-        -> redirect (getPath SpPathHome) [cookieToHeader . togglecookie . Just . cs . show $ uid]
+        -> getPath SpPathHome >>=
+           \sphome -> redirect sphome [cookieToHeader . togglecookie . Just . cs . show $ uid]
 
 
 ----------------------------------------------------------------------

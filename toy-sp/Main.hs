@@ -17,6 +17,7 @@ import SAML.WebSSO.Config
 
 main :: IO ()
 main = do
+  config <- getConfig
   let settings = defaultSettings
         & setHost (fromString $ config ^. cfgSPHost)
         . setPort (config ^. cfgSPPort)

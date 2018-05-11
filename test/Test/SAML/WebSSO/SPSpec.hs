@@ -51,6 +51,9 @@ timeIn20minutes = unsafeReadTime "2018-03-11T17:33:00Z"
 
 type TestSP = StateT Ctx IO
 
+instance HasConfig TestSP where
+  getConfig = pure undefined
+
 instance SP TestSP where
   logger :: String -> TestSP ()
   logger _ = pure ()

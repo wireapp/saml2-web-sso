@@ -26,7 +26,6 @@ import Lens.Micro.TH
 import System.Environment
 import System.FilePath
 import System.IO
-import System.IO.Unsafe (unsafePerformIO)
 import Text.XML.DSig
 import URI.ByteString
 
@@ -87,9 +86,8 @@ fallbackConfig = Config
   , _cfgIdPs              = mempty
   }
 
-{-# NOINLINE config #-}
-config :: Config
-config = unsafePerformIO $ readConfig =<< configFilePath
+configIO :: IO Config
+configIO = readConfig =<< configFilePath
 
 configFilePath :: IO FilePath
 configFilePath = (</> "server.yaml") <$> getEnv "SAML2_WEB_SSO_ROOT"
@@ -114,6 +112,16 @@ writeConfig cfg = (`Yaml.encodeFile` cfg) =<< configFilePath
 
 
 ----------------------------------------------------------------------
+-- class
+
+class Monad m => HasConfig m where
+  getConfig :: m Config
+
+instance HasConfig IO where
+  getConfig = configIO
+
+
+----------------------------------------------------------------------
 -- uri paths
 
 data Path = SpPathHome | SpPathLocalLogout | SpPathSingleLogout
@@ -121,10 +129,10 @@ data Path = SpPathHome | SpPathLocalLogout | SpPathSingleLogout
   deriving (Eq, Show)
 
 
-getPath :: HasCallStack => Path -> URI
-getPath = fromJust . parseURI' . getPath'
+getPath :: (HasConfig m, HasCallStack) => Path -> m URI
+getPath = fmap (fromJust . parseURI') . getPath'
 
-getPath' :: ConvertibleStrings SBS s => Path -> s
+getPath' :: (HasConfig m, ConvertibleStrings SBS s) => Path -> m s
 getPath' = \case
   SpPathHome         -> sp  ""
   SpPathLocalLogout  -> sp  "/logout/local"
@@ -133,7 +141,7 @@ getPath' = \case
   SsoPathAuthnReq    -> sso "/authreq"
   SsoPathAuthnResp   -> sso "/authresp"
   where
-    sp  = appendpath (config ^. cfgSPAppURI)
-    sso = appendpath (config ^. cfgSPSsoURI)
-    appendpath uri path = norm uri { uriPath = uriPath uri <> path }
+    sp  p = appendpath p . (^. cfgSPAppURI) <$> getConfig
+    sso p = appendpath p . (^. cfgSPSsoURI) <$> getConfig
+    appendpath path uri = norm uri { uriPath = uriPath uri <> path }
     norm = cs . normalizeURIRef' httpNormalization

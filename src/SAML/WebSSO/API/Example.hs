@@ -56,37 +56,40 @@ appapi :: (SP m, SPNT m) => ServerT APPAPI m
 appapi = spapi :<|> api
 
 loginStatus :: SP m => Maybe SetCookie -> m LoginStatus
-loginStatus = pure . maybe NotLoggedIn (LoggedInAs . cs . setCookieValue)
+loginStatus cookie = do
+  loginPath  <- getPath' SsoPathAuthnReq
+  logoutPath <- getPath' SpPathLocalLogout
+  pure $ maybe (NotLoggedIn loginPath) (LoggedInAs logoutPath . cs . setCookieValue) cookie
 
 -- | only logout on this SP.
 localLogout :: (SP m, SPNT m) => m Void
-localLogout = redirect (getPath SpPathHome) [cookieToHeader $ togglecookie Nothing]
+localLogout = (`redirect` [cookieToHeader $ togglecookie Nothing]) =<< getPath SpPathHome
 
 -- | as in [3/4.4]
 singleLogout :: (HasCallStack, SP m) => m Void
 singleLogout = error "not implemented."
 
-data LoginStatus = NotLoggedIn | LoggedInAs ST
+data LoginStatus = NotLoggedIn ST | LoggedInAs ST ST
   deriving (Eq, Show)
 
 instance FromHttpApiData SetCookie where
   parseUrlPiece = headerValueToCookie
 
 instance MimeRender HTML LoginStatus where
-  mimeRender Proxy NotLoggedIn
+  mimeRender Proxy (NotLoggedIn loginPath)
     = mkHtml
       [xml|
         <body>
           [not logged in]
-          <form action=#{getPath' SsoPathAuthnReq} method="get">
+          <form action=#{loginPath} method="get">
             <input type="submit" value="login">
       |]
-  mimeRender Proxy (LoggedInAs name)
+  mimeRender Proxy (LoggedInAs logoutPath name)
     = mkHtml
       [xml|
         <body>
         [logged in as #{name}]
-          <form action=#{getPath' SpPathLocalLogout} method="get">
+          <form action=#{logoutPath} method="get">
             <input type="submit" value="logout">
           <p>
             (this is local logout; logout via IdP is not implemented.)

@@ -12,6 +12,8 @@
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE ViewPatterns          #-}
 
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 module SAML.WebSSO.SP where
 
 import Control.Lens  -- TODO: use Lens.Micro, but that doesn't appear to have view?!
@@ -39,7 +41,7 @@ import SAML.WebSSO.XML
 
 
 -- | Application logic of the service provider.
-class Monad m => SP m where
+class (HasConfig m, Monad m) => SP m where
   logger :: String -> m ()
   default logger :: MonadIO m => String -> m ()
   logger = liftIO . putStrLn
@@ -70,6 +72,9 @@ instance SP IO
 instance SP Handler
 instance SPNT Handler
 
+instance HasConfig Handler where
+  getConfig = liftIO getConfig
+
 
 ----------------------------------------------------------------------
 -- combinators
@@ -85,9 +90,9 @@ createID = ID . fixMSAD . UUID.toText <$> createUUID
 createAuthnRequest :: SP m => m AuthnRequest
 createAuthnRequest = do
   x0 <- createID
-  let x1 = config ^. cfgVersion
+  x1 <- (^. cfgVersion) <$> getConfig
   x2 <- getNow
-  let x3 = NameID $ getPath' SsoPathAuthnResp
+  x3 <- NameID <$> getPath' SsoPathAuthnResp
 
   pure AuthnRequest
     { _rqID               = x0 :: ID
@@ -135,6 +140,9 @@ instance (Functor m, Applicative m, Monad m) => Applicative (JudgeT m) where
 
 instance (Functor m, Applicative m, Monad m) => Monad (JudgeT m) where
   (JudgeT x) >>= f = JudgeT (x >>= fromJudgeT . f)
+
+instance (HasConfig m) => HasConfig (JudgeT m) where
+  getConfig = JudgeT . lift . lift $ getConfig
 
 instance SP m => SP (JudgeT m) where
   logger     = JudgeT . lift . lift . logger
@@ -226,7 +234,7 @@ getUser :: SP m => String -> m ()
 getUser = undefined
 
 getIdPConfig :: SPNT m => ST -> m IdPConfig
-getIdPConfig idpname = maybe crash pure . Map.lookup idpname . mkmap $ config ^. cfgIdPs
+getIdPConfig idpname = maybe crash pure . Map.lookup idpname . mkmap . (^. cfgIdPs) =<< getConfig
   where
     crash = throwError err404 { errBody = "unknown IdP: " <> cs (show idpname) }
     mkmap = Map.fromList . fmap (\icfg -> (icfg ^. idpPath, icfg))
