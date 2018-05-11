@@ -197,9 +197,7 @@ meta = do
 authreq :: (SPNT m) => ST -> m (FormRedirect AuthnRequest)
 authreq idpname = do
   enterH "authreq"
-  uri <- maybe (throwError err404 { errBody = "unknown IdP: " <> cs (show idpname) })
-               (pure . (^. idpRequestUrl))
-         $ Map.lookup idpname $ config ^. cfgIdPs
+  uri <- (^. idpRequestUrl) <$> getIdPConfig idpname
   req <- createAuthnRequest
   leaveH $ FormRedirect uri req
 

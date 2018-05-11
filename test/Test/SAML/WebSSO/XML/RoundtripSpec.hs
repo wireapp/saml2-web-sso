@@ -8,17 +8,18 @@
 
 module Test.SAML.WebSSO.XML.RoundtripSpec (spec) where
 
+import Arbitrary
 import Data.List.NonEmpty
-import qualified Data.Map as Map
 import Data.String.Conversions
 import Hedgehog
+import qualified Data.Map as Map
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 import SAML.WebSSO
 import Test.Hspec
-import Util
 import Text.XML
 import URI.ByteString
+import Util
 
 
 spec :: Spec
@@ -132,14 +133,8 @@ genNameID = NameID <$> genNiceText (Range.singleton 2)
 genNonEmpty :: Range Int -> Gen a -> Gen (NonEmpty a)
 genNonEmpty rng gen = (:|) <$> gen <*> Gen.list rng gen
 
-genVersion :: Gen Version
-genVersion = Gen.enumBounded
-
 genStatus :: Gen Status
 genStatus = undefined  -- Gen.enumBounded
-
-genURI :: Gen URI
-genURI = either (error . show) pure $ parseURI' "http://wire.com/"
 
 genAuthnResponse :: Gen AuthnResponse
 genAuthnResponse = genResponse $ Gen.list (Range.linear 0 100) genAssertion

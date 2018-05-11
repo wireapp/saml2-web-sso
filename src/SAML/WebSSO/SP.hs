@@ -29,6 +29,7 @@ import Network.HTTP.Types.Header
 import Servant.Server
 import URI.ByteString
 
+import qualified Data.Map as Map
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
 
@@ -223,3 +224,9 @@ getIdPMeta = undefined
 
 getUser :: SP m => String -> m ()
 getUser = undefined
+
+getIdPConfig :: SPNT m => ST -> m IdPConfig
+getIdPConfig idpname = maybe crash pure . Map.lookup idpname . mkmap $ config ^. cfgIdPs
+  where
+    crash = throwError err404 { errBody = "unknown IdP: " <> cs (show idpname) }
+    mkmap = Map.fromList . fmap (\icfg -> (icfg ^. idpPath, icfg))

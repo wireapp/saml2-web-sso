@@ -18,6 +18,6 @@ import SAML.WebSSO.Config
 main :: IO ()
 main = do
   let settings = defaultSettings
-        & setHost (fromString $ config ^. cfgServerHost)
-        . setPort (config ^. cfgServerPort)
+        & setHost (fromString $ config ^. cfgSPHost)
+        . setPort (config ^. cfgSPPort)
   runSettings settings app

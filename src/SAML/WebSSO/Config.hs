@@ -30,8 +30,6 @@ import System.IO.Unsafe (unsafePerformIO)
 import Text.XML.DSig
 import URI.ByteString
 
-import qualified Data.Map as Map
-import qualified Data.Text as ST
 import qualified Data.X509 as X509
 import qualified Data.Yaml as Yaml
 
@@ -41,11 +39,11 @@ import SAML.WebSSO.XML (parseURI', renderURI)
 
 data Config = Config
   { _cfgVersion           :: Version
-  , _cfgServerHost        :: String
-  , _cfgServerPort        :: Int
+  , _cfgSPHost            :: String
+  , _cfgSPPort            :: Int
   , _cfgSPAppURI          :: URI
   , _cfgSPSsoURI          :: URI
-  , _cfgIdPs              :: Map.Map ST IdPConfig
+  , _cfgIdPs              :: [IdPConfig]
   }
   deriving (Eq, Show, Generic, FromJSON, ToJSON)
 
@@ -82,8 +80,8 @@ makeLenses ''IdPConfig
 fallbackConfig :: Config
 fallbackConfig = Config
   { _cfgVersion           = Version_2_0
-  , _cfgServerHost        = "localhost"
-  , _cfgServerPort        = 8081
+  , _cfgSPHost            = "localhost"
+  , _cfgSPPort            = 8081
   , _cfgSPAppURI          = either (error . show) id $ parseURI' "https://me.wire.com/sp"
   , _cfgSPSsoURI          = either (error . show) id $ parseURI' "https://me.wire.com/sso"
   , _cfgIdPs              = mempty
