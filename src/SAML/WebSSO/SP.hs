@@ -2,6 +2,7 @@
 {-# LANGUAGE DefaultSignatures     #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE InstanceSigs          #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
@@ -56,13 +57,17 @@ class (HasConfig m, Monad m) => SP m where
 
 -- | HTTP handling of the service provider.  TODO: rename to 'SPHandler'?
 class (SP m, MonadError ServantErr m) => SPNT m where
-  nt :: forall x. m x -> Handler x
-  default nt :: m ~ Handler => (forall x. m x -> Handler x)
-  nt = id
+  type NT m :: *
+  nt :: forall x. NT m -> m x -> Handler x
 
 instance SP IO
 instance SP Handler
-instance SPNT Handler
+
+instance SPNT Handler where
+  type NT Handler = ()
+  nt :: forall x. () -> Handler x -> Handler x
+  nt () = id
+
 
 instance HasConfig Handler where
   getConfig = liftIO getConfig

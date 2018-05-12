@@ -1,3 +1,5 @@
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -11,13 +13,15 @@ module Test.SAML.WebSSO.APISpec (spec) where
 import Data.EitherR
 import Data.String.Conversions
 import Servant
-import Shelly
-import Test.Hspec
+import Shelly (shelly, run, setStdin, silently)
+import Test.Hspec hiding (pending)
+import Test.Hspec.Wai
 import Text.XML as XML
 
 import qualified Data.ByteString.Base64.Lazy as EL
 
 import SAML.WebSSO
+import TestSP
 
 
 newtype SomeSAMLRequest = SomeSAMLRequest { fromSomeSAMLRequest :: XML.Document }
@@ -36,6 +40,10 @@ instance HasXMLRoot SomeSAMLRequest where
 base64ours, base64theirs :: HasCallStack => SBS -> IO SBS
 base64ours = pure . cs . EL.encode . cs
 base64theirs sbs = shelly . silently $ cs <$> (setStdin (cs sbs) >> run "/usr/bin/base64" ["--wrap", "0"])
+
+
+withapp :: forall api. HasServer api '[] => Proxy api -> ServerT api TestSP -> Ctx -> SpecWith Application -> Spec
+withapp proxy handler ctx = with (pure $ serve proxy (hoistServer (Proxy @api) (nt @TestSP ctx) handler :: Server api))
 
 
 spec :: Spec
@@ -115,3 +123,25 @@ spec = describe "API" $ do
 
     it  "roundtrip-1" $ Left "missing cookie value" `shouldBe` roundtrip c1
     it  "roundtrip-2" $ Right c2 `shouldBe` roundtrip c2
+
+
+  describe "authreq" . withapp (Proxy @APIAuthReq) authreq defaultCtx $ do
+    context "unknown idp" $ do
+      it "responds with 404" $ do
+        get "/authreq/no-such-idp" `shouldRespondWith` 404
+
+    context "known idp" $ do
+      it "responds with 200" $ do
+        get "/authreq/myidp" `shouldRespondWith` 200
+
+      it "responds with a body that contains the IdPs response URL" $ do
+        pending
+
+  describe "authresp" . withapp (Proxy @APIAuthResp) authresp defaultCtx $ do
+    context "unknown idp" $ do
+      it "..." $ do
+        pending
+
+    context "known idp" $ do
+      it "..." $ do
+        pending

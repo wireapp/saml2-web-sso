@@ -38,7 +38,7 @@ import SAML.WebSSO.SP
 -- | The most straight-forward 'Application' that can be constructed from 'api', 'API'.
 app :: Application
 app = setHttpCachePolicy
-    $ serve (Proxy @APPAPI) (hoistServer (Proxy @APPAPI) (nt @Handler) appapi :: Server APPAPI)
+    $ serve (Proxy @APPAPI) (hoistServer (Proxy @APPAPI) (nt @Handler ()) appapi :: Server APPAPI)
 
 type SPAPI =
        Header "Cookie" SetCookie :> Get '[HTML] LoginStatus
