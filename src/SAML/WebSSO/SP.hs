@@ -60,14 +60,6 @@ class (SP m, MonadError ServantErr m) => SPNT m where
   default nt :: m ~ Handler => (forall x. m x -> Handler x)
   nt = id
 
-  redirect :: URI -> [Header] -> m void
-  default redirect :: m ~ Handler => URI -> [Header] -> m void
-  redirect uri extra = throwError err302 { errHeaders = ("Location", cs $ renderURI uri) : extra }
-
-  reject :: m void
-  default reject :: m ~ Handler => m void
-  reject = throwError err403
-
 instance SP IO
 instance SP Handler
 instance SPNT Handler
@@ -101,6 +93,12 @@ createAuthnRequest = do
     , _rqIssuer           = x3 :: NameID
     , _rqDestination      = Nothing
     }
+
+redirect :: MonadError ServantErr m => URI -> [Header] -> m void
+redirect uri extra = throwError err302 { errHeaders = ("Location", cs $ renderURI uri) : extra }
+
+reject :: MonadError ServantErr m => m void
+reject = throwError err403
 
 
 ----------------------------------------------------------------------
