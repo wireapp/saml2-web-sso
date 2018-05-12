@@ -10,12 +10,14 @@
 
 module Test.SAML.WebSSO.APISpec (spec) where
 
+import Control.Lens
 import Data.EitherR
 import Data.String.Conversions
 import Servant
 import Shelly (shelly, run, setStdin, silently)
 import Test.Hspec hiding (pending)
 import Test.Hspec.Wai
+import Test.Hspec.Wai.Matcher
 import Text.XML as XML
 
 import qualified Data.ByteString.Base64.Lazy as EL
@@ -135,7 +137,8 @@ spec = describe "API" $ do
         get "/authreq/myidp" `shouldRespondWith` 200
 
       it "responds with a body that contains the IdPs response URL" $ do
-        pending
+        get "/authreq/myidp" `shouldRespondWith` 200
+          { matchBody = bodyContains . cs . renderURI $ myidp ^. idpRequestUrl }
 
   describe "authresp" . withapp (Proxy @APIAuthResp) authresp defaultCtx $ do
     context "unknown idp" $ do
