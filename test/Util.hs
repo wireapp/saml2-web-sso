@@ -53,7 +53,7 @@ rerenderFile :: FilePath -> IO ()
 rerenderFile fp = showFile fp >>= Prelude.writeFile (fp <> "-")
 
 mkURI :: HasCallStack => String -> URI
-mkURI = (\(Just x) -> x) . parseURI' . cs
+mkURI = unsafeParseURI . cs
 
 hedgehog :: IO Bool -> Spec
 hedgehog = it "hedgehog tests" . (`shouldReturn` True)

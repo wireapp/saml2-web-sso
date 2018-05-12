@@ -16,7 +16,6 @@
 module SAML.WebSSO.Config where
 
 import Data.Aeson
-import Data.Maybe (fromJust)
 import Data.Monoid
 import Data.String.Conversions
 import GHC.Generics
@@ -33,7 +32,7 @@ import qualified Data.X509 as X509
 import qualified Data.Yaml as Yaml
 
 import SAML.WebSSO.Types
-import SAML.WebSSO.XML (parseURI', renderURI)
+import SAML.WebSSO.XML (unsafeParseURI, parseURI', renderURI)
 
 
 data Config = Config
@@ -54,8 +53,8 @@ data IdPConfig = IdPConfig
   deriving (Eq, Show, Generic, FromJSON, ToJSON)
 
 instance FromJSON URI where
-  parseJSON = fmap (either unerror id . parseURI') . parseJSON
-    where unerror = error . ("could not parse config: " <>) . show
+  parseJSON = (>>= either unerror pure . parseURI') . parseJSON
+    where unerror = fail . ("could not parse config: " <>) . show
 
 instance ToJSON URI where
   toJSON = toJSON . renderURI
@@ -81,8 +80,8 @@ fallbackConfig = Config
   { _cfgVersion           = Version_2_0
   , _cfgSPHost            = "localhost"
   , _cfgSPPort            = 8081
-  , _cfgSPAppURI          = either (error . show) id $ parseURI' "https://me.wire.com/sp"
-  , _cfgSPSsoURI          = either (error . show) id $ parseURI' "https://me.wire.com/sso"
+  , _cfgSPAppURI          = unsafeParseURI "https://me.wire.com/sp"
+  , _cfgSPSsoURI          = unsafeParseURI "https://me.wire.com/sso"
   , _cfgIdPs              = mempty
   }
 
@@ -130,7 +129,7 @@ data Path = SpPathHome | SpPathLocalLogout | SpPathSingleLogout
 
 
 getPath :: (HasConfig m, HasCallStack) => Path -> m URI
-getPath = fmap (fromJust . parseURI') . getPath'
+getPath = fmap unsafeParseURI . getPath'
 
 getPath' :: (HasConfig m, ConvertibleStrings SBS s) => Path -> m s
 getPath' = \case

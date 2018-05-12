@@ -16,7 +16,7 @@ genVersion :: Gen Version
 genVersion = Gen.enumBounded
 
 genURI :: Gen URI
-genURI = either (error . show) pure $ parseURI' "http://wire.com/"
+genURI = pure $ unsafeParseURI "http://wire.com/"
 
 -- | pick N words from a dictionary of popular estonian first names.  this should yield enough
 -- entropy, but is much nicer to read.

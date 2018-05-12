@@ -130,6 +130,9 @@ renderURI = cs . serializeURIRef'
 parseURI' :: MonadThrow m => ST -> m URI  -- TODO: find a better name.  make renderURI match that name.
 parseURI' = either (die (Proxy @URI)) pure . parseURI laxURIParserOptions . cs . ST.strip
 
+unsafeParseURI :: ST -> URI
+unsafeParseURI = either (error . ("could not parse config: " <>) . show) id . parseURI'
+
 -- | fmap an outer computation into an inner computation that may fail, then flip inner @n@ and
 -- outer @m@.  (except for the flip, this is just 'fmap'.)
 fmapFlipM :: (Monad m, Traversable n) => (a -> m b) -> n a -> m (n b)
