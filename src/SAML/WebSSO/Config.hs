@@ -37,6 +37,7 @@ import SAML.WebSSO.XML (unsafeParseURI, parseURI', renderURI)
 
 data Config = Config
   { _cfgVersion           :: Version
+  , _cfgLogLevel          :: LogLevel
   , _cfgSPHost            :: String
   , _cfgSPPort            :: Int
   , _cfgSPAppURI          :: URI
@@ -44,6 +45,9 @@ data Config = Config
   , _cfgIdPs              :: [IdPConfig]
   }
   deriving (Eq, Show, Generic, FromJSON, ToJSON)
+
+data LogLevel = DEBUG | INFO | WARN | FATAL | SILENT
+  deriving (Eq, Show, Enum, Bounded, Generic, FromJSON, ToJSON)
 
 data IdPConfig = IdPConfig
   { _idpPath            :: ST
@@ -79,6 +83,7 @@ makeLenses ''IdPConfig
 fallbackConfig :: Config
 fallbackConfig = Config
   { _cfgVersion           = Version_2_0
+  , _cfgLogLevel          = DEBUG
   , _cfgSPHost            = "localhost"
   , _cfgSPPort            = 8081
   , _cfgSPAppURI          = unsafeParseURI "https://me.wire.com/sp"

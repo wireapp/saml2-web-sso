@@ -1,4 +1,5 @@
 _cfgVersion:           SAML2.0
+_cfgLogLevel:          DEBUG
 
 _cfgSPHost:            me.wire.com
 _cfgSPPort:            443

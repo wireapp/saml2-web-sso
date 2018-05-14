@@ -34,6 +34,7 @@ spec = describe "Config" $ do
     let have :: Config
         have = Config
           { _cfgVersion  = Version_2_0
+          , _cfgLogLevel = DEBUG
           , _cfgSPHost   = "me.wire.com"
           , _cfgSPPort   = 443
           , _cfgSPAppURI = unsafeParseURI "https://me.wire.com/sp"
@@ -53,6 +54,7 @@ spec = describe "Config" $ do
 genConfig :: Gen Config
 genConfig = do
   _cfgVersion    <- genVersion
+  _cfgLogLevel   <- Gen.enumBounded
   _cfgSPHost     <- cs <$> genNiceWord
   _cfgSPPort     <- Gen.int (Range.linear 1 9999)
   _cfgSPAppURI   <- genURI

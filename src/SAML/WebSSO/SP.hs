@@ -45,7 +45,7 @@ import SAML.WebSSO.XML
 class (HasConfig m, Monad m) => SP m where
   logger :: String -> m ()
   default logger :: MonadIO m => String -> m ()
-  logger = liftIO . putStrLn
+  logger msg = ((^. cfgLogLevel) <$> getConfig) >>= liftIO . (`loggerIO` msg)
 
   createUUID :: m UUID
   default createUUID :: MonadIO m => m UUID
@@ -75,6 +75,10 @@ instance HasConfig Handler where
 
 ----------------------------------------------------------------------
 -- combinators
+
+loggerIO :: LogLevel -> String -> IO ()
+loggerIO SILENT _ = pure ()
+loggerIO _ msg = liftIO $ putStrLn msg
 
 -- | Microsoft Active Directory requires IDs to be of the form @id<32 hex digits>@, so the
 -- @UUID.toText@ needs to be tweaked a little.

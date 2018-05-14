@@ -36,8 +36,12 @@ makeLenses ''Ctx
 testCtx1 :: Ctx
 testCtx1 = Ctx
   { _ctxNow = timeNow
-  , _ctxConfig = fallbackConfig
+  , _ctxConfig = fallbackConfig & cfgLogLevel .~ SILENT
   }
+
+-- | Use this to see more output on a per-test basis.
+verbose :: Ctx -> Ctx
+verbose = ctxConfig . cfgLogLevel .~ DEBUG
 
 testCtx2 :: Ctx
 testCtx2 = testCtx1 & ctxConfig . cfgIdPs .~ [myidp]
@@ -72,7 +76,7 @@ instance HasConfig TestSP where
 
 instance SP TestSP where
   logger :: String -> TestSP ()
-  logger _ = pure ()
+  logger msg = ((^. cfgLogLevel) <$> getConfig) >>= liftIO . (`loggerIO` msg)
 
   getNow :: TestSP Time
   getNow = gets (^. ctxNow)
