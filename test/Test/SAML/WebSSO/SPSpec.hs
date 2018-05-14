@@ -65,27 +65,27 @@ spec = describe "SP" $ do
         isDenied  verdict = (case verdict of AccessDenied{}  -> True; _ -> False) `shouldBe` True
 
     it "violate condition not-before" $ do
-      verdict <- testSP (defaultCtx & ctxNow .~ timeLongAgo) $ judge resp
+      verdict <- testSP (testCtx2 & ctxNow .~ timeLongAgo) $ judge resp
       isDenied verdict
 
     it "violate condition not-on-or-after" $ do
-      verdict <- testSP (defaultCtx & ctxNow .~ timeIn20minutes) $ judge resp
+      verdict <- testSP (testCtx2 & ctxNow .~ timeIn20minutes) $ judge resp
       isDenied verdict
 
     it "satisfy all conditions" $ do
-      isGranted =<< testSP defaultCtx (judge resp)
-      isGranted =<< testSP (defaultCtx & ctxNow .~ timeIn10minutes) (judge resp)
+      isGranted =<< testSP testCtx2 (judge resp)
+      isGranted =<< testSP (testCtx2 & ctxNow .~ timeIn10minutes) (judge resp)
 
     it "status failure" $ do
-      verdict <- testSP defaultCtx $ judge (resp & rspStatus .~ StatusFailure "donno")
+      verdict <- testSP testCtx2 $ judge (resp & rspStatus .~ StatusFailure "donno")
       isDenied verdict
 
     it "status success" $ do
-      verdict <- testSP defaultCtx $ judge (resp & rspStatus .~ StatusSuccess)
+      verdict <- testSP testCtx2 $ judge (resp & rspStatus .~ StatusSuccess)
       isGranted verdict
 
     it "status success yields name, nick" $ do
-      verdict <- testSP defaultCtx $ judge (resp & rspStatus .~ StatusSuccess)
+      verdict <- testSP testCtx2 $ judge (resp & rspStatus .~ StatusSuccess)
       let uid = UserId "https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/" "E3hQDDZoObpyTDplO8Ax8uC8ObcQmREdfps3TMpaI84"
       verdict `shouldBe` AccessGranted uid
 

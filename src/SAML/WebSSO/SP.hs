@@ -102,8 +102,8 @@ createAuthnRequest = do
 redirect :: MonadError ServantErr m => URI -> [Header] -> m void
 redirect uri extra = throwError err302 { errHeaders = ("Location", cs $ renderURI uri) : extra }
 
-reject :: MonadError ServantErr m => m void
-reject = throwError err403
+reject :: MonadError ServantErr m => LBS -> m void
+reject msg = throwError err403 { errBody = msg }
 
 
 ----------------------------------------------------------------------

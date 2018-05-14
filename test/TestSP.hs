@@ -33,14 +33,21 @@ data Ctx = Ctx
 
 makeLenses ''Ctx
 
-defaultCtx :: Ctx
-defaultCtx = Ctx
+testCtx1 :: Ctx
+testCtx1 = Ctx
   { _ctxNow = timeNow
-  , _ctxConfig = fallbackConfig & cfgIdPs .~ [myidp]
+  , _ctxConfig = fallbackConfig
   }
 
+testCtx2 :: Ctx
+testCtx2 = testCtx1 & ctxConfig . cfgIdPs .~ [myidp]
+
 myidp :: IdPConfig
-myidp = IdPConfig "myidp" (unsafeParseURI "http://myidp.io/sso") cert
+myidp = IdPConfig
+  "myidp"
+  (unsafeParseURI "https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/")
+  (unsafeParseURI "http://myidp.io/sso")
+  cert
   where
     Right cert = parseKeyInfo $ readSample "microsoft-idp-keyinfo.xml"
 

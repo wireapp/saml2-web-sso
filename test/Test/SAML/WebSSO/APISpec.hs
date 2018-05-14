@@ -19,6 +19,7 @@ import Test.Hspec hiding (pending)
 import Test.Hspec.Wai
 import Test.Hspec.Wai.Matcher
 import Text.XML as XML
+import Util
 
 import qualified Data.ByteString.Base64.Lazy as EL
 
@@ -118,21 +119,27 @@ spec = describe "API" $ do
   describe "cookies" $ do
     let c1 = togglecookie Nothing
         c2 = togglecookie (Just "nick")
-        roundtrip
+        rndtrip
           = headerValueToCookie
           . cs . snd
           . cookieToHeader
 
-    it  "roundtrip-1" $ Left "missing cookie value" `shouldBe` roundtrip c1
-    it  "roundtrip-2" $ Right c2 `shouldBe` roundtrip c2
+    it  "roundtrip-1" $ Left "missing cookie value" `shouldBe` rndtrip c1
+    it  "roundtrip-2" $ Right c2 `shouldBe` rndtrip c2
 
 
-  describe "authreq" . withapp (Proxy @APIAuthReq) authreq defaultCtx $ do
-    context "unknown idp" $ do
+  describe "meta" . withapp (Proxy @APIMeta) meta testCtx1 $ do
+    it "responds with 200" $ do
+      pending
+    it "responds with an 'SPSSODescriptor'" $ do
+      pending
+
+  describe "authreq" $ do
+    context "unknown idp" . withapp (Proxy @APIAuthReq) authreq testCtx1 $ do
       it "responds with 404" $ do
         get "/authreq/no-such-idp" `shouldRespondWith` 404
 
-    context "known idp" $ do
+    context "known idp" . withapp (Proxy @APIAuthReq) authreq testCtx2 $ do
       it "responds with 200" $ do
         get "/authreq/myidp" `shouldRespondWith` 200
 
@@ -140,11 +147,17 @@ spec = describe "API" $ do
         get "/authreq/myidp" `shouldRespondWith` 200
           { matchBody = bodyContains . cs . renderURI $ myidp ^. idpRequestUrl }
 
-  describe "authresp" . withapp (Proxy @APIAuthResp) authresp defaultCtx $ do
-    context "unknown idp" $ do
-      it "..." $ do
-        pending
+  describe "authresp" $ do
+    let postresp = postHtmlForm "/authresp" body
+        body = [("SAMLResponse", cs . EL.encode . cs $ readSample "microsoft-authnresponse-2.xml")]
 
-    context "known idp" $ do
-      it "..." $ do
-        pending
+    context "unknown idp" . withapp (Proxy @APIAuthResp) authresp testCtx1 $ do
+      it "responds with 400" $ postresp `shouldRespondWith` 400 { matchBody = bodyContains "no public key" }
+
+    context "known idp, bad timestamp" . withapp (Proxy @APIAuthResp) authresp testCtx2 $ do
+      it "responds with 302" $ do
+        postresp `shouldRespondWith` 403 { matchBody = bodyEquals "violation of NotBefore condition" }
+
+    let testCtx2' = testCtx2 & ctxNow .~ unsafeReadTime "2018-04-14T09:53:59Z"
+    context "known idp, good timestamp" . withapp (Proxy @APIAuthResp) authresp testCtx2' $ do
+      it "responds with 302" $ postresp `shouldRespondWith` 302

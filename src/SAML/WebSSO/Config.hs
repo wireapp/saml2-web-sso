@@ -47,6 +47,7 @@ data Config = Config
 
 data IdPConfig = IdPConfig
   { _idpPath            :: ST
+  , _idpIssuerID        :: URI
   , _idpRequestUrl      :: URI
   , _idpPublicKey       :: X509.SignedCertificate
   }

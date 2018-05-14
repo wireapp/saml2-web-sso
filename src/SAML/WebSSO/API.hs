@@ -201,23 +201,39 @@ authreq idpname = do
   req <- createAuthnRequest
   leaveH $ FormRedirect uri req
 
+-- | Get config and pass the missing idp credentials to the response constructor.
+resolveBody :: (SPNT m) => AuthnResponseBody -> m AuthnResponse
+resolveBody (AuthnResponseBody mkbody) = do
+  idps <- (^. cfgIdPs) <$> getConfig
+  pubkeys <- forM idps $ \idp -> do
+    let path = renderURI $ idp ^. idpIssuerID
+    creds <- either crash pure $ keyInfoToCreds (idp ^. idpPublicKey)
+    case creds of
+      SignCreds SignDigestSha256 (SignKeyRSA pubkey) -> pure (path, pubkey)
+  either throwError pure $ mkbody (`Map.lookup` Map.fromList pubkeys)
+
 authresp :: (SPNT m) => AuthnResponseBody -> m Void
-authresp (AuthnResponseBody mkbody) = case mkbody undefined of
-  Left err -> throwError err
-  Right resp -> do
-    enterH $ "authresp: " <> ppShow resp
-    verdict <- judge resp
-    logger $ show verdict
-    case verdict of
-      AccessDenied reasons
-        -> logger (show reasons) >> reject
-      AccessGranted uid
-        -> getPath SpPathHome >>=
-           \sphome -> redirect sphome [cookieToHeader . togglecookie . Just . cs . show $ uid]
+authresp body = do
+  enterH "authresp: entering"
+  resp <- resolveBody body
+  enterH $ "authresp: " <> ppShow resp
+  verdict <- judge resp
+  logger $ show verdict
+  case verdict of
+    AccessDenied reasons
+      -> logger (show reasons) >> reject (cs $ ST.intercalate ", " reasons)
+    AccessGranted uid
+      -> getPath SpPathHome >>=
+         \sphome -> redirect sphome [cookieToHeader . togglecookie . Just . cs . show $ uid]
 
 
 ----------------------------------------------------------------------
 -- handler combinators
+
+crash :: (SP m, MonadError ServantErr m) => String -> m a
+crash msg = do
+  logger msg
+  throwError err500 { errBody = "internal error: consult server logs." }
 
 enterH :: SP m => String -> m ()
 enterH msg =
