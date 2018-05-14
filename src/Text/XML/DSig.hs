@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE OverloadedStrings   #-}
@@ -8,27 +9,35 @@
 -- | Partial implementation of <https://www.w3.org/TR/xmldsig-core/>.  We use hsaml2, hxt, x509 and
 -- other dubious packages internally, but expose xml-types and cryptonite.
 module Text.XML.DSig
-  ( parseKeyInfo
-  , verify, Verified, fmapVerified, unverify
+  ( SignCreds(..), SignDigest(..), SignKey(..)
+  , parseKeyInfo, renderKeyInfo, keyInfoToCreds
+
+  , verify, verifyIO, Verified, fmapVerified, unverify
+  , simpleVerifyAuthnResponse
   )
 where
 
 import Control.Exception (SomeException)
-import Control.Monad.Catch
+import Control.Monad.Catch  -- TODO: do we need this, or can we get away with 'Except' only?  and perhaps 'unsafePerformIO'?
+import Control.Monad.Except
 import Data.List.NonEmpty
+import Data.Maybe
 import Data.Monoid ((<>))
 import Data.String.Conversions
 import GHC.Stack
+import System.IO.Unsafe (unsafePerformIO)
 import Text.XML
+import Text.XML.Cursor
 
 import qualified Crypto.PubKey.RSA as RSA
 import qualified Data.Map as Map
+import qualified Data.Text as ST
+import qualified Data.X509 as X509
 
 import Text.XML.Util
 
 -- imports we do not want to need:
 
-import qualified Data.X509 as X509
 -- import qualified SAML2.Core.Protocols as HS
 -- import qualified SAML2.Core.Signature as HS
 import qualified SAML2.XML as HS hiding (URI, Node)
@@ -50,22 +59,34 @@ import qualified Text.XML.HXT.Core as HXT
 -- for signing.  Tested for KeyInfo elements that contain an x509 certificate with a self-signed
 -- signing RSA key.
 --
--- TODO: verify self-signature.
-parseKeyInfo :: HasCallStack => LT -> IO RSA.PublicKey
+-- TODO: verify self-signature?
+parseKeyInfo :: (HasCallStack, MonadError String m) => LT -> m X509.SignedCertificate
 parseKeyInfo lt = case HS.xmlToSAML @HS.KeyInfo $ cs lt of
-  (Right (HS.keyInfoElements -> HS.X509Data (HS.X509Certificate (signed :: X509.SignedCertificate) :| []) :| [])) -> do
-    let signedObject    = X509.signedObject    $ X509.getSigned signed
-        signedAlg       = X509.signedAlg       $ X509.getSigned signed
-        _signedSignature = X509.signedSignature $ X509.getSigned signed
+  (Right (HS.keyInfoElements -> HS.X509Data (HS.X509Certificate cert :| []) :| [])) -> pure cert
+  bad -> throwError $ "unsupported: " <> show bad
 
-        convertKey (X509.PubKeyRSA pk) = pk
-        convertKey bad = error $ "unsupported: " <> show bad
+renderKeyInfo :: (HasCallStack) => X509.SignedCertificate -> LT
+renderKeyInfo cert = cs . HS.samlToXML . HS.KeyInfo Nothing $ HS.X509Data (HS.X509Certificate cert :| []) :| []
 
-    case signedAlg of
-      X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_RSA
-        -> pure $ convertKey . X509.certPubKey $ signedObject
-      bad -> error $ "unsupported: " <> show bad
-  bad -> error $ "unsupported: " <> show bad
+data SignCreds = SignCreds SignDigest SignKey
+  deriving (Eq, Show)
+
+data SignDigest = SignDigestSha256
+  deriving (Eq, Show, Bounded, Enum)
+
+data SignKey = SignKeyRSA RSA.PublicKey
+  deriving (Eq, Show)
+
+keyInfoToCreds :: (HasCallStack, MonadError String m) => X509.SignedCertificate -> m SignCreds
+keyInfoToCreds cert = do
+  digest <- case X509.signedAlg $ X509.getSigned cert of
+    X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_RSA -> pure SignDigestSha256
+    bad -> throwError $ "unsupported: " <> show bad
+  key <- case X509.certPubKey . X509.signedObject $ X509.getSigned cert of
+    X509.PubKeyRSA pk -> pure $ SignKeyRSA pk
+    bad -> throwError $ "unsupported: " <> show bad
+  pure $ SignCreds digest key
+
 
 {- TODO: this fails, but i don't know why.  it this base64 encoding after all?
 
@@ -81,14 +102,20 @@ q = [decodeASN1 DER, decodeASN1 BER] <*> [q1]
 -- signature verification
 
 -- | [1/5]
+--
+-- DEPRECATED: Verified "use 'simpleVerifyAuthnResponse' instead (less type safety, but more flexible and understandable)."
 newtype Verified a = Verified { unverify :: a }
   deriving (Eq, Show)
 
--- | Assumptions: the signedReference points to the root element; the signature part of the signed
--- tree (enveloped signature).
-verify :: forall m. (m ~ IO {- TODO: allow this to be any MonadThrow instance -})
+verify :: forall m. (MonadError String m)
        => RSA.PublicKey -> Element -> m (Verified Element)
-verify key el = do
+verify key el = either (throwError . show @SomeException) pure . unsafePerformIO . try $ verifyIO key el
+
+-- | Assumptions: the signedReference points to the root element; the signature is part of the
+-- signed tree (enveloped signature).
+verifyIO :: forall m. (m ~ IO {- FUTUREWORK: allow this to be any MonadThrow instance -})
+       => RSA.PublicKey -> Element -> m (Verified Element)
+verifyIO key el = do
   el' <- maybe (err "no parse") pure mkel'
   sid <- maybe (err "no signed-ID") pure mkSid
   try (HS.verifySignature key' sid el') >>= \case
@@ -113,6 +140,38 @@ verify key el = do
 -- want to first check the signature, then parse the application data.  Use with care!
 fmapVerified :: (a -> b) -> Verified a -> Verified b
 fmapVerified f (Verified a) = Verified $ f a
+
+
+-- | Pull assertions sub-forest and pass all trees in it to 'verify' individually.  The 'LBS'
+-- argument must be a valid 'AuthnResponse'.  All assertions need to be signed by the same issuer
+-- with the same key.
+--
+-- The 'ST' for looking up the public key contains the issuer.  No url canonicalization takes place
+-- there, the issuer field in the response must be the same string as the key in the lookup
+-- function.
+simpleVerifyAuthnResponse :: MonadError String m => (ST -> Maybe RSA.PublicKey) -> LBS -> m ()
+simpleVerifyAuthnResponse lookupPublicKey raw = do
+  doc :: Cursor <- fromDocument <$> either (throwError . show) pure (parseLBS def raw)
+
+  let elemOnly (NodeElement el) = Just el
+      elemOnly _ = Nothing
+
+      assertions :: [Element]
+      assertions = catMaybes $ elemOnly . node <$>
+                   (doc $/ element "{urn:oasis:names:tc:SAML:2.0:assertion}Assertion")
+
+      issuer :: ST
+      issuer = mconcat $ doc $/ element "{urn:oasis:names:tc:SAML:2.0:assertion}Issuer" &// content
+
+  when (ST.null issuer) $ throwError "no issuer"
+
+  key :: RSA.PublicKey <- maybe (throwError ("no public key found for issuer: " <> show issuer)) pure $
+                          lookupPublicKey issuer
+
+  verify key `mapM_` assertions
+
+
+
 
 
 {-

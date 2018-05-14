@@ -31,15 +31,13 @@
 -- FUTUREWORK: servant-server is quite heavy.  we should have a cabal flag to exclude it.
 module SAML.WebSSO.API where
 
-import Control.Monad.Except (throwError)
-import Control.Monad ((>=>))
+import Control.Monad.Except hiding (ap)
 import Data.Binary.Builder (toLazyByteString)
 import Data.EitherR
 import Data.Function
 import Data.List
 import Data.Proxy
 import Data.String.Conversions
-import GHC.Stack
 import Lens.Micro
 import Network.HTTP.Media ((//))
 import Network.Wai hiding (Response)
@@ -54,6 +52,7 @@ import Text.XML
 import URI.ByteString
 import Web.Cookie
 
+import qualified Crypto.PubKey.RSA as RSA
 import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
 import qualified Data.Text as ST
@@ -63,69 +62,7 @@ import SAML.WebSSO.Config
 import SAML.WebSSO.SP
 import SAML.WebSSO.Types
 import SAML.WebSSO.XML
-
-
-----------------------------------------------------------------------
--- examples app
-
--- TODO: move this section to "SAML.WebSSO.API.Example"
-
--- | The most straight-forward 'Application' that can be constructed from 'api', 'API'.
-app :: Application
-app = setHttpCachePolicy
-    $ serve (Proxy @APPAPI) (hoistServer (Proxy @APPAPI) (nt @Handler) appapi :: Server APPAPI)
-
-type SPAPI =
-       Header "Cookie" SetCookie :> Get '[HTML] LoginStatus
-  :<|> "logout" :> "local" :> GetVoid
-  :<|> "logout" :> "single" :> GetVoid
-
-type APPAPI =
-       "sp"  :> SPAPI
-  :<|> "sso" :> API
-
-spapi :: (SP m, SPNT m) => ServerT SPAPI m
-spapi = loginStatus :<|> localLogout :<|> singleLogout
-
-appapi :: (SP m, SPNT m) => ServerT APPAPI m
-appapi = spapi :<|> api
-
-loginStatus :: SP m => Maybe SetCookie -> m LoginStatus
-loginStatus = pure . maybe NotLoggedIn (LoggedInAs . cs . setCookieValue)
-
--- | only logout on this SP.
-localLogout :: (SP m, SPNT m) => m Void
-localLogout = redirect (getPath SpPathHome) [cookieToHeader $ togglecookie Nothing]
-
--- | as in [3/4.4]
-singleLogout :: (HasCallStack, SP m) => m Void
-singleLogout = error "not implemented."
-
-data LoginStatus = NotLoggedIn | LoggedInAs ST
-  deriving (Eq, Show)
-
-instance FromHttpApiData SetCookie where
-  parseUrlPiece = headerValueToCookie
-
-instance MimeRender HTML LoginStatus where
-  mimeRender Proxy NotLoggedIn
-    = mkHtml
-      [xml|
-        <body>
-          [not logged in]
-          <form action=#{getPath' SsoPathAuthnReq} method="get">
-            <input type="submit" value="login">
-      |]
-  mimeRender Proxy (LoggedInAs name)
-    = mkHtml
-      [xml|
-        <body>
-        [logged in as #{name}]
-          <form action=#{getPath' SpPathLocalLogout} method="get">
-            <input type="submit" value="logout">
-          <p>
-            (this is local logout; logout via IdP is not implemented.)
-      |]
+import Text.XML.DSig
 
 
 ----------------------------------------------------------------------
@@ -134,7 +71,7 @@ instance MimeRender HTML LoginStatus where
 type API = APIMeta :<|> APIAuthReq :<|> APIAuthResp
 
 type APIMeta     = "meta" :> Get '[XML] EntityDescriptor
-type APIAuthReq  = "authreq" :> Get '[HTML] (FormRedirect AuthnRequest)
+type APIAuthReq  = "authreq" :> Capture "idp" ST :> Get '[HTML] (FormRedirect AuthnRequest)
 type APIAuthResp = "authresp" :> MultipartForm Mem AuthnResponseBody :> PostVoid
 
 -- FUTUREWORK: respond with redirect in case of success, instead of responding with Void and
@@ -180,13 +117,20 @@ instance  Accept HTML where
   contentType Proxy = "text" // "html"
 
 
-newtype AuthnResponseBody = AuthnResponseBody AuthnResponse
+-- | An 'AuthnResponseBody' contains a 'AuthnResponse', but you need to give it a trust base forn
+-- signature verification first, and you may get an error when you're looking at it.
+newtype AuthnResponseBody = AuthnResponseBody ((ST -> Maybe RSA.PublicKey) -> Either ServantErr AuthnResponse)
 
 instance FromMultipart Mem AuthnResponseBody where
-  fromMultipart resp = AuthnResponseBody <$> (decodeBody =<< lookupInput "SAMLResponse" resp)
-    where
-      e2m = either (const Nothing) Just
-      decodeBody = e2m . EL.decode . cs >=> e2m . decode . cs
+  fromMultipart resp = Just . AuthnResponseBody $ \lookupPublicKey -> do
+    base64 <- maybe (throwError err400 { errBody = "no SAMLResponse in the body" }) pure $
+              lookupInput "SAMLResponse" resp
+    xmltxt <- either (const $ throwError err400 { errBody = "bad base64 encoding in SAMLResponse" }) pure $
+              EL.decode (cs base64)
+    either (\ex -> throwError err400 { errBody = "invalid signature: " <> cs ex }) pure $
+      simpleVerifyAuthnResponse lookupPublicKey xmltxt
+    either (\ex -> throwError err400 { errBody = cs $ show ex }) pure $
+      decode (cs xmltxt)
 
 
 -- | [2/3.5.4]
@@ -250,28 +194,46 @@ meta = do
   enterH "meta"
   undefined
 
-authreq :: SP m => m (FormRedirect AuthnRequest)
-authreq = do
+authreq :: (SPNT m) => ST -> m (FormRedirect AuthnRequest)
+authreq idpname = do
   enterH "authreq"
-  let uri = config ^. cfgIdPURI
+  uri <- (^. idpRequestUrl) <$> getIdPConfig idpname
   req <- createAuthnRequest
   leaveH $ FormRedirect uri req
 
-authresp :: (SP m, SPNT m) => AuthnResponseBody -> m Void
-authresp (AuthnResponseBody resp) = do
+-- | Get config and pass the missing idp credentials to the response constructor.
+resolveBody :: (SPNT m) => AuthnResponseBody -> m AuthnResponse
+resolveBody (AuthnResponseBody mkbody) = do
+  idps <- (^. cfgIdPs) <$> getConfig
+  pubkeys <- forM idps $ \idp -> do
+    let path = renderURI $ idp ^. idpIssuerID
+    creds <- either crash pure $ keyInfoToCreds (idp ^. idpPublicKey)
+    case creds of
+      SignCreds SignDigestSha256 (SignKeyRSA pubkey) -> pure (path, pubkey)
+  either throwError pure $ mkbody (`Map.lookup` Map.fromList pubkeys)
+
+authresp :: (SPNT m) => AuthnResponseBody -> m Void
+authresp body = do
+  enterH "authresp: entering"
+  resp <- resolveBody body
   enterH $ "authresp: " <> ppShow resp
   verdict <- judge resp
   logger $ show verdict
-
   case verdict of
     AccessDenied reasons
-      -> logger (show reasons) >> reject
+      -> logger (show reasons) >> reject (cs $ ST.intercalate ", " reasons)
     AccessGranted uid
-      -> redirect (getPath SpPathHome) [cookieToHeader . togglecookie . Just . cs . show $ uid]
+      -> getPath SpPathHome >>=
+         \sphome -> redirect sphome [cookieToHeader . togglecookie . Just . cs . show $ uid]
 
 
 ----------------------------------------------------------------------
 -- handler combinators
+
+crash :: (SP m, MonadError ServantErr m) => String -> m a
+crash msg = do
+  logger msg
+  throwError err500 { errBody = "internal error: consult server logs." }
 
 enterH :: SP m => String -> m ()
 enterH msg =

@@ -1,3 +1,5 @@
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -8,16 +10,21 @@
 
 module Test.SAML.WebSSO.APISpec (spec) where
 
+import Control.Lens
 import Data.EitherR
 import Data.String.Conversions
 import Servant
-import Shelly
-import Test.Hspec
+import Shelly (shelly, run, setStdin, silently)
+import Test.Hspec hiding (pending)
+import Test.Hspec.Wai
+import Test.Hspec.Wai.Matcher
 import Text.XML as XML
+import Util
 
 import qualified Data.ByteString.Base64.Lazy as EL
 
 import SAML.WebSSO
+import TestSP
 
 
 newtype SomeSAMLRequest = SomeSAMLRequest { fromSomeSAMLRequest :: XML.Document }
@@ -36,6 +43,10 @@ instance HasXMLRoot SomeSAMLRequest where
 base64ours, base64theirs :: HasCallStack => SBS -> IO SBS
 base64ours = pure . cs . EL.encode . cs
 base64theirs sbs = shelly . silently $ cs <$> (setStdin (cs sbs) >> run "/usr/bin/base64" ["--wrap", "0"])
+
+
+withapp :: forall api. HasServer api '[] => Proxy api -> ServerT api TestSP -> Ctx -> SpecWith Application -> Spec
+withapp proxy handler ctx = with (pure $ serve proxy (hoistServer (Proxy @api) (nt @TestSP ctx) handler :: Server api))
 
 
 spec :: Spec
@@ -108,10 +119,45 @@ spec = describe "API" $ do
   describe "cookies" $ do
     let c1 = togglecookie Nothing
         c2 = togglecookie (Just "nick")
-        roundtrip
+        rndtrip
           = headerValueToCookie
           . cs . snd
           . cookieToHeader
 
-    it  "roundtrip-1" $ Left "missing cookie value" `shouldBe` roundtrip c1
-    it  "roundtrip-2" $ Right c2 `shouldBe` roundtrip c2
+    it  "roundtrip-1" $ Left "missing cookie value" `shouldBe` rndtrip c1
+    it  "roundtrip-2" $ Right c2 `shouldBe` rndtrip c2
+
+
+  describe "meta" . withapp (Proxy @APIMeta) meta testCtx1 $ do
+    it "responds with 200" $ do
+      pending
+    it "responds with an 'SPSSODescriptor'" $ do
+      pending
+
+  describe "authreq" $ do
+    context "unknown idp" . withapp (Proxy @APIAuthReq) authreq testCtx1 $ do
+      it "responds with 404" $ do
+        get "/authreq/no-such-idp" `shouldRespondWith` 404
+
+    context "known idp" . withapp (Proxy @APIAuthReq) authreq testCtx2 $ do
+      it "responds with 200" $ do
+        get "/authreq/myidp" `shouldRespondWith` 200
+
+      it "responds with a body that contains the IdPs response URL" $ do
+        get "/authreq/myidp" `shouldRespondWith` 200
+          { matchBody = bodyContains . cs . renderURI $ myidp ^. idpRequestUrl }
+
+  describe "authresp" $ do
+    let postresp = postHtmlForm "/authresp" body
+        body = [("SAMLResponse", cs . EL.encode . cs $ readSample "microsoft-authnresponse-2.xml")]
+
+    context "unknown idp" . withapp (Proxy @APIAuthResp) authresp testCtx1 $ do
+      it "responds with 400" $ postresp `shouldRespondWith` 400 { matchBody = bodyContains "no public key" }
+
+    context "known idp, bad timestamp" . withapp (Proxy @APIAuthResp) authresp testCtx2 $ do
+      it "responds with 302" $ do
+        postresp `shouldRespondWith` 403 { matchBody = bodyEquals "violation of NotBefore condition" }
+
+    let testCtx2' = testCtx2 & ctxNow .~ unsafeReadTime "2018-04-14T09:53:59Z"
+    context "known idp, good timestamp" . withapp (Proxy @APIAuthResp) authresp testCtx2' $ do
+      it "responds with 302" $ postresp `shouldRespondWith` 302

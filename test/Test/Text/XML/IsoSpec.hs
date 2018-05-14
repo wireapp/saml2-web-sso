@@ -38,6 +38,7 @@ import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
 import Util
+import Arbitrary
 import Text.XML.Iso
 import Text.XML.Util
 

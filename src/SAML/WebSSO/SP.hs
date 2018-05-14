@@ -2,6 +2,7 @@
 {-# LANGUAGE DefaultSignatures     #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE InstanceSigs          #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
@@ -11,6 +12,8 @@
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
 {-# LANGUAGE ViewPatterns          #-}
+
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module SAML.WebSSO.SP where
 
@@ -29,6 +32,7 @@ import Network.HTTP.Types.Header
 import Servant.Server
 import URI.ByteString
 
+import qualified Data.Map as Map
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
 
@@ -38,7 +42,7 @@ import SAML.WebSSO.XML
 
 
 -- | Application logic of the service provider.
-class Monad m => SP m where
+class (HasConfig m, Monad m) => SP m where
   logger :: String -> m ()
   default logger :: MonadIO m => String -> m ()
   logger = liftIO . putStrLn
@@ -51,23 +55,22 @@ class Monad m => SP m where
   default getNow :: MonadIO m => m Time
   getNow = Time <$> liftIO getCurrentTime
 
--- | HTTP handling of the service provider.
-class SP m => SPNT m where
-  nt :: forall x. m x -> Handler x
-  default nt :: m ~ Handler => (forall x. m x -> Handler x)
-  nt = id
-
-  redirect :: URI -> [Header] -> m void
-  default redirect :: m ~ Handler => URI -> [Header] -> m void
-  redirect uri extra = throwError err302 { errHeaders = ("Location", cs $ renderURI uri) : extra }
-
-  reject :: m void
-  default reject :: m ~ Handler => m void
-  reject = throwError err403
+-- | HTTP handling of the service provider.  TODO: rename to 'SPHandler'?
+class (SP m, MonadError ServantErr m) => SPNT m where
+  type NT m :: *
+  nt :: forall x. NT m -> m x -> Handler x
 
 instance SP IO
 instance SP Handler
-instance SPNT Handler
+
+instance SPNT Handler where
+  type NT Handler = ()
+  nt :: forall x. () -> Handler x -> Handler x
+  nt () = id
+
+
+instance HasConfig Handler where
+  getConfig = liftIO getConfig
 
 
 ----------------------------------------------------------------------
@@ -84,9 +87,9 @@ createID = ID . fixMSAD . UUID.toText <$> createUUID
 createAuthnRequest :: SP m => m AuthnRequest
 createAuthnRequest = do
   x0 <- createID
-  let x1 = config ^. cfgVersion
+  x1 <- (^. cfgVersion) <$> getConfig
   x2 <- getNow
-  let x3 = NameID $ getPath' SsoPathAuthnResp
+  x3 <- NameID <$> getPath' SsoPathAuthnResp
 
   pure AuthnRequest
     { _rqID               = x0 :: ID
@@ -95,6 +98,12 @@ createAuthnRequest = do
     , _rqIssuer           = x3 :: NameID
     , _rqDestination      = Nothing
     }
+
+redirect :: MonadError ServantErr m => URI -> [Header] -> m void
+redirect uri extra = throwError err302 { errHeaders = ("Location", cs $ renderURI uri) : extra }
+
+reject :: MonadError ServantErr m => LBS -> m void
+reject msg = throwError err403 { errBody = msg }
 
 
 ----------------------------------------------------------------------
@@ -134,6 +143,9 @@ instance (Functor m, Applicative m, Monad m) => Applicative (JudgeT m) where
 
 instance (Functor m, Applicative m, Monad m) => Monad (JudgeT m) where
   (JudgeT x) >>= f = JudgeT (x >>= fromJudgeT . f)
+
+instance (HasConfig m) => HasConfig (JudgeT m) where
+  getConfig = JudgeT . lift . lift $ getConfig
 
 instance SP m => SP (JudgeT m) where
   logger     = JudgeT . lift . lift . logger
@@ -175,6 +187,7 @@ judge' resp = do
   -- TODO: implement 'checkSubjectConditions'!
 
   -- TODO: check requirements in [3/4.1.4.2]!
+  -- (resp ^. rspInRespTo, if Just, must match request ID.  and other rules.)
 
   -- TODO: in case of error, log response (would xml be better?) and SP context for extraction of
   -- failing test cases in case of prod failures.
@@ -222,3 +235,9 @@ getIdPMeta = undefined
 
 getUser :: SP m => String -> m ()
 getUser = undefined
+
+getIdPConfig :: SPNT m => ST -> m IdPConfig
+getIdPConfig idpname = maybe crash pure . Map.lookup idpname . mkmap . (^. cfgIdPs) =<< getConfig
+  where
+    crash = throwError err404 { errBody = "unknown IdP: " <> cs (show idpname) }
+    mkmap = Map.fromList . fmap (\icfg -> (icfg ^. idpPath, icfg))

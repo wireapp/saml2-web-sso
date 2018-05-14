@@ -130,6 +130,9 @@ renderURI = cs . serializeURIRef'
 parseURI' :: MonadThrow m => ST -> m URI  -- TODO: find a better name.  make renderURI match that name.
 parseURI' = either (die (Proxy @URI)) pure . parseURI laxURIParserOptions . cs . ST.strip
 
+unsafeParseURI :: ST -> URI
+unsafeParseURI = either (error . ("could not parse config: " <>) . show) id . parseURI'
+
 -- | fmap an outer computation into an inner computation that may fail, then flip inner @n@ and
 -- outer @m@.  (except for the flip, this is just 'fmap'.)
 fmapFlipM :: (Monad m, Traversable n) => (a -> m b) -> n a -> m (n b)
@@ -238,10 +241,7 @@ importAuthnResponse rsp = do
       proto  :: HS.ProtocolType       = HS.statusProtocol rsptyp
 
   x0 :: ID           <- importID $ HS.protocolID proto
-  x1 :: ID           <- maybe (die (Proxy @AuthnResponse)
-                                   ("statusInResponseTo" :: String, HS.statusInResponseTo rsptyp))
-                              (importID . cs)
-                        $ HS.statusInResponseTo rsptyp
+  x1 :: Maybe ID     <- (importID . cs) `fmapFlipM` HS.statusInResponseTo rsptyp
   x2 :: Version      <- importVersion $ HS.protocolVersion proto
   x3 :: Time         <- importTime $ HS.protocolIssueInstant proto
   x4 :: Maybe URI    <- fmapFlipM importURI $ HS.protocolDestination proto
@@ -298,7 +298,7 @@ importSubject (HS.Subject (Just (HS.SoEncrypted _)) _) = die (Proxy @Subject) ("
 importSubject (HS.Subject (Just (HS.NotEncrypted sid)) scs) = case sid of
   HS.IdentifierName HS.NameID
     { HS.nameBaseID = HS.BaseID _ _ (SubjectID . cs -> uid)
-    , HS.nameIDFormat = HS.Identified HS.NameIDFormatPersistent
+    , HS.nameIDFormat = ((`elem` [HS.Identified HS.NameIDFormatPersistent, HS.Identified HS.NameIDFormatUnspecified]) -> True)
     , HS.nameSPProvidedID = Nothing
     } -> Subject uid <$> importSubjectConfirmation uid `mapM` scs
   bad -> die (Proxy @Subject) ("unsupported subject identifier: " <> show bad)

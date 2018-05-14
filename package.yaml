@@ -77,6 +77,7 @@ tests:
       - hedgehog
       - hspec
       - hspec-discover
+      - hspec-wai
       - pretty-show
       - process
       - shelly

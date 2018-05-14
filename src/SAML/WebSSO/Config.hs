@@ -16,7 +16,6 @@
 module SAML.WebSSO.Config where
 
 import Data.Aeson
-import Data.Maybe (fromJust)
 import Data.Monoid
 import Data.String.Conversions
 import GHC.Generics
@@ -26,28 +25,37 @@ import Lens.Micro.TH
 import System.Environment
 import System.FilePath
 import System.IO
-import System.IO.Unsafe (unsafePerformIO)
+import Text.XML.DSig
 import URI.ByteString
 
+import qualified Data.X509 as X509
 import qualified Data.Yaml as Yaml
 
 import SAML.WebSSO.Types
-import SAML.WebSSO.XML (parseURI', renderURI)
+import SAML.WebSSO.XML (unsafeParseURI, parseURI', renderURI)
 
 
 data Config = Config
   { _cfgVersion           :: Version
-  , _cfgServerHost        :: String
-  , _cfgServerPort        :: Int
+  , _cfgSPHost            :: String
+  , _cfgSPPort            :: Int
   , _cfgSPAppURI          :: URI
   , _cfgSPSsoURI          :: URI
-  , _cfgIdPURI            :: URI
+  , _cfgIdPs              :: [IdPConfig]
+  }
+  deriving (Eq, Show, Generic, FromJSON, ToJSON)
+
+data IdPConfig = IdPConfig
+  { _idpPath            :: ST
+  , _idpIssuerID        :: URI
+  , _idpRequestUrl      :: URI
+  , _idpPublicKey       :: X509.SignedCertificate
   }
   deriving (Eq, Show, Generic, FromJSON, ToJSON)
 
 instance FromJSON URI where
-  parseJSON = fmap (either unerror id . parseURI') . parseJSON
-    where unerror = error . ("could not parse config: " <>) . show
+  parseJSON = (>>= either unerror pure . parseURI') . parseJSON
+    where unerror = fail . ("could not parse config: " <>) . show
 
 instance ToJSON URI where
   toJSON = toJSON . renderURI
@@ -59,21 +67,27 @@ instance FromJSON Version where
 instance ToJSON Version where
   toJSON Version_2_0 = String "SAML2.0"
 
+instance FromJSON X509.SignedCertificate where
+  parseJSON = withText "KeyInfo element" $ either fail pure . parseKeyInfo . cs
+
+instance ToJSON X509.SignedCertificate where
+  toJSON = String . cs . renderKeyInfo
+
 makeLenses ''Config
+makeLenses ''IdPConfig
 
 fallbackConfig :: Config
 fallbackConfig = Config
   { _cfgVersion           = Version_2_0
-  , _cfgServerHost        = "localhost"
-  , _cfgServerPort        = 8081
-  , _cfgSPAppURI          = either (error . show) id $ parseURI' "https://me.wire.com/sp"
-  , _cfgSPSsoURI          = either (error . show) id $ parseURI' "https://me.wire.com/sso"
-  , _cfgIdPURI            = either (error . show) id $ parseURI' "https://idptestbed/"
+  , _cfgSPHost            = "localhost"
+  , _cfgSPPort            = 8081
+  , _cfgSPAppURI          = unsafeParseURI "https://me.wire.com/sp"
+  , _cfgSPSsoURI          = unsafeParseURI "https://me.wire.com/sso"
+  , _cfgIdPs              = mempty
   }
 
-{-# NOINLINE config #-}
-config :: Config
-config = unsafePerformIO $ readConfig =<< configFilePath
+configIO :: IO Config
+configIO = readConfig =<< configFilePath
 
 configFilePath :: IO FilePath
 configFilePath = (</> "server.yaml") <$> getEnv "SAML2_WEB_SSO_ROOT"
@@ -98,6 +112,16 @@ writeConfig cfg = (`Yaml.encodeFile` cfg) =<< configFilePath
 
 
 ----------------------------------------------------------------------
+-- class
+
+class Monad m => HasConfig m where
+  getConfig :: m Config
+
+instance HasConfig IO where
+  getConfig = configIO
+
+
+----------------------------------------------------------------------
 -- uri paths
 
 data Path = SpPathHome | SpPathLocalLogout | SpPathSingleLogout
@@ -105,10 +129,10 @@ data Path = SpPathHome | SpPathLocalLogout | SpPathSingleLogout
   deriving (Eq, Show)
 
 
-getPath :: HasCallStack => Path -> URI
-getPath = fromJust . parseURI' . getPath'
+getPath :: (HasConfig m, HasCallStack) => Path -> m URI
+getPath = fmap unsafeParseURI . getPath'
 
-getPath' :: ConvertibleStrings SBS s => Path -> s
+getPath' :: (HasConfig m, ConvertibleStrings SBS s) => Path -> m s
 getPath' = \case
   SpPathHome         -> sp  ""
   SpPathLocalLogout  -> sp  "/logout/local"
@@ -117,7 +141,7 @@ getPath' = \case
   SsoPathAuthnReq    -> sso "/authreq"
   SsoPathAuthnResp   -> sso "/authresp"
   where
-    sp  = appendpath (config ^. cfgSPAppURI)
-    sso = appendpath (config ^. cfgSPSsoURI)
-    appendpath uri path = norm uri { uriPath = uriPath uri <> path }
+    sp  p = appendpath p . (^. cfgSPAppURI) <$> getConfig
+    sso p = appendpath p . (^. cfgSPSsoURI) <$> getConfig
+    appendpath path uri = norm uri { uriPath = uriPath uri <> path }
     norm = cs . normalizeURIRef' httpNormalization
