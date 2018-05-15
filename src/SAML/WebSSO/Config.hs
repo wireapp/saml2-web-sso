@@ -51,6 +51,7 @@ data LogLevel = DEBUG | INFO | WARN | FATAL | SILENT
 
 data IdPConfig = IdPConfig
   { _idpPath            :: ST
+  , _idpMetadata        :: URI
   , _idpIssuerID        :: URI
   , _idpRequestUrl      :: URI
   , _idpPublicKey       :: X509.SignedCertificate
