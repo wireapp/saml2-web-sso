@@ -44,7 +44,7 @@ verbose :: Ctx -> Ctx
 verbose = ctxConfig . cfgLogLevel .~ DEBUG
 
 testCtx2 :: Ctx
-testCtx2 = testCtx1 & ctxConfig . cfgIdPs .~ [myidp]
+testCtx2 = testCtx1 & ctxConfig . cfgIdps .~ [myidp]
 
 myidp :: IdPConfig
 myidp = IdPConfig

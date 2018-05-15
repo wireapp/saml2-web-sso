@@ -197,14 +197,14 @@ meta = do
 authreq :: (SPNT m) => ST -> m (FormRedirect AuthnRequest)
 authreq idpname = do
   enterH "authreq"
-  uri <- (^. idpRequestUrl) <$> getIdPConfig idpname
+  uri <- (^. idpRequestUri) <$> getIdPConfig idpname
   req <- createAuthnRequest
   leaveH $ FormRedirect uri req
 
 -- | Get config and pass the missing idp credentials to the response constructor.
 resolveBody :: (SPNT m) => AuthnResponseBody -> m AuthnResponse
 resolveBody (AuthnResponseBody mkbody) = do
-  idps <- (^. cfgIdPs) <$> getConfig
+  idps <- (^. cfgIdps) <$> getConfig
   pubkeys <- forM idps $ \idp -> do
     let path = renderURI $ idp ^. idpIssuerID
     creds <- either crash pure $ keyInfoToCreds (idp ^. idpPublicKey)

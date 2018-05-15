@@ -145,7 +145,7 @@ spec = describe "API" $ do
 
       it "responds with a body that contains the IdPs response URL" $ do
         get "/authreq/myidp" `shouldRespondWith` 200
-          { matchBody = bodyContains . cs . renderURI $ myidp ^. idpRequestUrl }
+          { matchBody = bodyContains . cs . renderURI $ myidp ^. idpRequestUri }
 
   describe "authresp" $ do
     let postresp = postHtmlForm "/authresp" body

@@ -242,7 +242,7 @@ getUser :: SP m => String -> m ()
 getUser = undefined
 
 getIdPConfig :: SPNT m => ST -> m IdPConfig
-getIdPConfig idpname = maybe crash pure . Map.lookup idpname . mkmap . (^. cfgIdPs) =<< getConfig
+getIdPConfig idpname = maybe crash pure . Map.lookup idpname . mkmap . (^. cfgIdps) =<< getConfig
   where
     crash = throwError err404 { errBody = "unknown IdP: " <> cs (show idpname) }
     mkmap = Map.fromList . fmap (\icfg -> (icfg ^. idpPath, icfg))
