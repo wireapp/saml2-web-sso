@@ -323,3 +323,7 @@ parseElem :: forall t1 t2. HasCallStack => Grammar 'CtxElem t1 t2 -> t1 -> Maybe
 parseElem _ = undefined
 
 -- Elem case: first parse the attrs, then the nodes.  reverse of render case.
+
+-- TODO: ignoreOtherAttrs, ignoreOtherChildren: if we don't add this everywhere, unparsed stuff will
+-- throw errors.  perhaps there should be syntactic sugar for where we want this, not sure.  or we
+-- refer people who want lenient parsers with no error reporting whatsoever to xml-conduit cursors.

@@ -196,6 +196,7 @@ judge' resp = do
   -- TODO: in case of error, log response (would xml be better?) and SP context for extraction of
   -- failing test cases in case of prod failures.
 
+  -- also double-check against https://docs.microsoft.com/en-us/azure/active-directory/develop/active-directory-single-sign-on-protocol-reference
 
 checkAuthnStatement :: MonadJudge m => [Statement] -> m ()
 checkAuthnStatement = mapM_ go

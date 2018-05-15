@@ -10,7 +10,6 @@
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
--- TODO: make 'config' more pure.
 -- TODO: set `-XNoDeriveAnyClass`.
 -- TODO: disallow orphans.
 module SAML.WebSSO.Config where
