@@ -10,12 +10,12 @@
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
--- TODO: make 'config' more pure.
 -- TODO: set `-XNoDeriveAnyClass`.
 -- TODO: disallow orphans.
 module SAML.WebSSO.Config where
 
 import Data.Aeson
+import Data.Aeson.TH
 import Data.Monoid
 import Data.String.Conversions
 import GHC.Generics
@@ -31,9 +31,13 @@ import URI.ByteString
 import qualified Data.X509 as X509
 import qualified Data.Yaml as Yaml
 
+import SAML.WebSSO.Config.TH (deriveJSONOptions)
 import SAML.WebSSO.Types
 import SAML.WebSSO.XML (unsafeParseURI, parseURI', renderURI)
 
+
+----------------------------------------------------------------------
+-- data types
 
 data Config = Config
   { _cfgVersion           :: Version
@@ -42,20 +46,31 @@ data Config = Config
   , _cfgSPPort            :: Int
   , _cfgSPAppURI          :: URI
   , _cfgSPSsoURI          :: URI
-  , _cfgIdPs              :: [IdPConfig]
+  , _cfgIdps              :: [IdPConfig]
   }
-  deriving (Eq, Show, Generic, FromJSON, ToJSON)
+  deriving (Eq, Show, Generic)
 
 data LogLevel = DEBUG | INFO | WARN | FATAL | SILENT
   deriving (Eq, Show, Enum, Bounded, Generic, FromJSON, ToJSON)
 
 data IdPConfig = IdPConfig
   { _idpPath            :: ST
+  , _idpMetadata        :: URI
   , _idpIssuerID        :: URI
-  , _idpRequestUrl      :: URI
+  , _idpRequestUri      :: URI
   , _idpPublicKey       :: X509.SignedCertificate
   }
-  deriving (Eq, Show, Generic, FromJSON, ToJSON)
+  deriving (Eq, Show, Generic)
+
+
+----------------------------------------------------------------------
+-- instances
+
+makeLenses ''Config
+makeLenses ''IdPConfig
+
+deriveJSON deriveJSONOptions ''Config
+deriveJSON deriveJSONOptions ''IdPConfig
 
 instance FromJSON URI where
   parseJSON = (>>= either unerror pure . parseURI') . parseJSON
@@ -77,8 +92,9 @@ instance FromJSON X509.SignedCertificate where
 instance ToJSON X509.SignedCertificate where
   toJSON = String . cs . renderKeyInfo
 
-makeLenses ''Config
-makeLenses ''IdPConfig
+
+----------------------------------------------------------------------
+-- default
 
 fallbackConfig :: Config
 fallbackConfig = Config
@@ -88,8 +104,12 @@ fallbackConfig = Config
   , _cfgSPPort            = 8081
   , _cfgSPAppURI          = unsafeParseURI "https://me.wire.com/sp"
   , _cfgSPSsoURI          = unsafeParseURI "https://me.wire.com/sso"
-  , _cfgIdPs              = mempty
+  , _cfgIdps              = mempty
   }
+
+
+----------------------------------------------------------------------
+-- IO
 
 configIO :: IO Config
 configIO = readConfig =<< configFilePath

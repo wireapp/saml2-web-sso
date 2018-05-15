@@ -196,6 +196,7 @@ judge' resp = do
   -- TODO: in case of error, log response (would xml be better?) and SP context for extraction of
   -- failing test cases in case of prod failures.
 
+  -- also double-check against https://docs.microsoft.com/en-us/azure/active-directory/develop/active-directory-single-sign-on-protocol-reference
 
 checkAuthnStatement :: MonadJudge m => [Statement] -> m ()
 checkAuthnStatement = mapM_ go
@@ -241,7 +242,7 @@ getUser :: SP m => String -> m ()
 getUser = undefined
 
 getIdPConfig :: SPNT m => ST -> m IdPConfig
-getIdPConfig idpname = maybe crash pure . Map.lookup idpname . mkmap . (^. cfgIdPs) =<< getConfig
+getIdPConfig idpname = maybe crash pure . Map.lookup idpname . mkmap . (^. cfgIdps) =<< getConfig
   where
     crash = throwError err404 { errBody = "unknown IdP: " <> cs (show idpname) }
     mkmap = Map.fromList . fmap (\icfg -> (icfg ^. idpPath, icfg))
