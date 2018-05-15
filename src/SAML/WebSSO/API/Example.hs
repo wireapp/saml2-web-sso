@@ -53,7 +53,7 @@ spapi :: (SP m, SPNT m) => ServerT SPAPI m
 spapi = loginStatus :<|> localLogout :<|> singleLogout
 
 appapi :: (SP m, SPNT m) => ServerT APPAPI m
-appapi = spapi :<|> api
+appapi = spapi :<|> api "toy-sp"
 
 loginStatus :: SP m => Maybe SetCookie -> m LoginStatus
 loginStatus cookie = do

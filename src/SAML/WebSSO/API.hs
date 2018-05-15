@@ -57,6 +57,7 @@ import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
 import qualified Data.Text as ST
 import qualified Network.HTTP.Types.Header as HttpTypes
+import qualified SAML.WebSSO.XML.Meta as Meta
 
 import SAML.WebSSO.Config
 import SAML.WebSSO.SP
@@ -70,15 +71,15 @@ import Text.XML.DSig
 
 type API = APIMeta :<|> APIAuthReq :<|> APIAuthResp
 
-type APIMeta     = "meta" :> Get '[XML] EntityDescriptor
+type APIMeta     = "meta" :> Get '[XML] Meta.SPDesc
 type APIAuthReq  = "authreq" :> Capture "idp" ST :> Get '[HTML] (FormRedirect AuthnRequest)
 type APIAuthResp = "authresp" :> MultipartForm Mem AuthnResponseBody :> PostVoid
 
 -- FUTUREWORK: respond with redirect in case of success, instead of responding with Void and
 -- handling all cases with exceptions: https://github.com/haskell-servant/servant/issues/117
 
-api :: (SP m, SPNT m) => ServerT API m
-api = meta :<|> authreq :<|> authresp
+api :: (SP m, SPNT m) => ST -> ServerT API m
+api appName = meta appName :<|> authreq :<|> authresp
 
 
 ----------------------------------------------------------------------
@@ -189,10 +190,14 @@ setHttpCachePolicy ap rq respond = ap rq $ respond . addHeadersToResponse httpCa
 ----------------------------------------------------------------------
 -- handlers
 
-meta :: SP m => m EntityDescriptor
-meta = do
+meta :: SP m => ST -> m Meta.SPDesc
+meta appName = do
   enterH "meta"
-  undefined
+  desc :: Meta.SPDescPre <- do
+    hom <- getPath SpPathHome
+    rsp <- getPath SsoPathAuthnResp
+    Meta.spDesc appName hom rsp
+  pure . Meta.spMeta $ desc
 
 authreq :: (SPNT m) => ST -> m (FormRedirect AuthnRequest)
 authreq idpname = do

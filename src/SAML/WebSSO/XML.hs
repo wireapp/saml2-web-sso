@@ -45,6 +45,7 @@ import qualified Data.Tree.NTree.TypeDefs as HS
 import qualified Network.URI as HS
 import qualified SAML2.Core as HS
 import qualified SAML2.Core.Protocols as HS
+import qualified SAML2.Metadata as HS
 import qualified SAML2.Profiles as HS
 import qualified SAML2.XML as HS
 import qualified Text.XML.HXT.DOM.TypeDefs as HS
@@ -162,18 +163,16 @@ parseElement proxy lbs = case parseLBS def lbs of
   Left msg  -> error $ show (proxy, msg)
 
 
-instance HasXML     EntityDescriptor where parse      = wrapParse importEntityDescriptor
-instance HasXMLRoot EntityDescriptor where renderRoot = wrapRender exportEntityDescriptor
 instance HasXML     AuthnRequest     where parse      = wrapParse importAuthnRequest
 instance HasXMLRoot AuthnRequest     where renderRoot = wrapRender exportAuthnRequest
 instance HasXML     AuthnResponse    where parse      = wrapParse importAuthnResponse
 instance HasXMLRoot AuthnResponse    where renderRoot = wrapRender exportAuthnResponse
 
 
-importEntityDescriptor :: (HasCallStack, MonadThrow m) => HS.Response -> m EntityDescriptor
+importEntityDescriptor :: (HasCallStack, MonadThrow m) => HS.Descriptor -> m EntityDescriptor
 importEntityDescriptor = error . ppShow
 
-exportEntityDescriptor :: HasCallStack => EntityDescriptor -> HS.Response
+exportEntityDescriptor :: HasCallStack => EntityDescriptor -> HS.Descriptor
 exportEntityDescriptor = error . ppShow
 
 

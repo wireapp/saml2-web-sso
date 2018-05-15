@@ -30,8 +30,8 @@ mkprop gen = property $ forAll gen >>= \v -> tripping v encode (decode @Maybe)
 
 
 -- TODO: enable
-_prop_tripEntityDescriptor :: Property
-_prop_tripEntityDescriptor = mkprop genEntityDescriptor
+-- _prop_tripEntityDescriptor :: Property
+-- _prop_tripEntityDescriptor = mkprop genEntityDescriptor
 
 -- TODO: enable
 _prop_tripAuthnRequest :: Property
