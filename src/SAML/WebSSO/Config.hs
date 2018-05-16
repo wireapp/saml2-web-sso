@@ -48,8 +48,8 @@ data Config = Config
   }
   deriving (Eq, Show, Generic)
 
-data LogLevel = DEBUG | INFO | WARN | FATAL | SILENT
-  deriving (Eq, Show, Enum, Bounded, Generic, FromJSON, ToJSON)
+data LogLevel = DEBUG | INFO | WARN | ERROR | CRITICAL | SILENT
+  deriving (Eq, Ord, Show, Enum, Bounded, Generic, FromJSON, ToJSON)
 
 data IdPConfig = IdPConfig
   { _idpPath            :: ST

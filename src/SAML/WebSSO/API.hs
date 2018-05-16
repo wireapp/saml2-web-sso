@@ -250,10 +250,10 @@ authresp body = do
   resp <- resolveBody body
   enterH $ "authresp: " <> ppShow resp
   verdict <- judge resp
-  logger $ show verdict
+  logger DEBUG $ show verdict
   case verdict of
     AccessDenied reasons
-      -> logger (show reasons) >> reject (cs $ ST.intercalate ", " reasons)
+      -> logger INFO (show reasons) >> reject (cs $ ST.intercalate ", " reasons)
     AccessGranted uid
       -> getLandingURI >>= (`redirect` [cookieToHeader . togglecookie . Just . cs . show $ uid])
 
@@ -263,16 +263,16 @@ authresp body = do
 
 crash :: (SP m, MonadError ServantErr m) => String -> m a
 crash msg = do
-  logger msg
+  logger CRITICAL msg
   throwError err500 { errBody = "internal error: consult server logs." }
 
 enterH :: SP m => String -> m ()
 enterH msg =
-  logger $ "entering handler: " <> msg
+  logger DEBUG $ "entering handler: " <> msg
 
 leaveH :: (Show a, SP m) => a -> m a
 leaveH x = do
-  logger $ "leaving handler: " <> show x
+  logger DEBUG $ "leaving handler: " <> show x
   pure x
 
 

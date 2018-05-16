@@ -43,9 +43,11 @@ import SAML.WebSSO.XML
 
 -- | Application logic of the service provider.
 class (HasConfig m, Monad m) => SP m where
-  logger :: String -> m ()
-  default logger :: MonadIO m => String -> m ()
-  logger msg = ((^. cfgLogLevel) <$> getConfig) >>= liftIO . (`loggerIO` msg)
+  logger :: LogLevel -> String -> m ()
+  default logger :: MonadIO m => LogLevel -> String -> m ()
+  logger atleast msg = do
+    cfgsays <- (^. cfgLogLevel) <$> getConfig
+    liftIO $ loggerIO cfgsays atleast msg
 
   createUUID :: m UUID
   default createUUID :: MonadIO m => m UUID
@@ -76,9 +78,10 @@ instance HasConfig Handler where
 ----------------------------------------------------------------------
 -- combinators
 
-loggerIO :: LogLevel -> String -> IO ()
-loggerIO SILENT _ = pure ()
-loggerIO _ msg = liftIO $ putStrLn msg
+loggerIO :: LogLevel -> LogLevel -> String -> IO ()
+loggerIO cfgsays atleast msg = if atleast < cfgsays
+  then pure ()
+  else putStrLn msg
 
 -- | Microsoft Active Directory requires IDs to be of the form @id<32 hex digits>@, so the
 -- @UUID.toText@ needs to be tweaked a little.
@@ -151,7 +154,7 @@ instance (HasConfig m) => HasConfig (JudgeT m) where
   getConfig = JudgeT . lift . lift $ getConfig
 
 instance SP m => SP (JudgeT m) where
-  logger     = JudgeT . lift . lift . logger
+  logger level = JudgeT . lift . lift . logger level
   createUUID = JudgeT . lift . lift $ createUUID
   getNow     = JudgeT . lift . lift $ getNow
 
