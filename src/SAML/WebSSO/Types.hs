@@ -1,12 +1,17 @@
 {-# LANGUAGE StrictData          #-}
 {-# LANGUAGE TemplateHaskell     #-}
+{-# LANGUAGE LambdaCase          #-}
 
 module SAML.WebSSO.Types where
 
+import Data.Aeson
 import Data.List.NonEmpty
+import Data.Monoid
 import Data.String.Conversions (ST)
 import Data.Time (UTCTime(..), formatTime, defaultTimeLocale)
+import GHC.Stack
 import Lens.Micro.TH
+import Text.XML.Util
 import URI.ByteString  -- TODO: should saml2-web-sso also use the URI from http-types?  we already
                        -- depend on that via xml-conduit anyway.  (is it a probley though that it is
                        -- string-based?  is it less of a problem because we need it anyway?)
@@ -24,8 +29,29 @@ data AccessVerdict =
     }
   deriving (Eq, Show)
 
-data UserId = UserId { _uidTenant :: ST, _uidSubject :: ST }
+data UserId = UserId { _uidTenant :: Issuer, _uidSubject :: NameID }
   deriving (Eq, Show)
+
+newtype Issuer = Issuer { fromIssuer :: NameID }
+  deriving (Eq, Ord, Show)
+
+mkIssuer :: ST -> Issuer
+mkIssuer = Issuer . entityNameID . unsafeParseURI
+
+-- | TODO: move this to a newtype instance in "SAML.WebSSO.Config" and do not export it, somehow!
+instance FromJSON Issuer where
+  parseJSON = withText "Issuer" $ \uri -> case parseURI' uri of
+    Right i  -> pure . Issuer $ entityNameID i
+    Left msg -> fail $ "Issuer: " <> show msg
+
+-- | TODO: move this to a newtype instance in "SAML.WebSSO.Config" and do not export it, somehow!
+instance ToJSON Issuer where
+  toJSON (Issuer name) = toJSON $ nameIDToText name
+    where
+      nameIDToText :: HasCallStack => NameID -> ST
+      nameIDToText (NameID (NameIDFEntity uri) Nothing Nothing Nothing) = uri
+      nameIDToText bad = error $ "nameIDToText: not implemented: " <> show bad
+
 
 ----------------------------------------------------------------------
 -- meta
@@ -109,17 +135,19 @@ type EndPointAllowRespLoc = EndPoint (Maybe URI)
 
 -- | [1/3.2.1], [1/3.4], [1/3.4.1]
 --
+-- (we do not support the Destination attribute; it makes little sense if it is not signed.)
+--
 -- interpretations of individual providers:
--- - <https://docs.microsoft.com/en-us/azure/active-directory/develop/active-directory-single-sign-on-protocol-reference>
+--
+-- * <https://docs.microsoft.com/en-us/azure/active-directory/develop/active-directory-single-sign-on-protocol-reference>
 data AuthnRequest = AuthnRequest
   { -- abstract xml type
     _rqID               :: ID
   , _rqVersion          :: Version
   , _rqIssueInstant     :: Time
-  , _rqIssuer           :: NameID  -- TODO: really?  did i miss that or dylan?
-  , _rqDestination      :: Maybe URI  -- TODO: is this also NameID?
+  , _rqIssuer           :: Issuer
 
-    -- extended xml type
+    -- extended xml type (attribute requests, ...)
     -- ...
   }
   deriving (Eq, Show)
@@ -150,7 +178,7 @@ data Response payload = Response
   , _rspVersion      :: Version
   , _rspIssueInstant :: Time
   , _rspDestination  :: Maybe URI
-  , _rspIssuer       :: Maybe NameID
+  , _rspIssuer       :: Maybe Issuer
   , _rspStatus       :: Status
   , _rspPayload      :: payload
   }
@@ -174,17 +202,55 @@ data Duration = Duration  -- TODO: https://www.w3.org/TR/xmlschema-2/#duration
   deriving (Eq, Show)
 
 -- | IDs must be globally unique between all communication parties and adversaries with a negligible
--- failure probability.  [1/1.3.4]
-newtype ID = ID { renderID :: ST }  -- TODO: it might be more complicated than this.  see hsaml2.
+-- failure probability.  We should probably just use UUIDv4, but we may not have any choice.  [1/1.3.4]
+newtype ID = ID { renderID :: ST }
   deriving (Eq, Show)
 
 -- | [1/2.2.1]
-newtype BaseID = BaseID { renderBaseID :: ST }  -- TODO: it is more complicated than this.  see hsaml2.
+data BaseID = BaseID
+  { _baseID        :: ST
+  , _baseIDNameQ   :: Maybe ST
+  , _baseIDSPNameQ :: Maybe ST
+  }
   deriving (Eq, Show)
 
--- | [1/2.2.3]
-newtype NameID = NameID { renderNameID :: ST }  -- TODO: it is more complicated than this.  see hsaml2.
-  deriving (Eq, Show)
+-- | [1/2.2.2], [1/2.2.3], [1/3.4.1.1]
+data NameID = NameID
+  { _nameID             :: UnqualifiedNameID
+  , _nameIDNameQ        :: Maybe ST
+  , _nameIDSPNameQ      :: Maybe ST
+  , _nameIDSPProvidedID :: Maybe ST
+  }
+  deriving (Eq, Ord, Show)
+
+-- | [1/8.3]
+data UnqualifiedNameID
+  = NameIDFUnspecified ST   -- ^ 'nameIDNameQ', 'nameIDSPNameQ' SHOULD be omitted.
+  | NameIDFEmail       ST
+  | NameIDFX509        ST
+  | NameIDFWindows     ST
+  | NameIDFKerberos    ST
+  | NameIDFEntity      ST  -- ^ must be 'URI' (but e.g. centrify doesn't know that); @numchars <=
+                           -- 1024@; 'nameIDNameQ', 'nameIDSPNameQ', 'nameIDSPProvidedID' MUST be
+                           -- omitted.
+  | NameIDFPersistent  ST  -- ^ @numchars <= 1024@; pseudonyms; use UUIDv4 where we have the choice.
+  deriving (Eq, Ord, Show)
+
+opaqueNameID :: ST -> NameID
+opaqueNameID raw = NameID (NameIDFUnspecified raw) Nothing Nothing Nothing
+
+entityNameID :: URI -> NameID
+entityNameID uri = NameID (NameIDFEntity (renderURI uri)) Nothing Nothing Nothing
+
+nameIDFormat :: HasCallStack => UnqualifiedNameID -> String
+nameIDFormat = \case
+  NameIDFUnspecified _ -> "urn:oasis:names:tc:SAML:2.0:nameid-format:unspecified"
+  NameIDFEmail _       -> "urn:oasis:names:tc:SAML:2.0:nameid-format:emailAddress"
+  NameIDFX509 _        -> "urn:oasis:names:tc:SAML:2.0:nameid-format:X509SubjectName"
+  NameIDFWindows _     -> "urn:oasis:names:tc:SAML:2.0:nameid-format:WindowsDomainQualifiedName"
+  NameIDFKerberos _    -> "urn:oasis:names:tc:SAML:2.0:nameid-format:kerberos"
+  NameIDFEntity _      -> "urn:oasis:names:tc:SAML:2.0:nameid-format:entity"
+  NameIDFPersistent _  -> "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
 
 data Version = Version_2_0
   deriving (Eq, Show, Bounded, Enum)
@@ -206,7 +272,7 @@ data Assertion
     { _assVersion       :: Version
     , _assID            :: ID
     , _assIssueInstant  :: Time
-    , _assIssuer        :: NameID
+    , _assIssuer        :: Issuer
     , _assConditions    :: Maybe Conditions
     , _assContents      :: SubjectAndStatements
     }
@@ -228,13 +294,9 @@ data SubjectAndStatements = SubjectAndStatements Subject (NonEmpty Statement)
 -- | Information about the client and/or user attempting to authenticate / authorize against the SP.
 -- [1/2.4]
 data Subject = Subject
-  { _subjectID            :: SubjectID
+  { _subjectID            :: NameID  -- ^ every 'BaseID' is also a 'NameID'; encryption is not supported.
   , _subjectConfirmations :: [SubjectConfirmation]
   }
-  deriving (Eq, Show)
-
--- | See 'Subject'.  [1/2.4]
-data SubjectID = SubjectID ST
   deriving (Eq, Show)
 
 -- | Information about the kind of proof of identity the 'Subject' provided to the IdP.  [1/2.4]
@@ -245,6 +307,9 @@ data SubjectConfirmation = SubjectConfirmation
   deriving (Eq, Show)
 
 -- | [3/4.1.4.2]
+--
+-- TODO: we should implement the rest of the options here.  this may be relevant for some clients,
+-- and we are not required to base our access policy on it.
 data SubjectConfirmationMethod
   = SubjectConfirmationMethodBearer  -- ^ @"urn:oasis:names:tc:SAML:2.0:cm:bearer"@
   deriving (Eq, Show, Enum, Bounded)
@@ -288,16 +353,14 @@ data Locality = Locality
 data Attribute =
     Attribute
     { _stattrName         :: ST
-    , _stattrNameFormat   :: Maybe ST
+    , _stattrNameFormat   :: Maybe URI  -- ^ [1/8.2]
     , _stattrFriendlyName :: Maybe ST
     , _stattrValues       :: [AttributeValue]
     }
   deriving (Eq, Show)
 
--- | [1/2.7.3.1.1]
-data AttributeValue =
-    AttributeValueText ST
-  -- AttributeValueInt Int
+-- | [1/2.7.3.1.1] could be @ST@, or @Num n => n@, or something else.
+newtype AttributeValue = AttributeValueUntyped ST
   deriving (Eq, Show)
 
 
@@ -343,7 +406,6 @@ makeLenses ''Subject
 makeLenses ''SubjectAndStatements
 makeLenses ''SubjectConfirmation
 makeLenses ''SubjectConfirmationData
-makeLenses ''SubjectID
 makeLenses ''Time
 makeLenses ''UserId
 makeLenses ''Version

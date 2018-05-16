@@ -51,7 +51,7 @@ myidp :: IdPConfig
 myidp = IdPConfig
   "myidp"
   (unsafeParseURI "https://login.microsoftonline.com/682febe8-021b-4fde-ac09-e60085f05181/FederationMetadata/2007-06/FederationMetadata.xml")
-  (unsafeParseURI "https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/")
+  (mkIssuer "https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/")
   (unsafeParseURI "http://myidp.io/sso")
   cert
   where

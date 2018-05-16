@@ -31,21 +31,23 @@ spec = describe "SP" $ do
       it "now <= now" $ (timeNow     <= timeNow) `shouldBe` True
 
   describe "JudgetT" $ do
+    let emptyUserID = UserId (mkIssuer "http://example.com/") (opaqueNameID "me")
+
     it "no msgs" $ do
-      verdict <- runJudgeT $ pure $ AccessGranted (UserId "" "")
-      verdict `shouldBe` AccessGranted (UserId "" "")
+      verdict <- runJudgeT $ pure $ AccessGranted (UserId (mkIssuer "http://example.com/") (opaqueNameID "me"))
+      verdict `shouldBe` AccessGranted emptyUserID
 
     it "1 msg" $ do
       verdict <- runJudgeT $ do
         deny ["wef"]
-        pure $ AccessGranted (UserId "" "")
+        pure $ AccessGranted emptyUserID
       verdict `shouldBe` AccessDenied ["wef"]
 
     it "2 msg" $ do
       verdict <- runJudgeT $ do
         deny ["wef"]
         deny ["phoo", "gna"]
-        pure $ AccessGranted (UserId "" "")
+        pure $ AccessGranted emptyUserID
       verdict `shouldBe` AccessDenied ["wef", "phoo", "gna"]
 
     it "1 msg, then giveup, then send another message" $ do
@@ -53,7 +55,7 @@ spec = describe "SP" $ do
         deny ["wef"]
         () <- giveup ["eeek"]
         deny ["phoo"]
-        pure $ AccessGranted (UserId "" "")
+        pure $ AccessGranted emptyUserID
       verdict `shouldBe` AccessDenied ["wef", "eeek"]
 
   describe "judge" $ do
@@ -86,7 +88,8 @@ spec = describe "SP" $ do
 
     it "status success yields name, nick" $ do
       verdict <- testSP testCtx2 $ judge (resp & rspStatus .~ StatusSuccess)
-      let uid = UserId "https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/" "E3hQDDZoObpyTDplO8Ax8uC8ObcQmREdfps3TMpaI84"
+      let uid = UserId (mkIssuer "https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/")
+                       (opaqueNameID "E3hQDDZoObpyTDplO8Ax8uC8ObcQmREdfps3TMpaI84")
       verdict `shouldBe` AccessGranted uid
 
     -- check the rest of the AuthnResponse type: what do we have to take into account?  what can we

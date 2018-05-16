@@ -91,7 +91,7 @@ createID = ID . fixMSAD . UUID.toText <$> createUUID
     fixMSAD :: ST -> ST
     fixMSAD = cs . ("id" <>) . filter (/= '-') . cs
 
-createAuthnRequest :: SP m => NameID -> m AuthnRequest
+createAuthnRequest :: SP m => Issuer -> m AuthnRequest
 createAuthnRequest issuer = do
   x0 <- createID
   x1 <- (^. cfgVersion) <$> getConfig
@@ -102,7 +102,6 @@ createAuthnRequest issuer = do
     , _rqVersion          = x1 :: Version
     , _rqIssueInstant     = x2 :: Time
     , _rqIssuer           = issuer
-    , _rqDestination      = Nothing
     }
 
 redirect :: MonadError ServantErr m => URI -> [Header] -> m void
@@ -173,14 +172,14 @@ judge' resp = do
     bad -> deny ["status: " <> cs (show bad)]
 
   -- issuer must be present and unique in assertions
-  NameID issuer <- case nub $ (^. assIssuer) <$> resp ^. rspPayload of
+  issuer <- case nub $ (^. assIssuer) <$> resp ^. rspPayload of
     [i] -> pure i
     [] -> giveup ["no statement issuer"]
     bad@(_:_:_) -> giveup ["multiple statement issuers not supported", cs $ show bad]
 
   case resp ^. rspPayload of
     [ass] -> case ass ^. assContents of
-      SubjectAndStatements (Subject (SubjectID subject) subjconds) (toList -> stmts) -> do
+      SubjectAndStatements (Subject subject subjconds) (toList -> stmts) -> do
         checkAuthnStatement stmts
         checkSubjectConditions subjconds
         pure . AccessGranted $ UserId issuer subject
@@ -221,7 +220,7 @@ getAttributeStatements = mconcat . fmap go
 
 requireAttributeText :: MonadJudge m => ST -> [Attribute] -> m ST
 requireAttributeText key as = case filter ((== key) . (^. stattrName)) as of
-  [(^. stattrValues) -> [val]] -> case val of AttributeValueText txt -> pure txt
+  [(^. stattrValues) -> [val]] -> case val of AttributeValueUntyped txt -> pure txt
   []                           -> giveup ["attribute not found: " <> key]
   bad@(_:_)                    -> giveup ["attribute not found more than once: " <> cs (show (key, bad))]
 

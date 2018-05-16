@@ -37,6 +37,7 @@ import Data.Binary.Builder (toLazyByteString)
 import Data.EitherR
 import Data.Function
 import Data.List
+import Data.Maybe (catMaybes)
 import Data.Proxy
 import Data.String.Conversions
 import GHC.Stack
@@ -51,6 +52,7 @@ import Servant.Server
 import Text.Hamlet.XML
 import Text.Show.Pretty (ppShow)
 import Text.XML
+import Text.XML.Cursor
 import URI.ByteString
 import Web.Cookie
 
@@ -83,6 +85,45 @@ type APIAuthResp = "authresp" :> MultipartForm Mem AuthnResponseBody :> PostVoid
 
 api :: (SP m, SPNT m) => ST -> ServerT API m
 api appName = meta appName :<|> authreq :<|> authresp
+
+
+----------------------------------------------------------------------
+-- authentication response body processing
+
+-- | An 'AuthnResponseBody' contains a 'AuthnResponse', but you need to give it a trust base forn
+-- signature verification first, and you may get an error when you're looking at it.
+newtype AuthnResponseBody = AuthnResponseBody ((Issuer -> Maybe RSA.PublicKey) -> Either ServantErr AuthnResponse)
+
+parseAuthnResponseBody :: MonadError ServantErr m => LBS -> (Issuer -> Maybe RSA.PublicKey) -> m AuthnResponse
+parseAuthnResponseBody base64 = \lookupPublicKey -> do
+  xmltxt <-
+    either (const $ throwError err400 { errBody = "bad base64 encoding in SAMLResponse" }) pure $
+    EL.decode base64
+  resp <-
+    either (\ex -> throwError err400 { errBody = cs $ show ex }) pure $
+    decode (cs xmltxt)
+  () <-
+    either (\ex -> throwError err400 { errBody = "invalid signature: " <> cs ex }) pure $
+    simpleVerifyAuthnResponse (lookupPublicKey =<< resp ^. rspIssuer) xmltxt
+  pure resp
+
+
+-- | Pull assertions sub-forest and pass all trees in it to 'verify' individually.  The 'LBS'
+-- argument must be a valid 'AuthnResponse'.  All assertions need to be signed by the same issuer
+-- with the same key.
+simpleVerifyAuthnResponse :: MonadError String m => Maybe RSA.PublicKey -> LBS -> m ()
+simpleVerifyAuthnResponse Nothing _ = throwError "missing or unknown issuer."
+simpleVerifyAuthnResponse (Just key) raw = do
+  doc :: Cursor <- fromDocument <$> either (throwError . show) pure (parseLBS def raw)
+
+  let elemOnly (NodeElement el) = Just el
+      elemOnly _ = Nothing
+
+      assertions :: [Element]
+      assertions = catMaybes $ elemOnly . node <$>
+                   (doc $/ element "{urn:oasis:names:tc:SAML:2.0:assertion}Assertion")
+
+  verify key `mapM_` assertions
 
 
 ----------------------------------------------------------------------
@@ -122,20 +163,11 @@ instance  Accept HTML where
   contentType Proxy = "text" // "html"
 
 
--- | An 'AuthnResponseBody' contains a 'AuthnResponse', but you need to give it a trust base forn
--- signature verification first, and you may get an error when you're looking at it.
-newtype AuthnResponseBody = AuthnResponseBody ((ST -> Maybe RSA.PublicKey) -> Either ServantErr AuthnResponse)
-
 instance FromMultipart Mem AuthnResponseBody where
-  fromMultipart resp = Just . AuthnResponseBody $ \lookupPublicKey -> do
+  fromMultipart resp = Just . AuthnResponseBody $ \lkup -> do
     base64 <- maybe (throwError err400 { errBody = "no SAMLResponse in the body" }) pure $
               lookupInput "SAMLResponse" resp
-    xmltxt <- either (const $ throwError err400 { errBody = "bad base64 encoding in SAMLResponse" }) pure $
-              EL.decode (cs base64)
-    either (\ex -> throwError err400 { errBody = "invalid signature: " <> cs ex }) pure $
-      simpleVerifyAuthnResponse lookupPublicKey xmltxt
-    either (\ex -> throwError err400 { errBody = cs $ show ex }) pure $
-      decode (cs xmltxt)
+    parseAuthnResponseBody (cs base64) lkup
 
 
 -- | [2/3.5.4]
@@ -230,7 +262,7 @@ authreq :: SPNT m => ST -> m (FormRedirect AuthnRequest)
 authreq idpname = do
   enterH "authreq"
   uri <- (^. idpRequestUri) <$> getIdPConfig idpname
-  issuer <- NameID . renderURI <$> getLandingURI
+  issuer <- Issuer . entityNameID <$> getLandingURI
   req <- createAuthnRequest issuer
   leaveH $ FormRedirect uri req
 
@@ -239,10 +271,9 @@ resolveBody :: SPNT m => AuthnResponseBody -> m AuthnResponse
 resolveBody (AuthnResponseBody mkbody) = do
   idps <- (^. cfgIdps) <$> getConfig
   pubkeys <- forM idps $ \idp -> do
-    let path = renderURI $ idp ^. idpIssuerID
     creds <- either crash pure $ keyInfoToCreds (idp ^. idpPublicKey)
     case creds of
-      SignCreds SignDigestSha256 (SignKeyRSA pubkey) -> pure (path, pubkey)
+      SignCreds SignDigestSha256 (SignKeyRSA pubkey) -> pure (idp ^. idpIssuer, pubkey)
   either throwError pure $ mkbody (`Map.lookup` Map.fromList pubkeys)
 
 authresp :: SPNT m => AuthnResponseBody -> m Void

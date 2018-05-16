@@ -13,7 +13,6 @@ module Text.XML.DSig
   , parseKeyInfo, renderKeyInfo, keyInfoToCreds
 
   , verify, verifyIO, Verified, fmapVerified, unverify
-  , simpleVerifyAuthnResponse
   )
 where
 
@@ -21,17 +20,14 @@ import Control.Exception (SomeException)
 import Control.Monad.Catch  -- TODO: do we need this, or can we get away with 'Except' only?  and perhaps 'unsafePerformIO'?
 import Control.Monad.Except
 import Data.List.NonEmpty
-import Data.Maybe
 import Data.Monoid ((<>))
 import Data.String.Conversions
 import GHC.Stack
 import System.IO.Unsafe (unsafePerformIO)
 import Text.XML
-import Text.XML.Cursor
 
 import qualified Crypto.PubKey.RSA as RSA
 import qualified Data.Map as Map
-import qualified Data.Text as ST
 import qualified Data.X509 as X509
 
 import Text.XML.Util
@@ -140,37 +136,6 @@ verifyIO key el = do
 -- want to first check the signature, then parse the application data.  Use with care!
 fmapVerified :: (a -> b) -> Verified a -> Verified b
 fmapVerified f (Verified a) = Verified $ f a
-
-
--- | Pull assertions sub-forest and pass all trees in it to 'verify' individually.  The 'LBS'
--- argument must be a valid 'AuthnResponse'.  All assertions need to be signed by the same issuer
--- with the same key.
---
--- The 'ST' for looking up the public key contains the issuer.  No url canonicalization takes place
--- there, the issuer field in the response must be the same string as the key in the lookup
--- function.
-simpleVerifyAuthnResponse :: MonadError String m => (ST -> Maybe RSA.PublicKey) -> LBS -> m ()
-simpleVerifyAuthnResponse lookupPublicKey raw = do
-  doc :: Cursor <- fromDocument <$> either (throwError . show) pure (parseLBS def raw)
-
-  let elemOnly (NodeElement el) = Just el
-      elemOnly _ = Nothing
-
-      assertions :: [Element]
-      assertions = catMaybes $ elemOnly . node <$>
-                   (doc $/ element "{urn:oasis:names:tc:SAML:2.0:assertion}Assertion")
-
-      issuer :: ST
-      issuer = mconcat $ doc $/ element "{urn:oasis:names:tc:SAML:2.0:assertion}Issuer" &// content
-
-  when (ST.null issuer) $ throwError "no issuer"
-
-  key :: RSA.PublicKey <- maybe (throwError ("no public key found for issuer: " <> show issuer)) pure $
-                          lookupPublicKey issuer
-
-  verify key `mapM_` assertions
-
-
 
 
 

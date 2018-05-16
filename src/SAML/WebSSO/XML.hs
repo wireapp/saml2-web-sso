@@ -19,6 +19,7 @@ module SAML.WebSSO.XML where
 import Control.Category (Category(..))
 import Control.Monad
 import Control.Monad.Catch
+import Data.EitherR
 import qualified Data.List as List
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Maybe (fromMaybe, isNothing, maybeToList)
@@ -161,8 +162,8 @@ importAuthnRequest req = do
   x0 :: ID        <- importID $ HS.protocolID proto
   x1 :: Version   <- importVersion $ HS.protocolVersion proto
   x2 :: Time      <- importTime $ HS.protocolIssueInstant proto
-  x3 :: NameID    <- importRequiredIssuer $ HS.protocolIssuer proto
-  x4 :: Maybe URI <- fmapFlipM importURI $ HS.protocolDestination proto
+  x3 :: Issuer    <- importRequiredIssuer $ HS.protocolIssuer proto
+  Nothing         <- fmapFlipM importURI $ HS.protocolDestination proto
 
   -- TODO: make sure everything in HS.AuthnRequest that might change the interpreation of the data
   -- we know is 'Nothing'.  also do this on all other 'import*' functions.  (or should we only do
@@ -172,7 +173,6 @@ importAuthnRequest req = do
     , _rqVersion      = x1
     , _rqIssueInstant = x2
     , _rqIssuer       = x3
-    , _rqDestination  = x4
     }
 
 exportAuthnRequest :: AuthnRequest -> HS.AuthnRequest
@@ -181,7 +181,7 @@ exportAuthnRequest req = defAuthnRequest proto
     proto = (defProtocolType (exportID $ req ^. rqID) (exportTime $ req ^. rqIssueInstant))
       { HS.protocolVersion = exportVersion $ req ^. rqVersion
       , HS.protocolIssuer = exportRequiredIssuer $ req ^. rqIssuer
-      , HS.protocolDestination = exportURI <$> req ^. rqDestination
+      , HS.protocolDestination = Nothing
       }
 
 defAuthnRequest :: HS.ProtocolType -> HS.AuthnRequest
@@ -223,7 +223,7 @@ importAuthnResponse rsp = do
   x2 :: Version      <- importVersion $ HS.protocolVersion proto
   x3 :: Time         <- importTime $ HS.protocolIssueInstant proto
   x4 :: Maybe URI    <- fmapFlipM importURI $ HS.protocolDestination proto
-  x5 :: Maybe NameID <- importOptionalIssuer $ HS.protocolIssuer proto
+  x5 :: Maybe Issuer <- importOptionalIssuer $ HS.protocolIssuer proto
   x6 :: Status       <- importStatus $ HS.status rsptyp
   x7 :: [Assertion]  <- importAssertion `mapM` HS.responseAssertions rsp
 
@@ -264,7 +264,7 @@ importAssertion (HS.NotEncrypted ass) = do
     { _assVersion      = x0 :: Version
     , _assID           = x1 :: ID
     , _assIssueInstant = x2 :: Time
-    , _assIssuer       = x3 :: NameID
+    , _assIssuer       = x3 :: Issuer
     , _assConditions   = x4 :: Maybe Conditions
     , _assContents     = x5 :: SubjectAndStatements
     }
@@ -275,18 +275,18 @@ importSubject (HS.Subject Nothing _) = die (Proxy @Subject) ("need to provide a 
 importSubject (HS.Subject (Just (HS.SoEncrypted _)) _) = die (Proxy @Subject) ("encrypted subjects not supported" :: String)
 importSubject (HS.Subject (Just (HS.NotEncrypted sid)) scs) = case sid of
   HS.IdentifierName HS.NameID
-    { HS.nameBaseID = HS.BaseID _ _ (SubjectID . cs -> uid)
+    { HS.nameBaseID = importBaseIDasNameID -> nameid
     , HS.nameIDFormat = ((`elem` [HS.Identified HS.NameIDFormatPersistent, HS.Identified HS.NameIDFormatUnspecified]) -> True)
     , HS.nameSPProvidedID = Nothing
-    } -> Subject uid <$> importSubjectConfirmation uid `mapM` scs
+    } -> Subject nameid <$> importSubjectConfirmation nameid `mapM` scs
   bad -> die (Proxy @Subject) ("unsupported subject identifier: " <> show bad)
 
-importSubjectConfirmation :: (HasCallStack, MonadThrow m) => SubjectID -> HS.SubjectConfirmation -> m SubjectConfirmation
+importSubjectConfirmation :: (HasCallStack, MonadThrow m) => NameID -> HS.SubjectConfirmation -> m SubjectConfirmation
 importSubjectConfirmation = go
   where
     go _ (HS.SubjectConfirmation meth _ _) | meth /= HS.Identified HS.ConfirmationMethodBearer
       = die (Proxy @SubjectConfirmation) ("unsupported confirmation method: " <> show meth)
-    go (SubjectID uid) (HS.SubjectConfirmation _ (Just (HS.NotEncrypted (HS.IdentifierName (HS.NameID _ _ (Just (cs -> uid')))))) _) | uid /= uid'
+    go uid (HS.SubjectConfirmation _ (Just (HS.NotEncrypted (HS.IdentifierName uid'))) _) | Right uid /= fmapL (const ()) (importNameID uid')
       = die (Proxy @SubjectConfirmation) ("uid mismatch: " <> show (uid, uid'))
     go _ (HS.SubjectConfirmation _ (Just bad) _)
       = die (Proxy @SubjectConfirmation) ("unsupported identifier: " <> show bad)
@@ -362,7 +362,7 @@ importAttribute (HS.NotEncrypted ass) = do
   pure $ Attribute nm Nothing Nothing vals
 
 importAttributeValue :: (HasCallStack, MonadThrow m) => HS.Nodes -> m AttributeValue
-importAttributeValue [HS.NTree (HS.XText txt) []] = pure . AttributeValueText $ cs txt
+importAttributeValue [HS.NTree (HS.XText txt) []] = pure . AttributeValueUntyped $ cs txt
 importAttributeValue bad = die (Proxy @AttributeValue) bad
 
 
@@ -372,18 +372,46 @@ importID = pure . ID . cs
 exportID :: HasCallStack => ID -> HS.ID
 exportID (ID t) = cs t
 
+importBaseID :: (HasCallStack, ConvertibleStrings s ST) => HS.BaseID s -> BaseID
+importBaseID (HS.BaseID bidq bidspq bid) = BaseID (cs bid) (cs <$> bidq) (cs <$> bidspq)
+
+importBaseIDasNameID :: (HasCallStack, ConvertibleStrings s ST) => HS.BaseID s -> NameID
+importBaseIDasNameID (importBaseID -> BaseID bid bidq bidspq) =
+  NameID (NameIDFUnspecified bid) bidq bidspq Nothing
+
 importNameID :: (HasCallStack, MonadThrow m) => HS.NameID -> m NameID
-importNameID (HS.NameID (HS.BaseID Nothing Nothing i) (HS.Identified HS.NameIDFormatEntity) Nothing)
-  = pure . NameID . cs $ i
+importNameID (HS.NameID (HS.BaseID Nothing Nothing uri) (HS.Identified HS.NameIDFormatEntity) Nothing)
+  = pure $ NameID (NameIDFEntity $ cs uri) Nothing Nothing Nothing
 importNameID bad
   = die (Proxy @NameID) bad
+  where
+    _form :: MonadThrow m => HS.NameIDFormat -> ST -> m UnqualifiedNameID
+    _form HS.NameIDFormatUnspecified = pure . NameIDFUnspecified
+    _form HS.NameIDFormatEmail       = pure . NameIDFEmail
+    _form HS.NameIDFormatX509        = pure . NameIDFX509
+    _form HS.NameIDFormatWindows     = pure . NameIDFWindows
+    _form HS.NameIDFormatKerberos    = pure . NameIDFKerberos
+    _form HS.NameIDFormatEntity      = pure . NameIDFEntity
+    _form HS.NameIDFormatPersistent  = pure . NameIDFPersistent
+    _form _                          = undefined
 
-exportNameID :: HasCallStack => NameID -> HS.NameID
-exportNameID (NameID i) = HS.NameID
-  { HS.nameBaseID = HS.BaseID Nothing Nothing (cs i)
-  , HS.nameIDFormat = HS.Identified HS.NameIDFormatEntity
-  , HS.nameSPProvidedID = Nothing
+exportNameID :: NameID -> HS.NameID
+exportNameID name = HS.NameID
+  { HS.nameBaseID = HS.BaseID (cs <$> name ^. nameIDNameQ) (cs <$> name ^. nameIDSPNameQ) (cs nid)
+  , HS.nameIDFormat = fmt
+  , HS.nameSPProvidedID = cs <$> name ^. nameIDSPProvidedID
   }
+  where
+    (fmt, nid) = unform (name ^. nameID)
+
+    unform :: UnqualifiedNameID -> (HS.IdentifiedURI HS.NameIDFormat, ST)
+    unform (NameIDFUnspecified n) = (HS.Identified HS.NameIDFormatUnspecified, n)
+    unform (NameIDFEmail       n) = (HS.Identified HS.NameIDFormatEmail, n)
+    unform (NameIDFX509        n) = (HS.Identified HS.NameIDFormatX509, n)
+    unform (NameIDFWindows     n) = (HS.Identified HS.NameIDFormatWindows, n)
+    unform (NameIDFKerberos    n) = (HS.Identified HS.NameIDFormatKerberos, n)
+    unform (NameIDFEntity      n) = (HS.Identified HS.NameIDFormatEntity, n)
+    unform (NameIDFPersistent  n) = (HS.Identified HS.NameIDFormatPersistent, n)
 
 importVersion :: (HasCallStack, MonadThrow m) => HS.SAMLVersion -> m Version
 importVersion HS.SAML20 = pure Version_2_0
@@ -413,20 +441,20 @@ exportStatus :: HasCallStack => Status -> HS.Status
 exportStatus StatusSuccess = HS.Status (HS.StatusCode HS.StatusSuccess []) Nothing Nothing
 exportStatus bad = error $ "not implemented: " <> show bad
 
-importIssuer :: (HasCallStack, MonadThrow m) => HS.Issuer -> m NameID
-importIssuer = importNameID . HS.issuer
+importIssuer :: (HasCallStack, MonadThrow m) => HS.Issuer -> m Issuer
+importIssuer = fmap Issuer . importNameID . HS.issuer
 
-exportIssuer :: HasCallStack => NameID -> HS.Issuer
-exportIssuer = HS.Issuer . exportNameID
+exportIssuer :: HasCallStack => Issuer -> HS.Issuer
+exportIssuer = HS.Issuer . exportNameID . fromIssuer
 
-importOptionalIssuer :: (HasCallStack, MonadThrow m) => Maybe HS.Issuer -> m (Maybe NameID)
+importOptionalIssuer :: (HasCallStack, MonadThrow m) => Maybe HS.Issuer -> m (Maybe Issuer)
 importOptionalIssuer = fmapFlipM importIssuer
 
-exportOptionalIssuer :: HasCallStack => Maybe NameID -> Maybe HS.Issuer
+exportOptionalIssuer :: HasCallStack => Maybe Issuer -> Maybe HS.Issuer
 exportOptionalIssuer = fmap exportIssuer
 
-importRequiredIssuer :: (HasCallStack, MonadThrow m) => Maybe HS.Issuer -> m NameID
+importRequiredIssuer :: (HasCallStack, MonadThrow m) => Maybe HS.Issuer -> m Issuer
 importRequiredIssuer = maybe (die (Proxy @AuthnRequest) ("no issuer id" :: String)) importIssuer
 
-exportRequiredIssuer :: HasCallStack => NameID -> Maybe HS.Issuer
+exportRequiredIssuer :: HasCallStack => Issuer -> Maybe HS.Issuer
 exportRequiredIssuer = Just . exportIssuer

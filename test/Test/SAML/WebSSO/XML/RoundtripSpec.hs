@@ -116,7 +116,7 @@ genSPSSODescriptor = pure SPSSODescriptor
 
 
 genAuthnRequest :: Gen AuthnRequest
-genAuthnRequest = AuthnRequest <$> genID <*> genVersion <*> genTime <*> genNameID <*> pure Nothing
+genAuthnRequest = AuthnRequest <$> genID <*> genVersion <*> genTime <*> genIssuer
 
 genTime :: Gen Time
 genTime = pure $ unsafeReadTime "2013-03-18T07:33:56Z"
@@ -127,8 +127,12 @@ genDuration = pure Duration
 genID :: Gen ID
 genID = ID <$> genNiceText (Range.singleton 2)
 
+genIssuer :: Gen Issuer
+genIssuer = Issuer <$> genNameID
+
+-- | TODO: what else do we need here?
 genNameID :: Gen NameID
-genNameID = NameID <$> genNiceText (Range.singleton 2)
+genNameID = entityNameID <$> genURI
 
 genNonEmpty :: Range Int -> Gen a -> Gen (NonEmpty a)
 genNonEmpty rng gen = (:|) <$> gen <*> Gen.list rng gen
@@ -146,7 +150,7 @@ genResponse genPayload = do
   x2 <- genVersion
   x3 <- genTime
   x4 <- Gen.maybe genURI
-  x5 <- Gen.maybe genNameID
+  x5 <- Gen.maybe genIssuer
   x7 <- genStatus
   x8 <- Gen.small genPayload
 
@@ -156,7 +160,7 @@ genResponse genPayload = do
     , _rspVersion      = x2 :: Version
     , _rspIssueInstant = x3 :: Time
     , _rspDestination  = x4 :: Maybe URI
-    , _rspIssuer       = x5 :: Maybe NameID
+    , _rspIssuer       = x5 :: Maybe Issuer
     , _rspStatus       = x7 :: Status
     , _rspPayload      = x8 :: payload
     }
@@ -166,7 +170,7 @@ genAssertion = do
   x0 <- genVersion
   x1 <- genID
   x2 <- genTime
-  x3 <- genNameID
+  x3 <- genIssuer
   x5 <- Gen.maybe genConditions
   x6 <- genSubjectAndStatements
 
@@ -174,7 +178,7 @@ genAssertion = do
     { _assVersion       = x0 :: Version
     , _assID            = x1 :: ID
     , _assIssueInstant  = x2 :: Time
-    , _assIssuer        = x3 :: NameID
+    , _assIssuer        = x3 :: Issuer
     , _assConditions    = x5 :: Maybe Conditions
     , _assContents      = x6 :: SubjectAndStatements
     }
@@ -190,11 +194,8 @@ genSubjectAndStatements = SubjectAndStatements <$> genSubject <*> genNonEmpty (R
 
 genSubject :: Gen Subject
 genSubject = Subject
-  <$> genSubjectID
+  <$> genNameID
   <*> Gen.list (Range.linear 0 8) genSubjectConfirmation
-
-genSubjectID :: Gen SubjectID
-genSubjectID = SubjectID <$> genNiceWord
 
 genSubjectConfirmation :: Gen SubjectConfirmation
 genSubjectConfirmation = SubjectConfirmation
@@ -248,7 +249,7 @@ genAttribute :: Gen Attribute
 genAttribute = Gen.choice
   [ Attribute
     <$> genNiceWord
-    <*> Gen.maybe genNiceWord
+    <*> Gen.maybe genURI
     <*> Gen.maybe genNiceWord
     <*> Gen.list (Range.linear 0 8) (Gen.small genAttributeValue)
   ]

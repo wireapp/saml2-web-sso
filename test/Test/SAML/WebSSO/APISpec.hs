@@ -11,6 +11,7 @@
 module Test.SAML.WebSSO.APISpec (spec) where
 
 import Control.Lens
+import Data.Either
 import Data.EitherR
 import Data.String.Conversions
 import Servant
@@ -19,10 +20,13 @@ import Test.Hspec hiding (pending)
 import Test.Hspec.Wai
 import Test.Hspec.Wai.Matcher
 import Text.XML as XML
+import Text.XML.DSig
 import Text.XML.Util
 import Util
 
+import qualified Crypto.PubKey.RSA as RSA
 import qualified Data.ByteString.Base64.Lazy as EL
+import qualified Data.X509 as X509
 
 import SAML.WebSSO
 import TestSP
@@ -117,6 +121,35 @@ spec = describe "API" $ do
 
       Right want `shouldBe` (fmapL show . parseText def . cs $ mimeRender (Proxy @HTML) (FormRedirect uri doc))
 
+  describe "simpleVerifyAuthnResponse" $ do
+    let check goodsig knownkey expectOutcome =
+          it (show expectOutcome) $ do
+            let respfile = if goodsig
+                  then "microsoft-authnresponse-2.xml"
+                  else "microsoft-authnresponse-2-badsig.xml"
+
+            resp :: LBS <- cs <$> readSampleIO respfile
+            Right (cert :: X509.SignedCertificate) <- parseKeyInfo <$> readSampleIO "microsoft-idp-keyinfo.xml"
+            let Right (SignCreds _ (SignKeyRSA (key :: RSA.PublicKey))) = keyInfoToCreds cert
+
+            let foundkey :: Maybe RSA.PublicKey
+                foundkey = if knownkey then Just key else Nothing
+
+                go :: Either String ()
+                go = simpleVerifyAuthnResponse foundkey resp
+
+            if expectOutcome
+              then go `shouldBe` Right ()
+              else go `shouldSatisfy` isLeft
+
+    context "good signature" $ do
+      context "known key"    $ check True True True
+      context "unknown key"  $ check True False False
+
+    context "bad signature"  $ do
+      context "known key"    $ check False True False
+      context "unknown key"  $ check False False False
+
   describe "cookies" $ do
     let c1 = togglecookie Nothing
         c2 = togglecookie (Just "nick")
@@ -153,11 +186,13 @@ spec = describe "API" $ do
         body = [("SAMLResponse", cs . EL.encode . cs $ readSample "microsoft-authnresponse-2.xml")]
 
     context "unknown idp" . withapp (Proxy @APIAuthResp) authresp testCtx1 $ do
-      it "responds with 400" $ postresp `shouldRespondWith` 400 { matchBody = bodyContains "no public key" }
+      it "responds with 400" $ postresp `shouldRespondWith`
+        400 { matchBody = bodyContains "invalid signature: missing or unknown issuer." }
 
     context "known idp, bad timestamp" . withapp (Proxy @APIAuthResp) authresp testCtx2 $ do
       it "responds with 402" $ do
-        postresp `shouldRespondWith` 403 { matchBody = bodyEquals "violation of NotBefore condition" }
+        postresp `shouldRespondWith`
+          403 { matchBody = bodyEquals "violation of NotBefore condition" }
 
     let testCtx2' = testCtx2 & ctxNow .~ unsafeReadTime "2018-04-14T09:53:59Z"
     context "known idp, good timestamp" . withapp (Proxy @APIAuthResp) authresp testCtx2' $ do

@@ -31,18 +31,14 @@ import Data.Maybe
 import Data.StackPrism
 import Data.String
 import Data.String.Conversions
+import Debug.Trace (trace)  -- (for crude logging in 'renderFailed')
 import GHC.Stack
 import Prelude hiding (id, (.))
 import Text.Read (readMaybe)
 import Text.XML
-
-import qualified Data.Map as Map
-
 import Text.XML.Util
 
-
-import Debug.Trace
--- import Data.Typeable
+import qualified Data.Map as Map
 
 
 ----------------------------------------------------------------------
