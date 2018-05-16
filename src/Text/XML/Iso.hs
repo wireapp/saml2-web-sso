@@ -139,11 +139,11 @@ type instance XmlValue 'CtxCont  = ST
 type AVal = Maybe ST
 
 data Grammar (ctx :: Ctx) doc val where
-  Id :: Grammar ctx t t  -- ^ see 'Category' instance
-  (:.) :: Grammar ctx t2 t3 -> Grammar ctx t1 t2 -> Grammar ctx t1 t3  -- ^ see 'Category' instance
+  Id :: Grammar ctx t t  -- see 'Category' instance
+  (:.) :: Grammar ctx t2 t3 -> Grammar ctx t1 t2 -> Grammar ctx t1 t3  -- see 'Category' instance
 
-  Empty :: Grammar ctx t1 t2  -- ^ see 'Monoid' instance
-  (:<>) :: Grammar ctx t1 t2 -> Grammar ctx t1 t2 -> Grammar ctx t1 t2  -- ^ see 'Monoid' instance
+  Empty :: Grammar ctx t1 t2  -- see 'Monoid' instance
+  (:<>) :: Grammar ctx t1 t2 -> Grammar ctx t1 t2 -> Grammar ctx t1 t2  -- see 'Monoid' instance
 
   Pure :: (t1 -> Either ST v) -> (t2 -> Maybe t1) -> Grammar ctx t1 t2
   Many :: Grammar ctx t t -> Grammar ctx t t
