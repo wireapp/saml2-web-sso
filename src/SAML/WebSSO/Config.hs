@@ -31,7 +31,7 @@ import qualified Data.Yaml as Yaml
 
 import SAML.WebSSO.Config.TH (deriveJSONOptions)
 import SAML.WebSSO.Types
-import SAML.WebSSO.XML (unsafeParseURI, parseURI', renderURI)
+import Text.XML.Util (unsafeParseURI, parseURI', renderURI)
 
 
 ----------------------------------------------------------------------

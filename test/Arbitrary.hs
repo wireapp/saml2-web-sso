@@ -5,6 +5,7 @@ module Arbitrary where
 import Data.String.Conversions
 import Hedgehog
 import SAML.WebSSO
+import Text.XML.Util
 import URI.ByteString
 
 import qualified Data.Text as ST

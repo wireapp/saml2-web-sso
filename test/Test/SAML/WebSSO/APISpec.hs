@@ -19,6 +19,7 @@ import Test.Hspec hiding (pending)
 import Test.Hspec.Wai
 import Test.Hspec.Wai.Matcher
 import Text.XML as XML
+import Text.XML.Util
 import Util
 
 import qualified Data.ByteString.Base64.Lazy as EL

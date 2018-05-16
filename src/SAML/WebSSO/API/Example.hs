@@ -28,10 +28,10 @@ import Network.Wai hiding (Response)
 import SAML.WebSSO.API
 import SAML.WebSSO.Config
 import SAML.WebSSO.SP
-import SAML.WebSSO.XML
 import Servant.API hiding (URI(..))
 import Servant.Server
 import Text.Hamlet.XML
+import Text.XML.Util
 import URI.ByteString
 import Web.Cookie
 

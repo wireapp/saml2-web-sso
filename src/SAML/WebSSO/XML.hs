@@ -17,7 +17,6 @@
 module SAML.WebSSO.XML where
 
 import Control.Category (Category(..))
-import Control.Exception (ErrorCall(..))
 import Control.Monad
 import Control.Monad.Catch
 import qualified Data.List as List
@@ -25,9 +24,8 @@ import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Maybe (fromMaybe, isNothing, maybeToList)
 import Data.Monoid ((<>))
 import Data.String.Conversions
-import qualified Data.Text as ST
 import Data.Time
-import Data.Typeable (Proxy(Proxy), Typeable, typeOf)
+import Data.Typeable (Proxy(Proxy), Typeable)
 import GHC.Stack
 import Lens.Micro
 import Prelude hiding ((.), id)
@@ -68,11 +66,6 @@ renderToDocument = mkDocument . renderRoot
 
 parseFromDocument :: (HasXML a, MonadThrow m) => Document -> m a
 parseFromDocument = parse . fromDocument
-
-
-die :: forall a b c m. (Typeable a, Show b, MonadThrow m) => Proxy a -> b -> m c
-die Proxy msg = throwM . ErrorCall $
-  "HasXML: could not parse " <> show (typeOf @a undefined) <> ": " <> show msg
 
 
 -- TODO: perhaps we want to split this up: HasXML (for nameSpaces), and HasXMLParse, HasXMLRender,
@@ -124,20 +117,6 @@ renderTime (Time utctime) =
         (t, u) -> case List.splitAt 8 u of
           (_, "") -> t <> u
           (v, _)  -> t <> v <> "Z"
-
-renderURI :: URI -> ST
-renderURI = cs . serializeURIRef'
-
-parseURI' :: MonadThrow m => ST -> m URI  -- TODO: find a better name.  make renderURI match that name.
-parseURI' = either (die (Proxy @URI)) pure . parseURI laxURIParserOptions . cs . ST.strip
-
-unsafeParseURI :: ST -> URI
-unsafeParseURI = either (error . ("could not parse config: " <>) . show) id . parseURI'
-
--- | fmap an outer computation into an inner computation that may fail, then flip inner @n@ and
--- outer @m@.  (except for the flip, this is just 'fmap'.)
-fmapFlipM :: (Monad m, Traversable n) => (a -> m b) -> n a -> m (n b)
-fmapFlipM f = sequence . fmap f
 
 
 ----------------------------------------------------------------------

@@ -22,6 +22,7 @@ import Lens.Micro.TH
 import SAML.WebSSO
 import Servant.Server
 import Text.XML.DSig
+import Text.XML.Util
 import Util
 
 
