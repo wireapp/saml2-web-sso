@@ -14,7 +14,10 @@ packages:
     git: https://github.com/wireapp/hspec-wai
     commit: ca10d13deab929f1cc3a569abea2e7fbe35fdbe3  # https://github.com/hspec/hspec-wai/pull/49
   extra-dep: true
+- location:
+    git: https://github.com/wireapp/servant-multipart
+    commit: a5f0b9ce508f9d4c28a41d2b856387a7db281577  # https://github.com/haskell-servant/servant-multipart/pull/17
+  extra-dep: true
 
 extra-deps:
-- servant-multipart-0.11.1
 - invertible-hxt-0.1  # for hsaml2

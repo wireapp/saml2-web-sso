@@ -88,18 +88,17 @@ createID = ID . fixMSAD . UUID.toText <$> createUUID
     fixMSAD :: ST -> ST
     fixMSAD = cs . ("id" <>) . filter (/= '-') . cs
 
-createAuthnRequest :: SP m => m AuthnRequest
-createAuthnRequest = do
+createAuthnRequest :: SP m => NameID -> m AuthnRequest
+createAuthnRequest issuer = do
   x0 <- createID
   x1 <- (^. cfgVersion) <$> getConfig
   x2 <- getNow
-  x3 <- NameID <$> getPath' SsoPathAuthnResp
 
   pure AuthnRequest
     { _rqID               = x0 :: ID
     , _rqVersion          = x1 :: Version
     , _rqIssueInstant     = x2 :: Time
-    , _rqIssuer           = x3 :: NameID
+    , _rqIssuer           = issuer
     , _rqDestination      = Nothing
     }
 

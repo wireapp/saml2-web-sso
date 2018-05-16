@@ -32,18 +32,20 @@
 module SAML.WebSSO.API where
 
 import Control.Monad.Except hiding (ap)
+import Control.Monad.Catch
 import Data.Binary.Builder (toLazyByteString)
 import Data.EitherR
 import Data.Function
 import Data.List
 import Data.Proxy
 import Data.String.Conversions
+import GHC.Stack
 import Lens.Micro
 import Network.HTTP.Media ((//))
 import Network.Wai hiding (Response)
 import Network.Wai.Internal as Wai
 import Servant.API.ContentTypes
-import Servant.API hiding (URI)
+import Servant.API hiding (URI(..))
 import Servant.Multipart
 import Servant.Server
 import Text.Hamlet.XML
@@ -87,6 +89,7 @@ api appName = meta appName :<|> authreq :<|> authresp
 
 type GetVoid  = Get  '[HTML, JSON, XML] Void
 type PostVoid = Post '[HTML, JSON, XML] Void
+
 
 data XML
 
@@ -188,26 +191,50 @@ setHttpCachePolicy ap rq respond = ap rq $ respond . addHeadersToResponse httpCa
 
 
 ----------------------------------------------------------------------
+-- paths
+
+appendURI :: SBS -> URI -> SBS
+appendURI path uri = norm uri { uriPath = uriPath uri <> path }
+  where
+    norm :: URI -> SBS
+    norm = normalizeURIRef' httpNormalization
+
+getLandingURI :: (HasCallStack, SP m, MonadError ServantErr m) => m URI
+getLandingURI = (^. cfgSPAppURI) <$> getConfig
+
+getResponseURI :: forall m. (HasCallStack, SP m, MonadError ServantErr m) => m URI
+getResponseURI = resp =<< (^. cfgSPSsoURI) <$> getConfig
+  where
+    resp :: URI -> m URI
+    resp uri = either showmsg pure (parseURI' uri')
+      where
+        uri' :: ST
+        uri' = cs $ appendURI (cs . toUrlPiece $ safeLink (Proxy @API) (Proxy @APIAuthResp)) uri
+
+        showmsg :: SomeException -> m a
+        showmsg msg = throwError err500 { errBody = "server configuration error: " <> cs (show (uri', msg)) }
+
+
+----------------------------------------------------------------------
 -- handlers
 
-meta :: SP m => ST -> m Meta.SPDesc
+meta :: SPNT m => ST -> m Meta.SPDesc
 meta appName = do
   enterH "meta"
-  desc :: Meta.SPDescPre <- do
-    hom <- getPath SpPathHome
-    rsp <- getPath SsoPathAuthnResp
-    Meta.spDesc appName hom rsp
-  pure . Meta.spMeta $ desc
+  landing <- getLandingURI
+  resp <- getResponseURI
+  Meta.spMeta <$> Meta.spDesc appName landing resp
 
-authreq :: (SPNT m) => ST -> m (FormRedirect AuthnRequest)
+authreq :: SPNT m => ST -> m (FormRedirect AuthnRequest)
 authreq idpname = do
   enterH "authreq"
   uri <- (^. idpRequestUri) <$> getIdPConfig idpname
-  req <- createAuthnRequest
+  issuer <- NameID . renderURI <$> getLandingURI
+  req <- createAuthnRequest issuer
   leaveH $ FormRedirect uri req
 
 -- | Get config and pass the missing idp credentials to the response constructor.
-resolveBody :: (SPNT m) => AuthnResponseBody -> m AuthnResponse
+resolveBody :: SPNT m => AuthnResponseBody -> m AuthnResponse
 resolveBody (AuthnResponseBody mkbody) = do
   idps <- (^. cfgIdps) <$> getConfig
   pubkeys <- forM idps $ \idp -> do
@@ -217,7 +244,7 @@ resolveBody (AuthnResponseBody mkbody) = do
       SignCreds SignDigestSha256 (SignKeyRSA pubkey) -> pure (path, pubkey)
   either throwError pure $ mkbody (`Map.lookup` Map.fromList pubkeys)
 
-authresp :: (SPNT m) => AuthnResponseBody -> m Void
+authresp :: SPNT m => AuthnResponseBody -> m Void
 authresp body = do
   enterH "authresp: entering"
   resp <- resolveBody body
@@ -228,8 +255,7 @@ authresp body = do
     AccessDenied reasons
       -> logger (show reasons) >> reject (cs $ ST.intercalate ", " reasons)
     AccessGranted uid
-      -> getPath SpPathHome >>=
-         \sphome -> redirect sphome [cookieToHeader . togglecookie . Just . cs . show $ uid]
+      -> getLandingURI >>= (`redirect` [cookieToHeader . togglecookie . Just . cs . show $ uid])
 
 
 ----------------------------------------------------------------------
