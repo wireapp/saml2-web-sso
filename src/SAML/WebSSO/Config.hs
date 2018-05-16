@@ -19,8 +19,6 @@ import Data.Aeson.TH
 import Data.Monoid
 import Data.String.Conversions
 import GHC.Generics
-import GHC.Stack
-import Lens.Micro
 import Lens.Micro.TH
 import System.Environment
 import System.FilePath
@@ -50,8 +48,8 @@ data Config = Config
   }
   deriving (Eq, Show, Generic)
 
-data LogLevel = DEBUG | INFO | WARN | FATAL | SILENT
-  deriving (Eq, Show, Enum, Bounded, Generic, FromJSON, ToJSON)
+data LogLevel = DEBUG | INFO | WARN | ERROR | CRITICAL | SILENT
+  deriving (Eq, Ord, Show, Enum, Bounded, Generic, FromJSON, ToJSON)
 
 data IdPConfig = IdPConfig
   { _idpPath            :: ST
@@ -144,29 +142,3 @@ class Monad m => HasConfig m where
 
 instance HasConfig IO where
   getConfig = configIO
-
-
-----------------------------------------------------------------------
--- uri paths
-
-data Path = SpPathHome | SpPathLocalLogout | SpPathSingleLogout
-          | SsoPathMeta | SsoPathAuthnReq | SsoPathAuthnResp
-  deriving (Eq, Show)
-
-
-getPath :: (HasConfig m, HasCallStack) => Path -> m URI
-getPath = fmap unsafeParseURI . getPath'
-
-getPath' :: (HasConfig m, ConvertibleStrings SBS s) => Path -> m s
-getPath' = \case
-  SpPathHome         -> sp  ""
-  SpPathLocalLogout  -> sp  "/logout/local"
-  SpPathSingleLogout -> sp  "/logout/single"
-  SsoPathMeta        -> sso "/meta"
-  SsoPathAuthnReq    -> sso "/authreq"
-  SsoPathAuthnResp   -> sso "/authresp"
-  where
-    sp  p = appendpath p . (^. cfgSPAppURI) <$> getConfig
-    sso p = appendpath p . (^. cfgSPSsoURI) <$> getConfig
-    appendpath path uri = norm uri { uriPath = uriPath uri <> path }
-    norm = cs . normalizeURIRef' httpNormalization

@@ -22,3 +22,4 @@ import SAML.WebSSO.Config as X
 import SAML.WebSSO.SP as X
 import SAML.WebSSO.Types as X
 import SAML.WebSSO.XML as X
+import SAML.WebSSO.XML.Meta as X

@@ -32,18 +32,20 @@
 module SAML.WebSSO.API where
 
 import Control.Monad.Except hiding (ap)
+import Control.Monad.Catch
 import Data.Binary.Builder (toLazyByteString)
 import Data.EitherR
 import Data.Function
 import Data.List
 import Data.Proxy
 import Data.String.Conversions
+import GHC.Stack
 import Lens.Micro
 import Network.HTTP.Media ((//))
 import Network.Wai hiding (Response)
 import Network.Wai.Internal as Wai
 import Servant.API.ContentTypes
-import Servant.API hiding (URI)
+import Servant.API hiding (URI(..))
 import Servant.Multipart
 import Servant.Server
 import Text.Hamlet.XML
@@ -57,6 +59,7 @@ import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
 import qualified Data.Text as ST
 import qualified Network.HTTP.Types.Header as HttpTypes
+import qualified SAML.WebSSO.XML.Meta as Meta
 
 import SAML.WebSSO.Config
 import SAML.WebSSO.SP
@@ -70,15 +73,15 @@ import Text.XML.DSig
 
 type API = APIMeta :<|> APIAuthReq :<|> APIAuthResp
 
-type APIMeta     = "meta" :> Get '[XML] EntityDescriptor
+type APIMeta     = "meta" :> Get '[XML] Meta.SPDesc
 type APIAuthReq  = "authreq" :> Capture "idp" ST :> Get '[HTML] (FormRedirect AuthnRequest)
 type APIAuthResp = "authresp" :> MultipartForm Mem AuthnResponseBody :> PostVoid
 
 -- FUTUREWORK: respond with redirect in case of success, instead of responding with Void and
 -- handling all cases with exceptions: https://github.com/haskell-servant/servant/issues/117
 
-api :: (SP m, SPNT m) => ServerT API m
-api = meta :<|> authreq :<|> authresp
+api :: (SP m, SPNT m) => ST -> ServerT API m
+api appName = meta appName :<|> authreq :<|> authresp
 
 
 ----------------------------------------------------------------------
@@ -86,6 +89,7 @@ api = meta :<|> authreq :<|> authresp
 
 type GetVoid  = Get  '[HTML, JSON, XML] Void
 type PostVoid = Post '[HTML, JSON, XML] Void
+
 
 data XML
 
@@ -187,22 +191,50 @@ setHttpCachePolicy ap rq respond = ap rq $ respond . addHeadersToResponse httpCa
 
 
 ----------------------------------------------------------------------
+-- paths
+
+appendURI :: SBS -> URI -> SBS
+appendURI path uri = norm uri { uriPath = uriPath uri <> path }
+  where
+    norm :: URI -> SBS
+    norm = normalizeURIRef' httpNormalization
+
+getLandingURI :: (HasCallStack, SP m, MonadError ServantErr m) => m URI
+getLandingURI = (^. cfgSPAppURI) <$> getConfig
+
+getResponseURI :: forall m. (HasCallStack, SP m, MonadError ServantErr m) => m URI
+getResponseURI = resp =<< (^. cfgSPSsoURI) <$> getConfig
+  where
+    resp :: URI -> m URI
+    resp uri = either showmsg pure (parseURI' uri')
+      where
+        uri' :: ST
+        uri' = cs $ appendURI (cs . toUrlPiece $ safeLink (Proxy @API) (Proxy @APIAuthResp)) uri
+
+        showmsg :: SomeException -> m a
+        showmsg msg = throwError err500 { errBody = "server configuration error: " <> cs (show (uri', msg)) }
+
+
+----------------------------------------------------------------------
 -- handlers
 
-meta :: SP m => m EntityDescriptor
-meta = do
+meta :: SPNT m => ST -> m Meta.SPDesc
+meta appName = do
   enterH "meta"
-  undefined
+  landing <- getLandingURI
+  resp <- getResponseURI
+  Meta.spMeta <$> Meta.spDesc appName landing resp
 
-authreq :: (SPNT m) => ST -> m (FormRedirect AuthnRequest)
+authreq :: SPNT m => ST -> m (FormRedirect AuthnRequest)
 authreq idpname = do
   enterH "authreq"
   uri <- (^. idpRequestUri) <$> getIdPConfig idpname
-  req <- createAuthnRequest
+  issuer <- NameID . renderURI <$> getLandingURI
+  req <- createAuthnRequest issuer
   leaveH $ FormRedirect uri req
 
 -- | Get config and pass the missing idp credentials to the response constructor.
-resolveBody :: (SPNT m) => AuthnResponseBody -> m AuthnResponse
+resolveBody :: SPNT m => AuthnResponseBody -> m AuthnResponse
 resolveBody (AuthnResponseBody mkbody) = do
   idps <- (^. cfgIdps) <$> getConfig
   pubkeys <- forM idps $ \idp -> do
@@ -212,19 +244,18 @@ resolveBody (AuthnResponseBody mkbody) = do
       SignCreds SignDigestSha256 (SignKeyRSA pubkey) -> pure (path, pubkey)
   either throwError pure $ mkbody (`Map.lookup` Map.fromList pubkeys)
 
-authresp :: (SPNT m) => AuthnResponseBody -> m Void
+authresp :: SPNT m => AuthnResponseBody -> m Void
 authresp body = do
   enterH "authresp: entering"
   resp <- resolveBody body
   enterH $ "authresp: " <> ppShow resp
   verdict <- judge resp
-  logger $ show verdict
+  logger DEBUG $ show verdict
   case verdict of
     AccessDenied reasons
-      -> logger (show reasons) >> reject (cs $ ST.intercalate ", " reasons)
+      -> logger INFO (show reasons) >> reject (cs $ ST.intercalate ", " reasons)
     AccessGranted uid
-      -> getPath SpPathHome >>=
-         \sphome -> redirect sphome [cookieToHeader . togglecookie . Just . cs . show $ uid]
+      -> getLandingURI >>= (`redirect` [cookieToHeader . togglecookie . Just . cs . show $ uid])
 
 
 ----------------------------------------------------------------------
@@ -232,16 +263,16 @@ authresp body = do
 
 crash :: (SP m, MonadError ServantErr m) => String -> m a
 crash msg = do
-  logger msg
+  logger CRITICAL msg
   throwError err500 { errBody = "internal error: consult server logs." }
 
 enterH :: SP m => String -> m ()
 enterH msg =
-  logger $ "entering handler: " <> msg
+  logger DEBUG $ "entering handler: " <> msg
 
 leaveH :: (Show a, SP m) => a -> m a
 leaveH x = do
-  logger $ "leaving handler: " <> show x
+  logger DEBUG $ "leaving handler: " <> show x
   pure x
 
 

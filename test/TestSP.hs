@@ -76,9 +76,6 @@ instance HasConfig TestSP where
   getConfig = gets (^. ctxConfig)
 
 instance SP TestSP where
-  logger :: String -> TestSP ()
-  logger msg = ((^. cfgLogLevel) <$> getConfig) >>= liftIO . (`loggerIO` msg)
-
   getNow :: TestSP Time
   getNow = gets (^. ctxNow)
 

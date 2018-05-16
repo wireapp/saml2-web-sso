@@ -128,11 +128,11 @@ spec = describe "API" $ do
     it  "roundtrip-2" $ Right c2 `shouldBe` rndtrip c2
 
 
-  describe "meta" . withapp (Proxy @APIMeta) meta testCtx1 $ do
+  describe "meta" . withapp (Proxy @APIMeta) (meta "toy-sp") testCtx1 $ do
     it "responds with 200" $ do
-      pending
+      get "/meta" `shouldRespondWith` 200
     it "responds with an 'SPSSODescriptor'" $ do
-      pending
+      get "/meta" `shouldRespondWith` 200 { matchBody = bodyContains "OrganizationName xml:lang=\"EN\">toy-sp" }
 
   describe "authreq" $ do
     context "unknown idp" . withapp (Proxy @APIAuthReq) authreq testCtx1 $ do
@@ -155,7 +155,7 @@ spec = describe "API" $ do
       it "responds with 400" $ postresp `shouldRespondWith` 400 { matchBody = bodyContains "no public key" }
 
     context "known idp, bad timestamp" . withapp (Proxy @APIAuthResp) authresp testCtx2 $ do
-      it "responds with 302" $ do
+      it "responds with 402" $ do
         postresp `shouldRespondWith` 403 { matchBody = bodyEquals "violation of NotBefore condition" }
 
     let testCtx2' = testCtx2 & ctxNow .~ unsafeReadTime "2018-04-14T09:53:59Z"

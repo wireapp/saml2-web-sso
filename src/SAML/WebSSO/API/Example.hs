@@ -20,19 +20,20 @@
 -- build other apps, but it is more likely to serve as a tutorial.
 module SAML.WebSSO.API.Example where
 
+import Control.Lens
 import Data.Proxy
 import Data.String.Conversions
 import GHC.Stack
 import Network.Wai hiding (Response)
-import Servant.API.ContentTypes
-import Servant.API hiding (URI)
-import Servant.Server
-import Text.Hamlet.XML
-import Web.Cookie
-
 import SAML.WebSSO.API
 import SAML.WebSSO.Config
 import SAML.WebSSO.SP
+import SAML.WebSSO.XML
+import Servant.API hiding (URI(..))
+import Servant.Server
+import Text.Hamlet.XML
+import URI.ByteString
+import Web.Cookie
 
 
 -- | The most straight-forward 'Application' that can be constructed from 'api', 'API'.
@@ -53,7 +54,7 @@ spapi :: (SP m, SPNT m) => ServerT SPAPI m
 spapi = loginStatus :<|> localLogout :<|> singleLogout
 
 appapi :: (SP m, SPNT m) => ServerT APPAPI m
-appapi = spapi :<|> api
+appapi = spapi :<|> api "toy-sp"
 
 loginStatus :: SP m => Maybe SetCookie -> m LoginStatus
 loginStatus cookie = do
@@ -94,3 +95,27 @@ instance MimeRender HTML LoginStatus where
           <p>
             (this is local logout; logout via IdP is not implemented.)
       |]
+
+
+----------------------------------------------------------------------
+-- uri paths
+
+data Path = SpPathHome | SpPathLocalLogout | SpPathSingleLogout
+          | SsoPathMeta | SsoPathAuthnReq | SsoPathAuthnResp
+  deriving (Eq, Show)
+
+
+getPath :: (HasConfig m, HasCallStack) => Path -> m URI
+getPath = fmap unsafeParseURI . getPath'
+
+getPath' :: forall m. (HasConfig m) => Path -> m ST
+getPath' = fmap cs . \case
+  SpPathHome         -> sp  ""
+  SpPathLocalLogout  -> sp  "/logout/local"
+  SpPathSingleLogout -> sp  "/logout/single"
+  SsoPathMeta        -> sso "/meta"
+  SsoPathAuthnReq    -> sso "/authreq"
+  SsoPathAuthnResp   -> sso "/authresp"
+  where
+    sp  p = appendURI p . (^. cfgSPAppURI) <$> getConfig
+    sso p = appendURI p . (^. cfgSPSsoURI) <$> getConfig
