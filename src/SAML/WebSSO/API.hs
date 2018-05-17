@@ -66,6 +66,7 @@ import SAML.WebSSO.SP
 import SAML.WebSSO.Types
 import SAML.WebSSO.XML
 import Text.XML.DSig
+import Text.XML.Util
 
 
 ----------------------------------------------------------------------

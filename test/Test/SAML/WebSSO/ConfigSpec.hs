@@ -17,6 +17,7 @@ import Hedgehog
 import SAML.WebSSO
 import Test.Hspec
 import Text.XML.DSig
+import Text.XML.Util
 import Util
 
 import qualified Data.Yaml as Yaml

@@ -38,7 +38,7 @@ import qualified Data.UUID.V4 as UUID
 
 import SAML.WebSSO.Config
 import SAML.WebSSO.Types
-import SAML.WebSSO.XML
+import Text.XML.Util
 
 
 -- | Application logic of the service provider.

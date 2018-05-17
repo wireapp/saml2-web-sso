@@ -24,6 +24,7 @@ import System.Process (system)
 import Test.Hspec
 import Text.Show.Pretty
 import Text.XML
+import Text.XML.Util
 import URI.ByteString
 
 import qualified Data.Text.Lazy.IO as LT

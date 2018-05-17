@@ -17,7 +17,11 @@ before_install:
 - travis_retry curl -L https://get.haskellstack.org/stable/linux-x86_64.tar.gz | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
 
 install:
-- stack --no-terminal --install-ghc test --only-dependencies
+- stack --no-terminal --install-ghc test --fast --only-dependencies
 
 script:
-- stack --no-terminal test --haddock --no-haddock-deps
+- export SAML2_WEB_SSO_ROOT=`pwd`
+- stack --no-terminal test --fast --haddock --no-haddock-deps
+
+notifications:  # see https://docs.travis-ci.com/user/notifications
+  email: false

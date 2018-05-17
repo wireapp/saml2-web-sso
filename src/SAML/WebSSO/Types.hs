@@ -200,9 +200,9 @@ data Status =
 -- assertion
 
 -- | What the IdP has to say to the SP about the 'Subject'.  In essence, an 'Assertion' is a
--- 'Subject' and a set of 'Statement's on that 'Subject'.
+-- 'Subject' and a set of 'Statement's on that 'Subject'.  [1/2.3.3]
 data Assertion
-  = Assertion  -- ^ [1/2.3.3]
+  = Assertion
     { _assVersion       :: Version
     , _assID            :: ID
     , _assIssueInstant  :: Time
@@ -264,13 +264,13 @@ newtype IP = IP ST
 
 -- | The core content of the 'Assertion'.  [1/2.7]
 data Statement
-  = AuthnStatement  -- ^ [1/2.7.2]
+  = AuthnStatement  -- [1/2.7.2]
     { _astAuthnInstant        :: Time
     , _astSessionIndex        :: Maybe ST
     , _astSessionNotOnOrAfter :: Maybe Time
     , _astSubjectLocality     :: Maybe Locality
     }
-  | AttributeStatement  -- ^ [1/2.7.3]
+  | AttributeStatement  -- [1/2.7.3]
     { _attrstAttrs :: NonEmpty Attribute
     }
   deriving (Eq, Show)
@@ -294,7 +294,7 @@ data Attribute =
     }
   deriving (Eq, Show)
 
--- ^ [1/2.7.3.1.1]
+-- | [1/2.7.3.1.1]
 data AttributeValue =
     AttributeValueText ST
   -- AttributeValueInt Int

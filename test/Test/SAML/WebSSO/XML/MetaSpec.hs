@@ -18,6 +18,7 @@ import SAML.WebSSO
 import Test.Hspec
 import TestSP
 import Text.XML
+import Text.XML.Util
 import Util
 
 spec :: Spec
@@ -47,5 +48,4 @@ spec = do
             }
           SPDesc (want :: Document) = spMeta given
           have :: Either String Document = fmapL show . parseText def . cs $ readSample "our-spssodescriptor.xml"
-      putStrLn . cs $ render' want
       have `shouldBe` Right want
