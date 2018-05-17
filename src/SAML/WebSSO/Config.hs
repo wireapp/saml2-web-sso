@@ -14,11 +14,13 @@
 -- TODO: disallow orphans.
 module SAML.WebSSO.Config where
 
+import Control.Monad (when)
 import Data.Aeson
 import Data.Aeson.TH
 import Data.Monoid
 import Data.String.Conversions
 import GHC.Generics
+import Lens.Micro
 import Lens.Micro.TH
 import System.Environment
 import System.FilePath
@@ -48,7 +50,7 @@ data Config = Config
   }
   deriving (Eq, Show, Generic)
 
-data LogLevel = DEBUG | INFO | WARN | ERROR | CRITICAL | SILENT
+data LogLevel = SILENT | CRITICAL | ERROR | WARN | INFO | DEBUG
   deriving (Eq, Ord, Show, Enum, Bounded, Generic, FromJSON, ToJSON)
 
 data IdPConfig = IdPConfig
@@ -121,7 +123,8 @@ readConfig filepath =
   =<< Yaml.decodeFileEither filepath
   where
     info :: Config -> IO ()
-    info = hPutStrLn stderr . cs . Yaml.encode
+    info cfg = when (cfg ^. cfgLogLevel >= INFO) $
+      hPutStrLn stderr . cs . Yaml.encode $ cfg
 
     warn :: Yaml.ParseException -> IO ()
     warn err = hPutStrLn stderr $
