@@ -44,6 +44,10 @@ import Lens.Micro
 import Network.HTTP.Media ((//))
 import Network.Wai hiding (Response)
 import Network.Wai.Internal as Wai
+import SAML.WebSSO.Config
+import SAML.WebSSO.SP
+import SAML.WebSSO.Types
+import SAML.WebSSO.XML
 import Servant.API.ContentTypes
 import Servant.API hiding (URI(..))
 import Servant.Multipart
@@ -52,6 +56,8 @@ import Text.Hamlet.XML
 import Text.Show.Pretty (ppShow)
 import Text.XML
 import Text.XML.Cursor
+import Text.XML.DSig
+import Text.XML.Util
 import URI.ByteString
 import Web.Cookie
 
@@ -61,13 +67,6 @@ import qualified Data.Map as Map
 import qualified Data.Text as ST
 import qualified Network.HTTP.Types.Header as HttpTypes
 import qualified SAML.WebSSO.XML.Meta as Meta
-
-import SAML.WebSSO.Config
-import SAML.WebSSO.SP
-import SAML.WebSSO.Types
-import SAML.WebSSO.XML
-import Text.XML.DSig
-import Text.XML.Util
 
 
 ----------------------------------------------------------------------

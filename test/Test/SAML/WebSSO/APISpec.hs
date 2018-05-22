@@ -14,11 +14,13 @@ import Control.Lens
 import Data.Either
 import Data.EitherR
 import Data.String.Conversions
+import SAML.WebSSO
 import Servant
 import Shelly (shelly, run, setStdin, silently)
 import Test.Hspec hiding (pending)
 import Test.Hspec.Wai
 import Test.Hspec.Wai.Matcher
+import TestSP
 import Text.XML as XML
 import Text.XML.DSig
 import Text.XML.Util
@@ -27,9 +29,6 @@ import Util
 import qualified Crypto.PubKey.RSA as RSA
 import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.X509 as X509
-
-import SAML.WebSSO
-import TestSP
 
 
 newtype SomeSAMLRequest = SomeSAMLRequest { fromSomeSAMLRequest :: XML.Document }

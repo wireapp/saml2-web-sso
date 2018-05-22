@@ -21,7 +21,6 @@ import Control.Exception (SomeException)
 import Control.Monad
 import Control.Monad.Except
 import Data.EitherR
-import qualified Data.List as List
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Maybe (fromMaybe, isNothing, maybeToList)
 import Data.Monoid ((<>))
@@ -31,16 +30,15 @@ import Data.Typeable (Proxy(Proxy), Typeable)
 import GHC.Stack
 import Lens.Micro
 import Prelude hiding ((.), id)
-import Text.Show.Pretty (ppShow)
-import Text.XML hiding (renderText)
-import qualified Text.XML
-import Text.XML.Cursor
-import URI.ByteString
-
 import SAML.WebSSO.Types
+import Text.Show.Pretty (ppShow)
+import Text.XML.Cursor
+import Text.XML hiding (renderText)
 import Text.XML.Iso
 import Text.XML.Util
+import URI.ByteString
 
+import qualified Data.List as List
 import qualified Data.Tree.NTree.TypeDefs as HS
 import qualified Network.URI as HS
 import qualified SAML2.Core as HS
@@ -48,6 +46,7 @@ import qualified SAML2.Core.Protocols as HS
 import qualified SAML2.Metadata as HS
 import qualified SAML2.Profiles as HS
 import qualified SAML2.XML as HS
+import qualified Text.XML
 import qualified Text.XML.HXT.DOM.TypeDefs as HS
 
 

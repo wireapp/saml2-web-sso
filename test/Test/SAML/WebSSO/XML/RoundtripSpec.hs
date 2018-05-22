@@ -12,14 +12,15 @@ import Arbitrary
 import Data.List.NonEmpty
 import Data.String.Conversions
 import Hedgehog
-import qualified Data.Map as Map
-import qualified Hedgehog.Gen as Gen
-import qualified Hedgehog.Range as Range
 import SAML.WebSSO
 import Test.Hspec
 import Text.XML
 import URI.ByteString
 import Util
+
+import qualified Data.Map as Map
+import qualified Hedgehog.Gen as Gen
+import qualified Hedgehog.Range as Range
 
 
 spec :: Spec

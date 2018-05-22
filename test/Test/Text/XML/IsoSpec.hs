@@ -21,6 +21,7 @@
 
 module Test.Text.XML.IsoSpec (spec) where
 
+import Arbitrary
 import Control.Category (Category(..))
 import Control.Monad
 import Data.Char (toLower)
@@ -33,14 +34,12 @@ import Hedgehog
 import Prelude hiding (id, (.))
 import Test.Hspec
 import Text.XML
+import Text.XML.Iso
+import Text.XML.Util
+import Util
 
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
-
-import Util
-import Arbitrary
-import Text.XML.Iso
-import Text.XML.Util
 
 
 -- TODO: ElemUniq, ElemsMany1, ElemsMany0, OnlyElems; similarly for Attr*

@@ -8,7 +8,6 @@
 module Test.SAML.WebSSO.XML.ExamplesSpec (spec) where
 
 import Control.Exception
-import Text.Show.Pretty (ppShow)
 import Control.Monad (forM_)
 import Control.Monad.IO.Class (liftIO)
 import Data.Either
@@ -18,6 +17,7 @@ import SAML.WebSSO
 import System.Environment (setEnv)
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Hspec
+import Text.Show.Pretty (ppShow)
 import Text.XML
 import URI.ByteString
 import Util

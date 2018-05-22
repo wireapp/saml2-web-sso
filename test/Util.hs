@@ -17,6 +17,7 @@ import Data.List
 import Data.String.Conversions
 import Data.Typeable
 import GHC.Stack
+import SAML.WebSSO
 import System.Environment
 import System.FilePath
 import System.IO.Temp
@@ -29,8 +30,6 @@ import Text.XML.Util
 import URI.ByteString
 
 import qualified Data.Text.Lazy.IO as LT
-
-import SAML.WebSSO
 
 
 render' :: Document -> LT

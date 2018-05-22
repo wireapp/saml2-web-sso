@@ -12,11 +12,11 @@
 module Test.SAML.WebSSO.SPSpec (spec) where
 
 import Lens.Micro
+import SAML.WebSSO
 import Test.Hspec
+import TestSP
 
 import qualified Samples
-import TestSP
-import SAML.WebSSO
 
 
 ----------------------------------------------------------------------

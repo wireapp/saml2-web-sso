@@ -24,27 +24,14 @@ import Data.String.Conversions
 import GHC.Stack
 import System.IO.Unsafe (unsafePerformIO)
 import Text.XML
+import Text.XML.Util
 
 import qualified Crypto.PubKey.RSA as RSA
 import qualified Data.Map as Map
 import qualified Data.X509 as X509
-
-import Text.XML.Util
-
--- imports we do not want to need:
-
--- import qualified SAML2.Core.Protocols as HS
--- import qualified SAML2.Core.Signature as HS
 import qualified SAML2.XML as HS hiding (URI, Node)
 import qualified SAML2.XML.Signature as HS
 import qualified Text.XML.HXT.Core as HXT
-
--- imports we may need later:
-
--- import qualified Data.ASN1.BinaryEncoding as ASN1
--- import qualified Data.ASN1.Encoding as ASN1
--- import qualified Data.ASN1.Error as ASN1
--- import qualified Data.ASN1.Types as ASN1
 
 
 ----------------------------------------------------------------------

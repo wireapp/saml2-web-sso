@@ -9,12 +9,10 @@ module Test.Text.XML.DSigSpec (spec) where
 import Data.String.Conversions
 import Test.Hspec
 import Text.XML
+import Text.XML.DSig
+import Util
 
 import qualified Crypto.PubKey.RSA as RSA
-
-import Util
-import Text.XML.DSig
-
 import qualified Samples
 
 
