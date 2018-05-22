@@ -1,18 +1,3 @@
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE LambdaCase            #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE QuasiQuotes           #-}
-{-# LANGUAGE RankNTypes            #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TupleSections         #-}
-{-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE TypeOperators         #-}
-{-# LANGUAGE ViewPatterns          #-}
-
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 -- | This is a sample application composed of the end-points in "SAML.WebSSO.API" plus a minimum of
@@ -20,10 +5,10 @@
 -- build other apps, but it is more likely to serve as a tutorial.
 module SAML.WebSSO.API.Example where
 
-import Control.Lens
 import Data.Proxy
 import Data.String.Conversions
 import GHC.Stack
+import Lens.Micro
 import Network.Wai hiding (Response)
 import SAML.WebSSO.API
 import SAML.WebSSO.Config

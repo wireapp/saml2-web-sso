@@ -1,11 +1,3 @@
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell     #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE ViewPatterns        #-}
-
 module SAML.WebSSO.XML.Meta
   ( SPDescPre(..), SPDesc(..)
   , spdValidUntil
@@ -19,13 +11,14 @@ module SAML.WebSSO.XML.Meta
   , spMeta
   ) where
 
-import Control.Lens
 import Data.List.NonEmpty
 import Data.Maybe
 import Data.Proxy
 import Data.String.Conversions
 import Data.Time
 import GHC.Stack
+import Lens.Micro
+import Lens.Micro.TH
 import SAML.WebSSO.SP
 import SAML.WebSSO.Types
 import SAML.WebSSO.XML

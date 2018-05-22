@@ -1,22 +1,11 @@
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE InstanceSigs         #-}
-{-# LANGUAGE LambdaCase           #-}
-{-# LANGUAGE OverloadedStrings    #-}
-{-# LANGUAGE RankNTypes           #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE TemplateHaskell      #-}
-{-# LANGUAGE TypeApplications     #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE ViewPatterns         #-}
-
 module Test.SAML.WebSSO.SPSpec (spec) where
 
 import Lens.Micro
+import SAML.WebSSO
 import Test.Hspec
+import TestSP
 
 import qualified Samples
-import TestSP
-import SAML.WebSSO
 
 
 ----------------------------------------------------------------------

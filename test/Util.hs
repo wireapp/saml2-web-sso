@@ -1,14 +1,8 @@
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE ViewPatterns        #-}
-
 {-# OPTIONS_GHC -Wno-unused-binds #-}
 
 module Util where
 
+import Control.Exception (throwIO, ErrorCall(ErrorCall))
 import Control.Monad
 import Data.EitherR
 import Data.Generics.Uniplate.Data
@@ -16,6 +10,7 @@ import Data.List
 import Data.String.Conversions
 import Data.Typeable
 import GHC.Stack
+import SAML.WebSSO
 import System.Environment
 import System.FilePath
 import System.IO.Temp
@@ -28,8 +23,6 @@ import Text.XML.Util
 import URI.ByteString
 
 import qualified Data.Text.Lazy.IO as LT
-
-import SAML.WebSSO
 
 
 render' :: Document -> LT
@@ -68,7 +61,7 @@ haskellCodeFromXML Proxy ifilepath_ = do
       ofilepath = root </> "test/Samples.hs"
 
       f :: String -> IO a
-      f = decode . cs
+      f = either (throwIO . ErrorCall) pure . decode . cs
 
       g :: a -> String
       g = (<> mconcat aft) . (mconcat bef <>) . show

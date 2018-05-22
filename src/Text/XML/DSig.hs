@@ -1,11 +1,3 @@
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE ViewPatterns        #-}
-
 -- | Partial implementation of <https://www.w3.org/TR/xmldsig-core/>.  We use hsaml2, hxt, x509 and
 -- other dubious packages internally, but expose xml-types and cryptonite.
 module Text.XML.DSig
@@ -16,8 +8,7 @@ module Text.XML.DSig
   )
 where
 
-import Control.Exception (SomeException)
-import Control.Monad.Catch  -- TODO: do we need this, or can we get away with 'Except' only?  and perhaps 'unsafePerformIO'?
+import Control.Exception (SomeException, try)
 import Control.Monad.Except
 import Data.List.NonEmpty
 import Data.Monoid ((<>))
@@ -25,27 +16,14 @@ import Data.String.Conversions
 import GHC.Stack
 import System.IO.Unsafe (unsafePerformIO)
 import Text.XML
+import Text.XML.Util
 
 import qualified Crypto.PubKey.RSA as RSA
 import qualified Data.Map as Map
 import qualified Data.X509 as X509
-
-import Text.XML.Util
-
--- imports we do not want to need:
-
--- import qualified SAML2.Core.Protocols as HS
--- import qualified SAML2.Core.Signature as HS
 import qualified SAML2.XML as HS hiding (URI, Node)
 import qualified SAML2.XML.Signature as HS
 import qualified Text.XML.HXT.Core as HXT
-
--- imports we may need later:
-
--- import qualified Data.ASN1.BinaryEncoding as ASN1
--- import qualified Data.ASN1.Encoding as ASN1
--- import qualified Data.ASN1.Error as ASN1
--- import qualified Data.ASN1.Types as ASN1
 
 
 ----------------------------------------------------------------------

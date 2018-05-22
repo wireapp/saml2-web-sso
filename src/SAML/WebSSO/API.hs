@@ -1,18 +1,3 @@
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE LambdaCase            #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE QuasiQuotes           #-}
-{-# LANGUAGE RankNTypes            #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TupleSections         #-}
-{-# LANGUAGE TypeApplications      #-}
-{-# LANGUAGE TypeOperators         #-}
-{-# LANGUAGE ViewPatterns          #-}
-
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 -- | This is a partial implementation of Web SSO using the HTTP Post Binding [2/3.5].
@@ -32,7 +17,6 @@
 module SAML.WebSSO.API where
 
 import Control.Monad.Except hiding (ap)
-import Control.Monad.Catch
 import Data.Binary.Builder (toLazyByteString)
 import Data.EitherR
 import Data.Function
@@ -45,6 +29,10 @@ import Lens.Micro
 import Network.HTTP.Media ((//))
 import Network.Wai hiding (Response)
 import Network.Wai.Internal as Wai
+import SAML.WebSSO.Config
+import SAML.WebSSO.SP
+import SAML.WebSSO.Types
+import SAML.WebSSO.XML
 import Servant.API.ContentTypes
 import Servant.API hiding (URI(..))
 import Servant.Multipart
@@ -53,6 +41,8 @@ import Text.Hamlet.XML
 import Text.Show.Pretty (ppShow)
 import Text.XML
 import Text.XML.Cursor
+import Text.XML.DSig
+import Text.XML.Util
 import URI.ByteString
 import Web.Cookie
 
@@ -62,13 +52,6 @@ import qualified Data.Map as Map
 import qualified Data.Text as ST
 import qualified Network.HTTP.Types.Header as HttpTypes
 import qualified SAML.WebSSO.XML.Meta as Meta
-
-import SAML.WebSSO.Config
-import SAML.WebSSO.SP
-import SAML.WebSSO.Types
-import SAML.WebSSO.XML
-import Text.XML.DSig
-import Text.XML.Util
 
 
 ----------------------------------------------------------------------
@@ -244,7 +227,7 @@ getResponseURI = resp =<< (^. cfgSPSsoURI) <$> getConfig
         uri' :: ST
         uri' = cs $ appendURI (cs . toUrlPiece $ safeLink (Proxy @API) (Proxy @APIAuthResp)) uri
 
-        showmsg :: SomeException -> m a
+        showmsg :: String -> m a
         showmsg msg = throwError err500 { errBody = "server configuration error: " <> cs (show (uri', msg)) }
 
 

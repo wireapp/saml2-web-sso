@@ -1,6 +1,4 @@
 {-# LANGUAGE StrictData          #-}
-{-# LANGUAGE TemplateHaskell     #-}
-{-# LANGUAGE LambdaCase          #-}
 
 module SAML.WebSSO.Types where
 

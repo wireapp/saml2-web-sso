@@ -1,14 +1,3 @@
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE InstanceSigs         #-}
-{-# LANGUAGE LambdaCase           #-}
-{-# LANGUAGE OverloadedStrings    #-}
-{-# LANGUAGE RankNTypes           #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE TemplateHaskell      #-}
-{-# LANGUAGE TypeApplications     #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE ViewPatterns         #-}
-
 module Test.SAML.WebSSO.XML.MetaSpec (spec) where
 
 import Data.EitherR

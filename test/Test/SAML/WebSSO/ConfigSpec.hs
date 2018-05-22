@@ -1,10 +1,3 @@
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE RecordWildCards     #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE ViewPatterns        #-}
-
 {-# OPTIONS_GHC -Wno-unused-binds -Wno-orphans #-}
 
 module Test.SAML.WebSSO.ConfigSpec (spec) where

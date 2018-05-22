@@ -1,33 +1,17 @@
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE DefaultSignatures     #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE InstanceSigs          #-}
-{-# LANGUAGE LambdaCase            #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE RankNTypes            #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TupleSections         #-}
-{-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE TypeOperators         #-}
-{-# LANGUAGE ViewPatterns          #-}
-
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module SAML.WebSSO.SP where
 
-import Control.Lens  -- TODO: use Lens.Micro, but that doesn't appear to have view?!
-import Control.Monad.IO.Class
-import Control.Monad.Writer
 import Control.Monad.Except
+import Control.Monad.Writer
 import Data.Foldable (toList)
-import Data.Maybe
 import Data.List
+import Data.Maybe
 import Data.String.Conversions
 import Data.Time
 import Data.UUID (UUID)
 import GHC.Stack
+import Lens.Micro
 import Network.HTTP.Types.Header
 import Servant.Server
 import URI.ByteString
@@ -164,7 +148,7 @@ judge resp = runJudgeT (judge' resp)
 judge' :: (HasCallStack, MonadJudge m, SP m) => AuthnResponse -> m AccessVerdict
 judge' resp = do
   -- if any assertion has any violated conditions, you get 'AccessDenied'.
-  judgeConditions `mapM_` catMaybes (view assConditions <$> resp ^. rspPayload)
+  judgeConditions `mapM_` catMaybes ((^. assConditions) <$> resp ^. rspPayload)
 
   -- status must be success.
   case resp ^. rspStatus of

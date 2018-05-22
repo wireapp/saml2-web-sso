@@ -1,9 +1,3 @@
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell     #-}
-{-# LANGUAGE TypeApplications    #-}
-
 {-# OPTIONS_GHC -Wno-unused-binds #-}
 
 module Test.SAML.WebSSO.XML.RoundtripSpec (spec) where
@@ -12,21 +6,22 @@ import Arbitrary
 import Data.List.NonEmpty
 import Data.String.Conversions
 import Hedgehog
-import qualified Data.Map as Map
-import qualified Hedgehog.Gen as Gen
-import qualified Hedgehog.Range as Range
 import SAML.WebSSO
 import Test.Hspec
 import Text.XML
 import URI.ByteString
 import Util
 
+import qualified Data.Map as Map
+import qualified Hedgehog.Gen as Gen
+import qualified Hedgehog.Range as Range
+
 
 spec :: Spec
 spec = hedgehog $ checkParallel $$(discover)
 
 mkprop :: (Eq a, Show a, HasXMLRoot a) => Gen a -> Property
-mkprop gen = property $ forAll gen >>= \v -> tripping v encode (decode @Maybe)
+mkprop gen = property $ forAll gen >>= \v -> tripping v encode (decode @(Either String))
 
 
 -- TODO: enable

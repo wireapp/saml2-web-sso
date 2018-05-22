@@ -1,14 +1,8 @@
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
-
 {-# OPTIONS_GHC -Wno-unused-binds -Wno-unused-imports #-}
 
 module Test.SAML.WebSSO.XML.ExamplesSpec (spec) where
 
 import Control.Exception
-import Text.Show.Pretty (ppShow)
 import Control.Monad (forM_)
 import Control.Monad.IO.Class (liftIO)
 import Data.Either
@@ -18,6 +12,7 @@ import SAML.WebSSO
 import System.Environment (setEnv)
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Hspec
+import Text.Show.Pretty (ppShow)
 import Text.XML
 import URI.ByteString
 import Util
@@ -78,7 +73,7 @@ spec = describe "XML serialization" $ do
         -- print base64raw
         -- print xmlraw
         -- putStrLn (ppShow xmldoc)
-        parseFromDocument @AuthnResponse @(Either SomeException) xmldoc `shouldSatisfy` isRight
+        parseFromDocument @AuthnResponse @(Either String) xmldoc `shouldSatisfy` isRight
         -- putStrLn (ppShow saml2doc)
 
       -- roundtrip 9 have want

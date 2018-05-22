@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings   #-}
-
 -- | haskell representations of the sample data in /test/xml/.
 --
 -- NOTE: be reluctant to update anything in this module.  always prefer to add new definitions.

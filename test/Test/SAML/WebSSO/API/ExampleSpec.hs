@@ -1,9 +1,3 @@
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 {-# OPTIONS_GHC -Wno-unused-binds -Wno-orphans #-}
 
 module Test.SAML.WebSSO.API.ExampleSpec (spec) where

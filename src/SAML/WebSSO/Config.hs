@@ -1,12 +1,5 @@
 {-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DeriveGeneric      #-}
-{-# LANGUAGE FlexibleContexts   #-}
-{-# LANGUAGE FlexibleInstances  #-}
-{-# LANGUAGE LambdaCase         #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE Strict, StrictData #-}
-{-# LANGUAGE TemplateHaskell    #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -22,18 +15,17 @@ import Data.String.Conversions
 import GHC.Generics
 import Lens.Micro
 import Lens.Micro.TH
+import SAML.WebSSO.Config.TH (deriveJSONOptions)
+import SAML.WebSSO.Types
 import System.Environment
 import System.FilePath
 import System.IO
 import Text.XML.DSig
+import Text.XML.Util (unsafeParseURI, parseURI', renderURI)
 import URI.ByteString
 
 import qualified Data.X509 as X509
 import qualified Data.Yaml as Yaml
-
-import SAML.WebSSO.Config.TH (deriveJSONOptions)
-import SAML.WebSSO.Types
-import Text.XML.Util (unsafeParseURI, parseURI', renderURI)
 
 
 ----------------------------------------------------------------------

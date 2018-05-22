@@ -1,13 +1,7 @@
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Text.XML.Util
 where
 
-import Control.Exception
-import Control.Monad.Catch
+import Control.Monad.Except
 import Data.Map as Map
 import Data.String.Conversions
 import Data.Typeable
@@ -30,15 +24,15 @@ defMiscellaneous :: [Miscellaneous]
 defMiscellaneous = []
 
 
-die :: forall a b c m. (Typeable a, Show b, MonadThrow m) => Proxy a -> b -> m c
-die Proxy msg = throwM . ErrorCall $
+die :: forall (a :: *) b c m. (Typeable a, Show b, MonadError String m) => Proxy a -> b -> m c
+die Proxy msg = throwError $
   "HasXML: could not parse " <> show (typeOf @a undefined) <> ": " <> show msg
 
 
 renderURI :: URI -> ST
 renderURI = cs . serializeURIRef'
 
-parseURI' :: MonadThrow m => ST -> m URI  -- TODO: find a better name.  make renderURI match that name.
+parseURI' :: MonadError String m => ST -> m URI  -- TODO: find a better name.  make renderURI match that name.
 parseURI' = either (die (Proxy @URI)) pure . parseURI laxURIParserOptions . cs . ST.strip
 
 unsafeParseURI :: ST -> URI

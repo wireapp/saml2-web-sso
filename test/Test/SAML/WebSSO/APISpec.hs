@@ -1,24 +1,18 @@
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications    #-}
-{-# LANGUAGE ViewPatterns        #-}
-
 {-# OPTIONS_GHC -Wno-unused-binds -Wno-orphans #-}
 
 module Test.SAML.WebSSO.APISpec (spec) where
 
-import Control.Lens
 import Data.Either
 import Data.EitherR
 import Data.String.Conversions
+import Lens.Micro
+import SAML.WebSSO
 import Servant
 import Shelly (shelly, run, setStdin, silently)
 import Test.Hspec hiding (pending)
 import Test.Hspec.Wai
 import Test.Hspec.Wai.Matcher
+import TestSP
 import Text.XML as XML
 import Text.XML.DSig
 import Text.XML.Util
@@ -27,9 +21,6 @@ import Util
 import qualified Crypto.PubKey.RSA as RSA
 import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.X509 as X509
-
-import SAML.WebSSO
-import TestSP
 
 
 newtype SomeSAMLRequest = SomeSAMLRequest { fromSomeSAMLRequest :: XML.Document }
@@ -50,7 +41,7 @@ base64ours = pure . cs . EL.encode . cs
 base64theirs sbs = shelly . silently $ cs <$> (setStdin (cs sbs) >> run "/usr/bin/base64" ["--wrap", "0"])
 
 
-withapp :: forall api. HasServer api '[] => Proxy api -> ServerT api TestSP -> Ctx -> SpecWith Application -> Spec
+withapp :: forall (api :: *). HasServer api '[] => Proxy api -> ServerT api TestSP -> Ctx -> SpecWith Application -> Spec
 withapp proxy handler ctx = with (pure $ serve proxy (hoistServer (Proxy @api) (nt @TestSP ctx) handler :: Server api))
 
 
