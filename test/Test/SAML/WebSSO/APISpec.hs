@@ -8,6 +8,7 @@ import Data.String.Conversions
 import Lens.Micro
 import SAML.WebSSO
 import Servant
+import Servant.Utils.Enter
 import Shelly (shelly, run, setStdin, silently)
 import Test.Hspec hiding (pending)
 import Test.Hspec.Wai
@@ -41,8 +42,13 @@ base64ours = pure . cs . EL.encode . cs
 base64theirs sbs = shelly . silently $ cs <$> (setStdin (cs sbs) >> run "/usr/bin/base64" ["--wrap", "0"])
 
 
-withapp :: forall (api :: *). HasServer api '[] => Proxy api -> ServerT api TestSP -> Ctx -> SpecWith Application -> Spec
-withapp proxy handler ctx = with (pure $ serve proxy (hoistServer (Proxy @api) (nt @TestSP ctx) handler :: Server api))
+-- on servant-0.12 or later, use 'hoistServer':
+-- <https://github.com/haskell-servant/servant/blob/master/servant/CHANGELOG.md#significant-changes-1>
+withapp :: forall (api :: *).
+  ( Enter (ServerT api TestSP) TestSP Handler (Server api)
+  , HasServer api '[]
+  ) => Proxy api -> ServerT api TestSP -> Ctx -> SpecWith Application -> Spec
+withapp proxy handler ctx = with (pure $ serve proxy (enter (NT (nt @TestSP ctx)) handler :: Server api))
 
 
 spec :: Spec
