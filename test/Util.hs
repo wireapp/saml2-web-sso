@@ -9,6 +9,7 @@
 
 module Util where
 
+import Control.Exception (throwIO, ErrorCall(ErrorCall))
 import Control.Monad
 import Data.EitherR
 import Data.Generics.Uniplate.Data
@@ -68,7 +69,7 @@ haskellCodeFromXML Proxy ifilepath_ = do
       ofilepath = root </> "test/Samples.hs"
 
       f :: String -> IO a
-      f = decode . cs
+      f = either (throwIO . ErrorCall) pure . decode . cs
 
       g :: a -> String
       g = (<> mconcat aft) . (mconcat bef <>) . show

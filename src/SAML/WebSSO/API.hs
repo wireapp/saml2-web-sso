@@ -32,7 +32,6 @@
 module SAML.WebSSO.API where
 
 import Control.Monad.Except hiding (ap)
-import Control.Monad.Catch
 import Data.Binary.Builder (toLazyByteString)
 import Data.EitherR
 import Data.Function
@@ -244,7 +243,7 @@ getResponseURI = resp =<< (^. cfgSPSsoURI) <$> getConfig
         uri' :: ST
         uri' = cs $ appendURI (cs . toUrlPiece $ safeLink (Proxy @API) (Proxy @APIAuthResp)) uri
 
-        showmsg :: SomeException -> m a
+        showmsg :: String -> m a
         showmsg msg = throwError err500 { errBody = "server configuration error: " <> cs (show (uri', msg)) }
 
 

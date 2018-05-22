@@ -17,8 +17,9 @@
 module SAML.WebSSO.XML where
 
 import Control.Category (Category(..))
+import Control.Exception (SomeException)
 import Control.Monad
-import Control.Monad.Catch
+import Control.Monad.Except
 import Data.EitherR
 import qualified Data.List as List
 import Data.List.NonEmpty (NonEmpty((:|)))
@@ -58,14 +59,14 @@ encode = Text.XML.renderText settings . renderToDocument
   where
     settings = def { rsNamespaces = nameSpaces (Proxy @a), rsXMLDeclaration = False }
 
-decode :: forall m a. (HasXMLRoot a, MonadThrow m) => LT -> m a
-decode = either throwM parseFromDocument . parseText def
+decode :: forall m a. (HasXMLRoot a, MonadError String m) => LT -> m a
+decode = either (throwError . show @SomeException) parseFromDocument . parseText def
 
 
 renderToDocument :: HasXMLRoot a => a -> Document
 renderToDocument = mkDocument . renderRoot
 
-parseFromDocument :: (HasXML a, MonadThrow m) => Document -> m a
+parseFromDocument :: (HasXML a, MonadError String m) => Document -> m a
 parseFromDocument = parse . fromDocument
 
 
@@ -80,7 +81,7 @@ class HasXML a where
   default render :: HasXMLRoot a => a -> [Node]
   render = (:[]) . NodeElement . renderRoot
 
-  parse  :: MonadThrow m => Cursor -> m a
+  parse  :: MonadError String m => Cursor -> m a
 
 class HasXML a => HasXMLRoot a where
   renderRoot :: a -> Element
@@ -99,9 +100,9 @@ instance HasXMLRoot Document where
 
 -- | Do not use this in production!  It works, but it's slow and failures are a bit violent.
 unsafeReadTime :: HasCallStack => String -> Time
-unsafeReadTime s = fromMaybe (error ("decodeTime: " <> show s)) $ decodeTime s
+unsafeReadTime s = either (error ("decodeTime: " <> show s)) id $ decodeTime s
 
-decodeTime :: (MonadThrow m, ConvertibleStrings s String) => s -> m Time
+decodeTime :: (MonadError String m, ConvertibleStrings s String) => s -> m Time
 decodeTime (cs -> s) = case parseTimeM True defaultTimeLocale timeFormat s of
   Just t  -> pure $ Time t
   Nothing -> die (Proxy @Time) (s, timeFormat)
@@ -124,7 +125,7 @@ renderTime (Time utctime) =
 -- hack: use hsaml2 parsers and convert from SAMLProtocol instances
 
 wrapParse :: forall (m :: * -> *) them us.
-             (HasCallStack, MonadThrow m, HS.SAMLProtocol them, HasXMLRoot us, Typeable us)
+             (HasCallStack, MonadError String m, HS.SAMLProtocol them, HasXMLRoot us, Typeable us)
           => (them -> m us) -> Cursor -> m us
 wrapParse imprt cursor = either (die (Proxy @us) . (, cursor)) imprt $ HS.xmlToSAML (renderCursor cursor)
 
@@ -149,14 +150,14 @@ instance HasXML     AuthnResponse    where parse      = wrapParse importAuthnRes
 instance HasXMLRoot AuthnResponse    where renderRoot = wrapRender exportAuthnResponse
 
 
-importEntityDescriptor :: (HasCallStack, MonadThrow m) => HS.Descriptor -> m EntityDescriptor
+importEntityDescriptor :: (HasCallStack, MonadError String m) => HS.Descriptor -> m EntityDescriptor
 importEntityDescriptor = error . ppShow
 
 exportEntityDescriptor :: HasCallStack => EntityDescriptor -> HS.Descriptor
 exportEntityDescriptor = error . ppShow
 
 
-importAuthnRequest :: MonadThrow m => HS.AuthnRequest -> m AuthnRequest
+importAuthnRequest :: MonadError String m => HS.AuthnRequest -> m AuthnRequest
 importAuthnRequest req = do
   let proto = HS.requestProtocol $ HS.authnRequest req
   x0 :: ID        <- importID $ HS.protocolID proto
@@ -213,7 +214,7 @@ defProtocolType pid iinst = HS.ProtocolType
   }
 
 
-importAuthnResponse :: (HasCallStack, MonadThrow m) => HS.Response -> m AuthnResponse
+importAuthnResponse :: (HasCallStack, MonadError String m) => HS.Response -> m AuthnResponse
 importAuthnResponse rsp = do
   let rsptyp :: HS.StatusResponseType = HS.response rsp
       proto  :: HS.ProtocolType       = HS.statusProtocol rsptyp
@@ -242,7 +243,7 @@ exportAuthnResponse :: HasCallStack => AuthnResponse -> HS.Response
 exportAuthnResponse = error . ppShow
 
 
-importAssertion :: (HasCallStack, MonadThrow m) => HS.PossiblyEncrypted HS.Assertion -> m Assertion
+importAssertion :: (HasCallStack, MonadError String m) => HS.PossiblyEncrypted HS.Assertion -> m Assertion
 importAssertion bad@(HS.SoEncrypted _) = die (Proxy @Assertion) bad
 importAssertion (HS.NotEncrypted ass) = do
   x0 <- importVersion $ HS.assertionVersion ass
@@ -270,7 +271,7 @@ importAssertion (HS.NotEncrypted ass) = do
     }
 
 
-importSubject :: (HasCallStack, MonadThrow m) => HS.Subject -> m Subject
+importSubject :: (HasCallStack, MonadError String m) => HS.Subject -> m Subject
 importSubject (HS.Subject Nothing _) = die (Proxy @Subject) ("need to provide a subject" :: String)
 importSubject (HS.Subject (Just (HS.SoEncrypted _)) _) = die (Proxy @Subject) ("encrypted subjects not supported" :: String)
 importSubject (HS.Subject (Just (HS.NotEncrypted sid)) scs) = case sid of
@@ -281,7 +282,7 @@ importSubject (HS.Subject (Just (HS.NotEncrypted sid)) scs) = case sid of
     } -> Subject nameid <$> importSubjectConfirmation nameid `mapM` scs
   bad -> die (Proxy @Subject) ("unsupported subject identifier: " <> show bad)
 
-importSubjectConfirmation :: (HasCallStack, MonadThrow m) => NameID -> HS.SubjectConfirmation -> m SubjectConfirmation
+importSubjectConfirmation :: (HasCallStack, MonadError String m) => NameID -> HS.SubjectConfirmation -> m SubjectConfirmation
 importSubjectConfirmation = go
   where
     go _ (HS.SubjectConfirmation meth _ _) | meth /= HS.Identified HS.ConfirmationMethodBearer
@@ -293,7 +294,7 @@ importSubjectConfirmation = go
     go _ (HS.SubjectConfirmation _ _ confdata)
       = SubjectConfirmation SubjectConfirmationMethodBearer <$> importSubjectConfirmationData `mapM` maybeToList confdata
 
-importSubjectConfirmationData :: (HasCallStack, MonadThrow m) => HS.SubjectConfirmationData -> m SubjectConfirmationData
+importSubjectConfirmationData :: (HasCallStack, MonadError String m) => HS.SubjectConfirmationData -> m SubjectConfirmationData
 importSubjectConfirmationData (HS.SubjectConfirmationData notbefore (Just notonorafter) (Just recipient) inresp confaddr _ _) =
   SubjectConfirmationData
   <$> (importTime `fmapFlipM` notbefore)
@@ -306,11 +307,11 @@ importSubjectConfirmationData bad@(HS.SubjectConfirmationData _ Nothing _ _ _ _ 
 importSubjectConfirmationData bad@(HS.SubjectConfirmationData _ _ Nothing _ _ _ _) =
   die (Proxy @SubjectConfirmationData) ("missing Recipient: " <> show bad)
 
-importIP :: (HasCallStack, MonadThrow m) => HS.IP -> m IP
+importIP :: (HasCallStack, MonadError String m) => HS.IP -> m IP
 importIP = pure . IP . cs
 
 
-importConditions :: (HasCallStack, MonadThrow m) => HS.Conditions -> m Conditions
+importConditions :: (HasCallStack, MonadError String m) => HS.Conditions -> m Conditions
 importConditions conds = do
   x0 <- fmapFlipM importTime $ HS.conditionsNotBefore conds
   x1 <- fmapFlipM importTime $ HS.conditionsNotOnOrAfter conds
@@ -326,7 +327,7 @@ importConditions conds = do
     }
 
 
-importStatement :: (HasCallStack, MonadThrow m)
+importStatement :: (HasCallStack, MonadError String m)
                 => HS.Statement -> m Statement
 importStatement (HS.StatementAttribute st) =
   AttributeStatement <$> (importAttribute `mapM` HS.attributeStatement st)
@@ -343,7 +344,7 @@ importStatement (HS.StatementAuthn st) = do
 importStatement bad = die (Proxy @Statement) bad
 
 
-importAttribute :: (HasCallStack, MonadThrow m)
+importAttribute :: (HasCallStack, MonadError String m)
                 => HS.PossiblyEncrypted HS.Attribute -> m Attribute
 importAttribute bad@(HS.SoEncrypted _) = die (Proxy @Attribute) bad  -- encrypted asseritons are not implemented
 importAttribute (HS.NotEncrypted ass) = do
@@ -361,12 +362,12 @@ importAttribute (HS.NotEncrypted ass) = do
 
   pure $ Attribute nm Nothing Nothing vals
 
-importAttributeValue :: (HasCallStack, MonadThrow m) => HS.Nodes -> m AttributeValue
+importAttributeValue :: (HasCallStack, MonadError String m) => HS.Nodes -> m AttributeValue
 importAttributeValue [HS.NTree (HS.XText txt) []] = pure . AttributeValueUntyped $ cs txt
 importAttributeValue bad = die (Proxy @AttributeValue) bad
 
 
-importID :: (HasCallStack, MonadThrow m) => HS.ID -> m ID
+importID :: (HasCallStack, MonadError String m) => HS.ID -> m ID
 importID = pure . ID . cs
 
 exportID :: HasCallStack => ID -> HS.ID
@@ -379,13 +380,13 @@ importBaseIDasNameID :: (HasCallStack, ConvertibleStrings s ST) => HS.BaseID s -
 importBaseIDasNameID (importBaseID -> BaseID bid bidq bidspq) =
   NameID (NameIDFUnspecified bid) bidq bidspq Nothing
 
-importNameID :: (HasCallStack, MonadThrow m) => HS.NameID -> m NameID
+importNameID :: (HasCallStack, MonadError String m) => HS.NameID -> m NameID
 importNameID (HS.NameID (HS.BaseID Nothing Nothing uri) (HS.Identified HS.NameIDFormatEntity) Nothing)
   = pure $ NameID (NameIDFEntity $ cs uri) Nothing Nothing Nothing
 importNameID bad
   = die (Proxy @NameID) bad
   where
-    _form :: MonadThrow m => HS.NameIDFormat -> ST -> m UnqualifiedNameID
+    _form :: MonadError String m => HS.NameIDFormat -> ST -> m UnqualifiedNameID
     _form HS.NameIDFormatUnspecified = pure . NameIDFUnspecified
     _form HS.NameIDFormatEmail       = pure . NameIDFEmail
     _form HS.NameIDFormatX509        = pure . NameIDFX509
@@ -413,27 +414,27 @@ exportNameID name = HS.NameID
     unform (NameIDFEntity      n) = (HS.Identified HS.NameIDFormatEntity, n)
     unform (NameIDFPersistent  n) = (HS.Identified HS.NameIDFormatPersistent, n)
 
-importVersion :: (HasCallStack, MonadThrow m) => HS.SAMLVersion -> m Version
+importVersion :: (HasCallStack, MonadError String m) => HS.SAMLVersion -> m Version
 importVersion HS.SAML20 = pure Version_2_0
 importVersion bad = die (Proxy @Version) bad
 
 exportVersion :: HasCallStack => Version -> HS.SAMLVersion
 exportVersion Version_2_0 = HS.SAML20
 
-importTime :: (HasCallStack, MonadThrow m) => HS.DateTime -> m Time
+importTime :: (HasCallStack, MonadError String m) => HS.DateTime -> m Time
 importTime = pure . Time
 
 exportTime :: HasCallStack => Time -> HS.DateTime
 exportTime = fromTime
 
-importURI :: (HasCallStack, MonadThrow m) => HS.URI -> m URI
+importURI :: (HasCallStack, MonadError String m) => HS.URI -> m URI
 importURI uri = parseURI' . cs $ HS.uriToString id uri mempty
 
 exportURI :: HasCallStack => URI -> HS.URI
 exportURI uri = fromMaybe err . HS.parseURIReference . cs . renderURI $ uri
   where err = error $ "internal error: " <> show uri
 
-importStatus :: (HasCallStack, MonadThrow m) => HS.Status -> m Status
+importStatus :: (HasCallStack, MonadError String m) => HS.Status -> m Status
 importStatus (HS.Status (HS.StatusCode HS.StatusSuccess []) Nothing Nothing) = pure StatusSuccess
 importStatus status = pure . StatusFailure . cs . show $ status
 
@@ -441,19 +442,19 @@ exportStatus :: HasCallStack => Status -> HS.Status
 exportStatus StatusSuccess = HS.Status (HS.StatusCode HS.StatusSuccess []) Nothing Nothing
 exportStatus bad = error $ "not implemented: " <> show bad
 
-importIssuer :: (HasCallStack, MonadThrow m) => HS.Issuer -> m Issuer
+importIssuer :: (HasCallStack, MonadError String m) => HS.Issuer -> m Issuer
 importIssuer = fmap Issuer . importNameID . HS.issuer
 
 exportIssuer :: HasCallStack => Issuer -> HS.Issuer
 exportIssuer = HS.Issuer . exportNameID . fromIssuer
 
-importOptionalIssuer :: (HasCallStack, MonadThrow m) => Maybe HS.Issuer -> m (Maybe Issuer)
+importOptionalIssuer :: (HasCallStack, MonadError String m) => Maybe HS.Issuer -> m (Maybe Issuer)
 importOptionalIssuer = fmapFlipM importIssuer
 
 exportOptionalIssuer :: HasCallStack => Maybe Issuer -> Maybe HS.Issuer
 exportOptionalIssuer = fmap exportIssuer
 
-importRequiredIssuer :: (HasCallStack, MonadThrow m) => Maybe HS.Issuer -> m Issuer
+importRequiredIssuer :: (HasCallStack, MonadError String m) => Maybe HS.Issuer -> m Issuer
 importRequiredIssuer = maybe (die (Proxy @AuthnRequest) ("no issuer id" :: String)) importIssuer
 
 exportRequiredIssuer :: HasCallStack => Issuer -> Maybe HS.Issuer

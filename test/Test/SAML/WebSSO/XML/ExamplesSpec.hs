@@ -78,7 +78,7 @@ spec = describe "XML serialization" $ do
         -- print base64raw
         -- print xmlraw
         -- putStrLn (ppShow xmldoc)
-        parseFromDocument @AuthnResponse @(Either SomeException) xmldoc `shouldSatisfy` isRight
+        parseFromDocument @AuthnResponse @(Either String) xmldoc `shouldSatisfy` isRight
         -- putStrLn (ppShow saml2doc)
 
       -- roundtrip 9 have want

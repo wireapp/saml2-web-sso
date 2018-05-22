@@ -16,8 +16,7 @@ module Text.XML.DSig
   )
 where
 
-import Control.Exception (SomeException)
-import Control.Monad.Catch  -- TODO: do we need this, or can we get away with 'Except' only?  and perhaps 'unsafePerformIO'?
+import Control.Exception (SomeException, try)
 import Control.Monad.Except
 import Data.List.NonEmpty
 import Data.Monoid ((<>))

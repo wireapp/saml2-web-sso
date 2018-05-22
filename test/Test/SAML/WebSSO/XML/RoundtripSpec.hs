@@ -26,7 +26,7 @@ spec :: Spec
 spec = hedgehog $ checkParallel $$(discover)
 
 mkprop :: (Eq a, Show a, HasXMLRoot a) => Gen a -> Property
-mkprop gen = property $ forAll gen >>= \v -> tripping v encode (decode @Maybe)
+mkprop gen = property $ forAll gen >>= \v -> tripping v encode (decode @(Either String))
 
 
 -- TODO: enable
