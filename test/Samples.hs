@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings   #-}
 
 -- | haskell representations of the sample data in /test/xml/.
 --
