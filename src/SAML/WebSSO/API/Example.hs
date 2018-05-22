@@ -20,10 +20,10 @@
 -- build other apps, but it is more likely to serve as a tutorial.
 module SAML.WebSSO.API.Example where
 
-import Control.Lens
 import Data.Proxy
 import Data.String.Conversions
 import GHC.Stack
+import Lens.Micro
 import Network.Wai hiding (Response)
 import SAML.WebSSO.API
 import SAML.WebSSO.Config

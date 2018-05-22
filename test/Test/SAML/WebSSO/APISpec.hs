@@ -10,10 +10,10 @@
 
 module Test.SAML.WebSSO.APISpec (spec) where
 
-import Control.Lens
 import Data.Either
 import Data.EitherR
 import Data.String.Conversions
+import Lens.Micro
 import SAML.WebSSO
 import Servant
 import Shelly (shelly, run, setStdin, silently)
