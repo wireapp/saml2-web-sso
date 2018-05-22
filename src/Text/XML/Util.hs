@@ -25,7 +25,7 @@ defMiscellaneous :: [Miscellaneous]
 defMiscellaneous = []
 
 
-die :: forall a b c m. (Typeable a, Show b, MonadError String m) => Proxy a -> b -> m c
+die :: forall (a :: *) b c m. (Typeable a, Show b, MonadError String m) => Proxy a -> b -> m c
 die Proxy msg = throwError $
   "HasXML: could not parse " <> show (typeOf @a undefined) <> ": " <> show msg
 

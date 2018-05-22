@@ -42,7 +42,7 @@ base64ours = pure . cs . EL.encode . cs
 base64theirs sbs = shelly . silently $ cs <$> (setStdin (cs sbs) >> run "/usr/bin/base64" ["--wrap", "0"])
 
 
-withapp :: forall api. HasServer api '[] => Proxy api -> ServerT api TestSP -> Ctx -> SpecWith Application -> Spec
+withapp :: forall (api :: *). HasServer api '[] => Proxy api -> ServerT api TestSP -> Ctx -> SpecWith Application -> Spec
 withapp proxy handler ctx = with (pure $ serve proxy (hoistServer (Proxy @api) (nt @TestSP ctx) handler :: Server api))
 
 
