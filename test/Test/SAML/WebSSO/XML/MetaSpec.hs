@@ -1,4 +1,3 @@
-
 module Test.SAML.WebSSO.XML.MetaSpec (spec) where
 
 import Data.EitherR

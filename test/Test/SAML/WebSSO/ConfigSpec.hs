@@ -1,4 +1,3 @@
-
 {-# OPTIONS_GHC -Wno-unused-binds -Wno-orphans #-}
 
 module Test.SAML.WebSSO.ConfigSpec (spec) where

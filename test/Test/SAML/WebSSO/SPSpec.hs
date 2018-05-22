@@ -1,4 +1,3 @@
-
 module Test.SAML.WebSSO.SPSpec (spec) where
 
 import Lens.Micro

@@ -1,4 +1,3 @@
-
 {-# OPTIONS_GHC -Wno-unused-binds #-}
 
 module Test.SAML.WebSSO.XML.RoundtripSpec (spec) where

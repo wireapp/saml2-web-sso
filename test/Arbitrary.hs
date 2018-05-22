@@ -1,4 +1,3 @@
-
 module Arbitrary where
 
 import Data.String.Conversions

@@ -1,4 +1,3 @@
-
 module SAML.WebSSO.XML.Meta
   ( SPDescPre(..), SPDesc(..)
   , spdValidUntil

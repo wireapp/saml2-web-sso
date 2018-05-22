@@ -1,4 +1,3 @@
-
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module SAML.WebSSO.SP where

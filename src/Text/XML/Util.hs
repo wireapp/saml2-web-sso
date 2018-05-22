@@ -1,4 +1,3 @@
-
 module Text.XML.Util
 where
 

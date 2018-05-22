@@ -1,4 +1,3 @@
-
 module Test.Text.XML.IsoSpec (spec) where
 
 import Arbitrary

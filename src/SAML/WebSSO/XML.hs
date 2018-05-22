@@ -1,4 +1,3 @@
-
 module SAML.WebSSO.XML where
 
 import Control.Category (Category(..))

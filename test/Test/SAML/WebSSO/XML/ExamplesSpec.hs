@@ -1,4 +1,3 @@
-
 {-# OPTIONS_GHC -Wno-unused-binds -Wno-unused-imports #-}
 
 module Test.SAML.WebSSO.XML.ExamplesSpec (spec) where

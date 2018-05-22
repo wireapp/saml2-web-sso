@@ -1,4 +1,3 @@
-
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 -- | This is a partial implementation of Web SSO using the HTTP Post Binding [2/3.5].
