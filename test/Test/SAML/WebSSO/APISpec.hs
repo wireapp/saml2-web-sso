@@ -129,11 +129,11 @@ spec = describe "API" $ do
             Right (cert :: X509.SignedCertificate) <- parseKeyInfo <$> readSampleIO "microsoft-idp-keyinfo.xml"
             let Right (SignCreds _ (SignKeyRSA (key :: RSA.PublicKey))) = keyInfoToCreds cert
 
-            let foundkey :: Maybe RSA.PublicKey
-                foundkey = if knownkey then Just key else Nothing
+            let foundkey :: Issuer -> Maybe RSA.PublicKey
+                foundkey _ = if knownkey then Just key else Nothing
 
                 go :: Either String ()
-                go = simpleVerifyAuthnResponse foundkey resp
+                go = simpleVerifyAuthnResponse (Just $ mkIssuer "some_issuer") foundkey resp
 
             if expectOutcome
               then go `shouldBe` Right ()
@@ -183,8 +183,9 @@ spec = describe "API" $ do
         body = [("SAMLResponse", cs . EL.encode . cs $ readSample "microsoft-authnresponse-2.xml")]
 
     context "unknown idp" . withapp (Proxy @APIAuthResp) authresp testCtx1 $ do
+      let errmsg = "invalid signature: unknown issuer: Issuer {fromIssuer = NameID {_nameID = NameIDFEntity \"https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/\", _nameIDNameQ = Nothing, _nameIDSPNameQ = Nothing, _nameIDSPProvidedID = Nothing}}"
       it "responds with 400" $ postresp `shouldRespondWith`
-        400 { matchBody = bodyContains "invalid signature: missing or unknown issuer." }
+        400 { matchBody = bodyContains errmsg }
 
     context "known idp, bad timestamp" . withapp (Proxy @APIAuthResp) authresp testCtx2 $ do
       it "responds with 402" $ do

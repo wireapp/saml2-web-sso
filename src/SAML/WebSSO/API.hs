@@ -87,26 +87,28 @@ parseAuthnResponseBody base64 = \lookupPublicKey -> do
     decode (cs xmltxt)
   () <-
     either (\ex -> throwError err400 { errBody = "invalid signature: " <> cs ex }) pure $
-    simpleVerifyAuthnResponse (lookupPublicKey =<< resp ^. rspIssuer) xmltxt
+    simpleVerifyAuthnResponse (resp ^. rspIssuer) lookupPublicKey xmltxt
   pure resp
 
 
 -- | Pull assertions sub-forest and pass all trees in it to 'verify' individually.  The 'LBS'
 -- argument must be a valid 'AuthnResponse'.  All assertions need to be signed by the same issuer
 -- with the same key.
-simpleVerifyAuthnResponse :: MonadError String m => Maybe RSA.PublicKey -> LBS -> m ()
-simpleVerifyAuthnResponse Nothing _ = throwError "missing or unknown issuer."
-simpleVerifyAuthnResponse (Just key) raw = do
-  doc :: Cursor <- fromDocument <$> either (throwError . show) pure (parseLBS def raw)
+simpleVerifyAuthnResponse :: MonadError String m => Maybe Issuer -> (Issuer -> Maybe RSA.PublicKey) -> LBS -> m ()
+simpleVerifyAuthnResponse Nothing _ _ = throwError "missing issuer in response."
+simpleVerifyAuthnResponse (Just issuer) getkey raw = case getkey issuer of
+  Nothing -> throwError $ "unknown issuer: " <> show issuer
+  Just key -> do
+    doc :: Cursor <- fromDocument <$> either (throwError . show) pure (parseLBS def raw)
 
-  let elemOnly (NodeElement el) = Just el
-      elemOnly _ = Nothing
+    let elemOnly (NodeElement el) = Just el
+        elemOnly _ = Nothing
 
-      assertions :: [Element]
-      assertions = catMaybes $ elemOnly . node <$>
-                   (doc $/ element "{urn:oasis:names:tc:SAML:2.0:assertion}Assertion")
+        assertions :: [Element]
+        assertions = catMaybes $ elemOnly . node <$>
+                     (doc $/ element "{urn:oasis:names:tc:SAML:2.0:assertion}Assertion")
 
-  verify key `mapM_` assertions
+    verify key `mapM_` assertions
 
 
 ----------------------------------------------------------------------
