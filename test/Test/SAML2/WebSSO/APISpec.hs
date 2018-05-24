@@ -4,6 +4,7 @@
 
 module Test.SAML2.WebSSO.APISpec (spec) where
 
+import Control.Exception (throwIO, ErrorCall(ErrorCall))
 import Data.Either
 import Data.EitherR
 import Data.String.Conversions
@@ -24,6 +25,7 @@ import Util
 import qualified Crypto.PubKey.RSA as RSA
 import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.X509 as X509
+import qualified Data.Yaml as Yaml
 
 
 newtype SomeSAMLRequest = SomeSAMLRequest { fromSomeSAMLRequest :: XML.Document }
@@ -203,3 +205,32 @@ spec = describe "API" $ do
     let testCtx2' = testCtx2 & ctxNow .~ unsafeReadTime "2018-04-14T09:53:59Z"
     context "known idp, good timestamp" . withapp (Proxy @APIAuthResp) authresp testCtx2' $ do
       it "responds with 302" $ postresp `shouldRespondWith` 302
+
+
+  describe "idp smoke tests" $ do
+    burnIdP "octa.yaml" "octa-resp-1.base64"
+    -- burnIdP "microsoft.yaml" "..."  -- TODO
+    -- burnIdP "centrify.yaml" "..."  -- TODO
+
+
+burnIdP :: FilePath -> FilePath -> Spec
+burnIdP cfgPath respXmlPath = do
+  let ctx :: IO Ctx
+      ctx = getIdP <&> \idp -> testCtx1 & ctxConfig . cfgIdps .~ [idp]
+
+      getIdP :: IO IdPConfig
+      getIdP = either (throwIO . ErrorCall . show) pure =<< (Yaml.decodeEither . cs <$> readSampleIO cfgPath)
+
+  describe ("smoke tests: " <> show cfgPath) $ do
+    describe "authreq" . withapp' (Proxy @APIAuthReq) authreq ctx $ do
+      it "responds with 200" $ do
+        idp <- liftIO getIdP
+        get ("/authreq/" <> cs (idp ^. idpPath)) `shouldRespondWith` 200
+
+    describe "authresp" . withapp' (Proxy @APIAuthResp) authresp ctx $ do
+      it "responds with 302" $ do
+        sample <- liftIO $ cs <$> readSampleIO respXmlPath
+        let postresp = postHtmlForm "/authresp" body
+            body = [("SAMLResponse", sample)]
+        postresp `shouldRespondWith` ""
+        postresp `shouldRespondWith` 302
