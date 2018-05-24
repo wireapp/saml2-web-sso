@@ -67,8 +67,8 @@ loggerConfIO atleast msg = do
 
 loggerIO :: LogLevel -> LogLevel -> String -> IO ()
 loggerIO cfgsays atleast msg = if atleast < cfgsays
-  then pure ()
-  else putStrLn msg
+  then putStrLn msg
+  else pure ()
 
 -- | Microsoft Active Directory requires IDs to be of the form @id<32 hex digits>@, so the
 -- @UUID.toText@ needs to be tweaked a little.
