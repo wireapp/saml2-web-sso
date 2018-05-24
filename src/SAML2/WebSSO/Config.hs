@@ -3,8 +3,8 @@
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
--- TODO: set `-XNoDeriveAnyClass`.
--- TODO: disallow orphans.
+-- FUTUREWORK: set `-XNoDeriveAnyClass`.
+-- FUTUREWORK: disallow orphans.
 module SAML2.WebSSO.Config where
 
 import Control.Monad (when)

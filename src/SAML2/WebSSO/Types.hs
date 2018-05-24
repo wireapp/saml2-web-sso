@@ -10,7 +10,7 @@ import Data.Time (UTCTime(..), formatTime, defaultTimeLocale)
 import GHC.Stack
 import Lens.Micro.TH
 import Text.XML.Util
-import URI.ByteString  -- TODO: should saml2-web-sso also use the URI from http-types?  we already
+import URI.ByteString  -- FUTUREWORK: should saml2-web-sso also use the URI from http-types?  we already
                        -- depend on that via xml-conduit anyway.  (is it a probley though that it is
                        -- string-based?  is it less of a problem because we need it anyway?)
 
@@ -36,13 +36,11 @@ newtype Issuer = Issuer { fromIssuer :: NameID }
 mkIssuer :: ST -> Issuer
 mkIssuer = Issuer . entityNameID . unsafeParseURI
 
--- | TODO: move this to a newtype instance in "SAML.WebSSO.Config" and do not export it, somehow!
 instance FromJSON Issuer where
   parseJSON = withText "Issuer" $ \uri -> case parseURI' uri of
     Right i  -> pure . Issuer $ entityNameID i
     Left msg -> fail $ "Issuer: " <> show msg
 
--- | TODO: move this to a newtype instance in "SAML.WebSSO.Config" and do not export it, somehow!
 instance ToJSON Issuer where
   toJSON (Issuer name) = toJSON $ nameIDToText name
     where
@@ -91,8 +89,8 @@ data RoleDescriptor = RoleDescriptor
 -- | [4/2.4.1.1]
 data KeyDescriptor = KeyDescriptor
   { _kdUse               :: Maybe KeyDescriptorUse
-  , _kdKeyInfo           :: ()  -- TODO: xml:dsig key
-  , _kdEncryptionMethods :: ()  -- TODO: xenc method
+  , _kdKeyInfo           :: ()  -- xml:dsig key (not implemented)
+  , _kdEncryptionMethods :: ()  -- xenc method (not implemented)
   }
   deriving (Eq, Show)
 

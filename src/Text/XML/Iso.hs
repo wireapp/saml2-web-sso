@@ -1,7 +1,6 @@
--- {-# LANGUAGE Strict, StrictData #-} -- TODO: activate later.  probably good for performance, but
--- bad for debugging.  also, does Strict imply StrictData?
-
--- | TODO: this is a clone of JsonGrammar for xml, and it should probably go to a separate package.
+-- | work in progress.
+--
+-- TODO: this is a clone of JsonGrammar for xml, and it should probably go to a separate package.
 --
 -- TODO: as for the missing error messages (lens 'Prism's have 'Nothing' in case of error): use a
 -- variant of 'trace' for reporting errors that can be disabled / replaced by @\x -> unsafePerformIO
@@ -28,11 +27,11 @@ import qualified Data.Map as Map
 ----------------------------------------------------------------------
 -- main
 
--- TODO: something like this would be better for parseXml:
--- type MonadIsoXML = MonadError StackError
--- type StackError = String
+-- something like this would be better for parseXml:
+-- >>> type MonadIsoXML = MonadError StackError
+-- >>> type StackError = String
 
--- | TODO: Document instead of Element?
+-- | ...  or do we want to use 'Document' instead of 'Element'?
 parseXml :: (HasCallStack, IsoXML 'CtxElem a) => Element -> Maybe a
 parseXml = parseElem (unstack isoXml)
 
@@ -46,10 +45,10 @@ renderXml = renderElem (unstack isoXml)
 -- | Like 'Name', but the 'IsString' instance expects prefixes in the curly braces, and 'fromPName'
 -- resolves them into the actual name space identifiers.
 --
--- TODO: the not so nice property of this is that bad name space prefixes in string literals are
+-- the not so nice property of this is that bad name space prefixes in string literals are
 -- run-time errors.
 --
--- TODO: find a way to pick the default name space set in the importing module, not here!
+-- we should find a way to pick the default name space set in the importing module, not here!
 newtype PName = PName { fromPName :: Name }
   deriving (Eq, Ord, Show)
 
@@ -266,7 +265,7 @@ renderAttrVal = \case
   g1 :<> g2    -> \val -> renderAttrVal g1 val <|> renderAttrVal g2 val
 
   Pure _ rdr   -> rdr
-  bad@(Many _) -> renderFailed "renderAttrVal/Many" bad  -- TODO: allow this?  same attr occuring 0 or more times?  how does xml work?
+  bad@(Many _) -> renderFailed "renderAttrVal/Many" bad  -- TODO: allow this?  same attr occuring 0 or more than 2 times?  how does xml work?
 
 
 renderContent :: forall t1 t2. HasCallStack => Grammar 'CtxCont (ST :- t1) t2 -> t2 -> Maybe (ST :- t1)

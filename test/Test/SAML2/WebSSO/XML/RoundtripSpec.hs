@@ -127,7 +127,7 @@ genIssuer = Issuer <$> genNameID
 
 -- | TODO: what else do we need here?
 genNameID :: Gen NameID
-genNameID = entityNameID <$> genURI
+genNameID = Gen.choice [entityNameID <$> genURI, opaqueNameID <$> (genNiceText $ Range.linear 1 10)]
 
 genNonEmpty :: Range Int -> Gen a -> Gen (NonEmpty a)
 genNonEmpty rng gen = (:|) <$> gen <*> Gen.list rng gen
