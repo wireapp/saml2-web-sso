@@ -69,7 +69,7 @@ instance SP TestSP where
   getNow = gets (^. ctxNow)
 
 instance SPNT TestSP where
-  type NT TestSP = Ctx
+  type NTCTX TestSP = Ctx
 
   nt :: forall x. Ctx -> TestSP x -> Handler x
   nt ctx (TestSP m) = m `evalStateT` ctx

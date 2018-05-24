@@ -29,9 +29,7 @@ import Text.XML.Util
 class (HasConfig m, Monad m) => SP m where
   logger :: LogLevel -> String -> m ()
   default logger :: MonadIO m => LogLevel -> String -> m ()
-  logger atleast msg = do
-    cfgsays <- (^. cfgLogLevel) <$> getConfig
-    liftIO $ loggerIO cfgsays atleast msg
+  logger = loggerConfIO
 
   createUUID :: m UUID
   default createUUID :: MonadIO m => m UUID
@@ -43,14 +41,14 @@ class (HasConfig m, Monad m) => SP m where
 
 -- | HTTP handling of the service provider.  TODO: rename to 'SPHandler'?
 class (SP m, MonadError ServantErr m) => SPNT m where
-  type NT m :: *
-  nt :: forall x. NT m -> m x -> Handler x
+  type NTCTX m :: *
+  nt :: forall x. NTCTX m -> m x -> Handler x
 
 instance SP IO
 instance SP Handler
 
 instance SPNT Handler where
-  type NT Handler = ()
+  type NTCTX Handler = ()
   nt :: forall x. () -> Handler x -> Handler x
   nt () = id
 
@@ -61,6 +59,11 @@ instance HasConfig Handler where
 
 ----------------------------------------------------------------------
 -- combinators
+
+loggerConfIO :: (HasConfig m, MonadIO m) => LogLevel -> String -> m ()
+loggerConfIO atleast msg = do
+  cfgsays <- (^. cfgLogLevel) <$> getConfig
+  liftIO $ loggerIO cfgsays atleast msg
 
 loggerIO :: LogLevel -> LogLevel -> String -> IO ()
 loggerIO cfgsays atleast msg = if atleast < cfgsays
