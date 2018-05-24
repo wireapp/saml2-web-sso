@@ -28,7 +28,7 @@ app = app' (Proxy @Handler) ()
 
 app' :: forall m.
         ( Enter (ServerT APPAPI m) m Handler (Server APPAPI)
-        , SP m, SPNT m
+        , SP m, SPHandler m
         ) => Proxy m -> NTCTX m -> Application
 app' Proxy ctx = setHttpCachePolicy $ serve (Proxy @APPAPI) (enter (NT (nt @m ctx)) appapi :: Server APPAPI)
 
@@ -41,10 +41,10 @@ type APPAPI =
        "sp"  :> SPAPI
   :<|> "sso" :> API
 
-spapi :: (SP m, SPNT m) => ServerT SPAPI m
+spapi :: SPHandler m => ServerT SPAPI m
 spapi = loginStatus :<|> localLogout :<|> singleLogout
 
-appapi :: (SP m, SPNT m) => ServerT APPAPI m
+appapi :: SPHandler m => ServerT APPAPI m
 appapi = spapi :<|> api "toy-sp"
 
 loginStatus :: SP m => Maybe SetCookie -> m LoginStatus
@@ -54,7 +54,7 @@ loginStatus cookie = do
   pure $ maybe (NotLoggedIn loginPath) (LoggedInAs logoutPath . cs . setCookieValue) cookie
 
 -- | only logout on this SP.
-localLogout :: (SP m, SPNT m) => m Void
+localLogout :: SPHandler m => m Void
 localLogout = (`redirect` [cookieToHeader $ togglecookie Nothing]) =<< getPath SpPathHome
 
 -- | as in [3/4.4]

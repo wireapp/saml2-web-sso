@@ -68,7 +68,7 @@ instance SP TestSP where
   getNow :: TestSP Time
   getNow = gets (^. ctxNow)
 
-instance SPNT TestSP where
+instance SPHandler TestSP where
   type NTCTX TestSP = Ctx
 
   nt :: forall x. Ctx -> TestSP x -> Handler x

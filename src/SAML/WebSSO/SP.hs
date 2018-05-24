@@ -39,15 +39,15 @@ class (HasConfig m, Monad m) => SP m where
   default getNow :: MonadIO m => m Time
   getNow = Time <$> liftIO getCurrentTime
 
--- | HTTP handling of the service provider.  TODO: rename to 'SPHandler'?
-class (SP m, MonadError ServantErr m) => SPNT m where
+-- | HTTP handling of the service provider.
+class (SP m, MonadError ServantErr m) => SPHandler m where
   type NTCTX m :: *
   nt :: forall x. NTCTX m -> m x -> Handler x
 
 instance SP IO
 instance SP Handler
 
-instance SPNT Handler where
+instance SPHandler Handler where
   type NTCTX Handler = ()
   nt :: forall x. () -> Handler x -> Handler x
   nt () = id
@@ -229,7 +229,7 @@ getIdPMeta = undefined
 getUser :: SP m => String -> m ()
 getUser = undefined
 
-getIdPConfig :: SPNT m => ST -> m IdPConfig
+getIdPConfig :: SPHandler m => ST -> m IdPConfig
 getIdPConfig idpname = maybe crash pure . Map.lookup idpname . mkmap . (^. cfgIdps) =<< getConfig
   where
     crash = throwError err404 { errBody = "unknown IdP: " <> cs (show idpname) }
