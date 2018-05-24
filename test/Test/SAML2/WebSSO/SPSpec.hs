@@ -1,7 +1,7 @@
-module Test.SAML.WebSSO.SPSpec (spec) where
+module Test.SAML2.WebSSO.SPSpec (spec) where
 
 import Lens.Micro
-import SAML.WebSSO
+import SAML2.WebSSO
 import Test.Hspec
 import TestSP
 

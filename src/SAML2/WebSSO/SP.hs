@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module SAML.WebSSO.SP where
+module SAML2.WebSSO.SP where
 
 import Control.Monad.Except
 import Control.Monad.Writer
@@ -20,8 +20,8 @@ import qualified Data.Map as Map
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
 
-import SAML.WebSSO.Config
-import SAML.WebSSO.Types
+import SAML2.WebSSO.Config
+import SAML2.WebSSO.Types
 import Text.XML.Util
 
 

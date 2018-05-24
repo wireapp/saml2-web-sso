@@ -1,9 +1,9 @@
-module Test.SAML.WebSSO.XML.MetaSpec (spec) where
+module Test.SAML2.WebSSO.XML.MetaSpec (spec) where
 
 import Data.EitherR
 import Data.String.Conversions
 import Data.Time
-import SAML.WebSSO
+import SAML2.WebSSO
 import Test.Hspec
 import TestSP
 import Text.XML

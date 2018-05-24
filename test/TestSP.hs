@@ -7,7 +7,7 @@ import Control.Monad.Except
 import Control.Monad.State
 import Lens.Micro
 import Lens.Micro.TH
-import SAML.WebSSO
+import SAML2.WebSSO
 import Servant.Server
 import Text.XML.DSig
 import Text.XML.Util

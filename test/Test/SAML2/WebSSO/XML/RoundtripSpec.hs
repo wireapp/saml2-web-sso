@@ -1,12 +1,12 @@
 {-# OPTIONS_GHC -Wno-unused-binds #-}
 
-module Test.SAML.WebSSO.XML.RoundtripSpec (spec) where
+module Test.SAML2.WebSSO.XML.RoundtripSpec (spec) where
 
 import Arbitrary
 import Data.List.NonEmpty
 import Data.String.Conversions
 import Hedgehog
-import SAML.WebSSO
+import SAML2.WebSSO
 import Test.Hspec
 import Text.XML
 import URI.ByteString

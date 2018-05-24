@@ -1,6 +1,6 @@
 {-# LANGUAGE StrictData          #-}
 
-module SAML.WebSSO.Types where
+module SAML2.WebSSO.Types where
 
 import Data.Aeson
 import Data.List.NonEmpty

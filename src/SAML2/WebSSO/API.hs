@@ -14,7 +14,7 @@
 -- This module works best if imported qualified.
 --
 -- FUTUREWORK: servant-server is quite heavy.  we should have a cabal flag to exclude it.
-module SAML.WebSSO.API where
+module SAML2.WebSSO.API where
 
 import Control.Monad.Except hiding (ap)
 import Data.Binary.Builder (toLazyByteString)
@@ -29,10 +29,10 @@ import Lens.Micro
 import Network.HTTP.Media ((//))
 import Network.Wai hiding (Response)
 import Network.Wai.Internal as Wai
-import SAML.WebSSO.Config
-import SAML.WebSSO.SP
-import SAML.WebSSO.Types
-import SAML.WebSSO.XML
+import SAML2.WebSSO.Config
+import SAML2.WebSSO.SP
+import SAML2.WebSSO.Types
+import SAML2.WebSSO.XML
 import Servant.API.ContentTypes
 import Servant.API hiding (URI(..))
 import Servant.Multipart
@@ -51,7 +51,7 @@ import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
 import qualified Data.Text as ST
 import qualified Network.HTTP.Types.Header as HttpTypes
-import qualified SAML.WebSSO.XML.Meta as Meta
+import qualified SAML2.WebSSO.XML.Meta as Meta
 
 
 ----------------------------------------------------------------------

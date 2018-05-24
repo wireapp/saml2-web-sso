@@ -1,4 +1,4 @@
-module SAML.WebSSO.XML where
+module SAML2.WebSSO.XML where
 
 import Control.Category (Category(..))
 import Control.Exception (SomeException)
@@ -14,7 +14,7 @@ import Data.Typeable (Proxy(Proxy), Typeable)
 import GHC.Stack
 import Lens.Micro
 import Prelude hiding ((.), id)
-import SAML.WebSSO.Types
+import SAML2.WebSSO.Types
 import Text.Show.Pretty (ppShow)
 import Text.XML.Cursor
 import Text.XML hiding (renderText)

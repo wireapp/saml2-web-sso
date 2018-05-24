@@ -2,7 +2,7 @@ module Arbitrary where
 
 import Data.String.Conversions
 import Hedgehog
-import SAML.WebSSO
+import SAML2.WebSSO
 import Text.XML.Util
 import URI.ByteString
 

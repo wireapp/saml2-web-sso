@@ -1,9 +1,9 @@
 {-# OPTIONS_GHC -Wno-unused-binds -Wno-orphans #-}
 
-module Test.SAML.WebSSO.API.ExampleSpec (spec) where
+module Test.SAML2.WebSSO.API.ExampleSpec (spec) where
 
 import Data.Typeable
-import SAML.WebSSO.API.Example (app')
+import SAML2.WebSSO.API.Example (app')
 import Test.Hspec hiding (pending)
 import Test.Hspec.Wai
 import TestSP

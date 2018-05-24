@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wno-unused-binds -Wno-unused-imports #-}
 
-module Test.SAML.WebSSO.XML.ExamplesSpec (spec) where
+module Test.SAML2.WebSSO.XML.ExamplesSpec (spec) where
 
 import Control.Exception
 import Control.Monad (forM_)
@@ -8,7 +8,7 @@ import Control.Monad.IO.Class (liftIO)
 import Data.Either
 import Data.List.NonEmpty
 import Data.String.Conversions
-import SAML.WebSSO
+import SAML2.WebSSO
 import System.Environment (setEnv)
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Hspec

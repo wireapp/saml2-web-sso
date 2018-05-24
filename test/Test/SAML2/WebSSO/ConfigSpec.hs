@@ -1,13 +1,13 @@
 {-# OPTIONS_GHC -Wno-unused-binds -Wno-orphans #-}
 
-module Test.SAML.WebSSO.ConfigSpec (spec) where
+module Test.SAML2.WebSSO.ConfigSpec (spec) where
 
 import Arbitrary
 import Data.Aeson
 import Data.Aeson.Types
 import Data.String.Conversions
 import Hedgehog
-import SAML.WebSSO
+import SAML2.WebSSO
 import Test.Hspec
 import Text.XML.DSig
 import Text.XML.Util

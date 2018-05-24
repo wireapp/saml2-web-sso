@@ -3,16 +3,16 @@
 -- | This is a sample application composed of the end-points in "SAML.WebSSO.API" plus a minimum of
 -- functionality to make a running web application.  Some parts of this module could be handy to
 -- build other apps, but it is more likely to serve as a tutorial.
-module SAML.WebSSO.API.Example where
+module SAML2.WebSSO.API.Example where
 
 import Data.Proxy
 import Data.String.Conversions
 import GHC.Stack
 import Lens.Micro
 import Network.Wai hiding (Response)
-import SAML.WebSSO.API
-import SAML.WebSSO.Config
-import SAML.WebSSO.SP
+import SAML2.WebSSO.API
+import SAML2.WebSSO.Config
+import SAML2.WebSSO.SP
 import Servant.API hiding (URI(..))
 import Servant.Server
 import Servant.Utils.Enter

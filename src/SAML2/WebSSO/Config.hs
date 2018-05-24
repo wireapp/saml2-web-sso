@@ -5,7 +5,7 @@
 
 -- TODO: set `-XNoDeriveAnyClass`.
 -- TODO: disallow orphans.
-module SAML.WebSSO.Config where
+module SAML2.WebSSO.Config where
 
 import Control.Monad (when)
 import Data.Aeson
@@ -15,8 +15,8 @@ import Data.String.Conversions
 import GHC.Generics
 import Lens.Micro
 import Lens.Micro.TH
-import SAML.WebSSO.Config.TH (deriveJSONOptions)
-import SAML.WebSSO.Types
+import SAML2.WebSSO.Config.TH (deriveJSONOptions)
+import SAML2.WebSSO.Types
 import System.Environment
 import System.FilePath
 import System.IO
