@@ -15,6 +15,7 @@ import SAML.WebSSO.Config
 import SAML.WebSSO.SP
 import Servant.API hiding (URI(..))
 import Servant.Server
+import Servant.Utils.Enter
 import Text.Hamlet.XML
 import Text.XML.Util
 import URI.ByteString
@@ -23,8 +24,13 @@ import Web.Cookie
 
 -- | The most straight-forward 'Application' that can be constructed from 'api', 'API'.
 app :: Application
-app = setHttpCachePolicy
-    $ serve (Proxy @APPAPI) appapi
+app = app' (Proxy @Handler) ()
+
+app' :: forall m.
+        ( Enter (ServerT APPAPI m) m Handler (Server APPAPI)
+        , SP m, SPNT m
+        ) => Proxy m -> NTCTX m -> Application
+app' Proxy ctx = setHttpCachePolicy $ serve (Proxy @APPAPI) (enter (NT (nt @m ctx)) appapi :: Server APPAPI)
 
 type SPAPI =
        Header "Cookie" SetCookie :> Get '[HTML] LoginStatus
