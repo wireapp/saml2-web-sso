@@ -44,11 +44,17 @@ base64theirs sbs = shelly . silently $ cs <$> (setStdin (cs sbs) >> run "/usr/bi
 
 -- on servant-0.12 or later, use 'hoistServer':
 -- <https://github.com/haskell-servant/servant/blob/master/servant/CHANGELOG.md#significant-changes-1>
+withapp' :: forall (api :: *).
+  ( Enter (ServerT api TestSP) TestSP Handler (Server api)
+  , HasServer api '[]
+  ) => Proxy api -> ServerT api TestSP -> IO Ctx -> SpecWith Application -> Spec
+withapp' proxy handler mkctx = with (mkctx <&> \ctx -> serve proxy (enter (NT (nt @TestSP ctx)) handler :: Server api))
+
 withapp :: forall (api :: *).
   ( Enter (ServerT api TestSP) TestSP Handler (Server api)
   , HasServer api '[]
   ) => Proxy api -> ServerT api TestSP -> Ctx -> SpecWith Application -> Spec
-withapp proxy handler ctx = with (pure $ serve proxy (enter (NT (nt @TestSP ctx)) handler :: Server api))
+withapp proxy handler mkctx = withapp' proxy handler (pure mkctx)
 
 
 spec :: Spec
