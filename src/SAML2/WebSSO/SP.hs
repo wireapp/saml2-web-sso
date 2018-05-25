@@ -63,12 +63,12 @@ instance HasConfig Handler where
 -- combinators
 
 loggerConfIO :: (HasConfig m, MonadIO m) => LogLevel -> String -> m ()
-loggerConfIO atleast msg = do
+loggerConfIO level msg = do
   cfgsays <- (^. cfgLogLevel) <$> getConfig
-  liftIO $ loggerIO cfgsays atleast msg
+  liftIO $ loggerIO cfgsays level msg
 
 loggerIO :: LogLevel -> LogLevel -> String -> IO ()
-loggerIO cfgsays atleast msg = if atleast < cfgsays
+loggerIO cfgsays level msg = if level <= cfgsays
   then putStrLn msg
   else pure ()
 
