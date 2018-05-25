@@ -349,9 +349,10 @@ importAttribute (HS.NotEncrypted ass) = do
 
 importAttributeValue :: (HasCallStack, MonadError String m) => HS.Nodes -> m AttributeValue
 importAttributeValue [HS.NTree (HS.XText txt) []] = pure . AttributeValueUntyped $ cs txt
-importAttributeValue [ HS.NTree (HS.XAttr qn) [HS.NTree (HS.XText "xs:anyType") []]
+importAttributeValue [ HS.NTree (HS.XAttr qn) [HS.NTree (HS.XText thistype) []]
                      , HS.NTree (HS.XText txt) []
                      ] | qn == HS.newQName (HS.newXName "type") (HS.newXName "xsi") (HS.newXName "http://www.w3.org/2001/XMLSchema-instance")
+                         && thistype `elem` ["xs:anyType", "xs:string"]
                        = pure . AttributeValueUntyped $ cs txt
 importAttributeValue bad = die (Proxy @AttributeValue) bad
 
