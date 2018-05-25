@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Test.SAML2.WebSSO.SPSpec (spec) where
 
 import Lens.Micro

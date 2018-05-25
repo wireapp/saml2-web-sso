@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module TestSP where

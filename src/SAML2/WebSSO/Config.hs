@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE Strict, StrictData #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}

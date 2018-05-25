@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 -- | work in progress.
 --
 -- TODO: this is a clone of JsonGrammar for xml, and it should probably go to a separate package.

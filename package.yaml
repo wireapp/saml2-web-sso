@@ -15,6 +15,7 @@ default-extensions:
   # if you are having trouble running ghci in this project, consider
   # `cp dot-ghci .ghci`.  (`.ghci` is not put under version control so
   # that you can customize it more easily.)
+  - NoOverloadedStrings  # this is the only one we can't use like this because it gets sensei confused.
   - ConstraintKinds
   - DataKinds
   - DefaultSignatures
@@ -26,7 +27,6 @@ default-extensions:
   - KindSignatures
   - LambdaCase
   - MultiParamTypeClasses
-  - OverloadedStrings
   - PolyKinds
   - QuasiQuotes
   - RankNTypes

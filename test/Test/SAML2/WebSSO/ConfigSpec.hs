@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 {-# OPTIONS_GHC -Wno-unused-binds -Wno-orphans #-}
 
 module Test.SAML2.WebSSO.ConfigSpec (spec) where

@@ -1,5 +1,6 @@
 :set -i../src/ -i../test
 
+:set -XNoOverloadedStrings  # this is the only one we can't use like this because it gets sensei confused.
 :set -XConstraintKinds
 :set -XDataKinds
 :set -XDefaultSignatures
@@ -11,7 +12,6 @@
 :set -XKindSignatures
 :set -XLambdaCase
 :set -XMultiParamTypeClasses
-:set -XOverloadedStrings
 :set -XPolyKinds
 :set -XQuasiQuotes
 :set -XRankNTypes

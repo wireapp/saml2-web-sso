@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Test.SAML2.WebSSO.XML.MetaSpec (spec) where
 
 import Data.EitherR

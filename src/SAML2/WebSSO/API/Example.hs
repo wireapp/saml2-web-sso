@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 -- | This is a sample application composed of the end-points in "SAML.WebSSO.API" plus a minimum of
