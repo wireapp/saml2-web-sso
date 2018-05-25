@@ -77,9 +77,9 @@ api appName = meta appName :<|> authreq :<|> authresp
 
 -- | An 'AuthnResponseBody' contains a 'AuthnResponse', but you need to give it a trust base forn
 -- signature verification first, and you may get an error when you're looking at it.
-newtype AuthnResponseBody = AuthnResponseBody ((Issuer -> Maybe RSA.PublicKey) -> Either ServantErr AuthnResponse)
+newtype AuthnResponseBody = AuthnResponseBody ((Issuer -> Either String RSA.PublicKey) -> Either ServantErr AuthnResponse)
 
-parseAuthnResponseBody :: MonadError ServantErr m => LBS -> (Issuer -> Maybe RSA.PublicKey) -> m AuthnResponse
+parseAuthnResponseBody :: MonadError ServantErr m => LBS -> (Issuer -> Either String RSA.PublicKey) -> m AuthnResponse
 parseAuthnResponseBody base64 = \lookupPublicKey -> do
   xmltxt <-
     either (const $ throwError err400 { errBody = "bad base64 encoding in SAMLResponse" }) pure $
@@ -96,11 +96,11 @@ parseAuthnResponseBody base64 = \lookupPublicKey -> do
 -- | Pull assertions sub-forest and pass all trees in it to 'verify' individually.  The 'LBS'
 -- argument must be a valid 'AuthnResponse'.  All assertions need to be signed by the same issuer
 -- with the same key.
-simpleVerifyAuthnResponse :: MonadError String m => Maybe Issuer -> (Issuer -> Maybe RSA.PublicKey) -> LBS -> m ()
+simpleVerifyAuthnResponse :: MonadError String m => Maybe Issuer -> (Issuer -> Either String RSA.PublicKey) -> LBS -> m ()
 simpleVerifyAuthnResponse Nothing _ _ = throwError "missing issuer in response."
 simpleVerifyAuthnResponse (Just issuer) getkey raw = case getkey issuer of
-  Nothing -> throwError $ "unknown issuer: " <> show issuer
-  Just key -> do
+  Left errmsg -> throwError errmsg
+  Right key -> do
     doc :: Cursor <- fromDocument <$> either (throwError . show) pure (parseLBS def raw)
 
     let elemOnly (NodeElement el) = Just el
@@ -256,12 +256,20 @@ authreq idpname = do
 -- | Get config and pass the missing idp credentials to the response constructor.
 resolveBody :: SPHandler m => AuthnResponseBody -> m AuthnResponse
 resolveBody (AuthnResponseBody mkbody) = do
-  idps <- (^. cfgIdps) <$> getConfig
-  pubkeys <- forM idps $ \idp -> do
-    creds <- either crash pure $ keyInfoToCreds (idp ^. idpPublicKey)
-    case creds of
-      SignCreds SignDigestSha256 (SignKeyRSA pubkey) -> pure (idp ^. idpIssuer, pubkey)
-  either throwError pure $ mkbody (`Map.lookup` Map.fromList pubkeys)
+  either throwError pure . mkbody =<< mkLookupPubKey
+
+mkLookupPubKey :: SPHandler m => m (Issuer -> Either String RSA.PublicKey)
+mkLookupPubKey = do
+  idps :: [IdPConfig]
+    <- (^. cfgIdps) <$> getConfig
+  pubkeys :: [(Issuer, RSA.PublicKey)]
+    <- forM idps $ \idp -> do
+      creds <- either crash pure $ keyInfoToCreds (idp ^. idpPublicKey)
+      case creds of
+        SignCreds SignDigestSha256 (SignKeyRSA pubkey) -> pure (idp ^. idpIssuer, pubkey)
+  pure $ \issuer ->
+    let errmsg = "unknown issuer: " <> show issuer <> "; known issuers: " <> show ((^. idpIssuer) <$> idps)
+    in maybe (Left errmsg) Right . Map.lookup issuer $ Map.fromList pubkeys
 
 authresp :: SPHandler m => AuthnResponseBody -> m Void
 authresp body = do

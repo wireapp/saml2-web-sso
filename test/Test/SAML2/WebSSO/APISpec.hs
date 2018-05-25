@@ -139,8 +139,8 @@ spec = describe "API" $ do
             Right (cert :: X509.SignedCertificate) <- parseKeyInfo <$> readSampleIO "microsoft-idp-keyinfo.xml"
             let Right (SignCreds _ (SignKeyRSA (key :: RSA.PublicKey))) = keyInfoToCreds cert
 
-            let foundkey :: Issuer -> Maybe RSA.PublicKey
-                foundkey _ = if knownkey then Just key else Nothing
+            let foundkey :: Issuer -> Either String RSA.PublicKey
+                foundkey _ = if knownkey then Right key else Left "foundkey failed"
 
                 go :: Either String ()
                 go = simpleVerifyAuthnResponse (Just $ mkIssuer "some_issuer") foundkey resp

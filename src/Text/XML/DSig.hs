@@ -94,11 +94,9 @@ verifyIO :: forall m. (m ~ IO {- FUTUREWORK: allow this to be any MonadThrow ins
 verifyIO key el = do
   el' <- maybe (err "no parse") pure mkel'
   sid <- maybe (err "no signed-ID") pure mkSid
-  try (HS.verifySignature key' sid el') >>= \case
-    Left (e :: SomeException) -> err $ show e
-    Right Nothing             -> err "no matching key/alg pair."
-    Right (Just False)        -> err "invalid signature."
-    Right (Just True)         -> pure $ Verified el
+  HS.verifySignature key' sid el' >>= \case
+    Left verificationError -> fail $ show verificationError
+    Right ()               -> pure $ Verified el
   where
     key' :: HS.PublicKeys
     key' = HS.PublicKeys Nothing . Just $ key
