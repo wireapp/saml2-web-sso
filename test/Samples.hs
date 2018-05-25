@@ -6,7 +6,7 @@
 module Samples where
 
 import Data.List.NonEmpty (NonEmpty((:|)))
-import SAML.WebSSO
+import SAML2.WebSSO
 import Util
 
 import qualified Crypto.PubKey.RSA as RSA

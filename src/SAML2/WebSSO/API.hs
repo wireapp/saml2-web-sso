@@ -14,7 +14,7 @@
 -- This module works best if imported qualified.
 --
 -- FUTUREWORK: servant-server is quite heavy.  we should have a cabal flag to exclude it.
-module SAML.WebSSO.API where
+module SAML2.WebSSO.API where
 
 import Control.Monad.Except hiding (ap)
 import Data.Binary.Builder (toLazyByteString)
@@ -29,10 +29,10 @@ import Lens.Micro
 import Network.HTTP.Media ((//))
 import Network.Wai hiding (Response)
 import Network.Wai.Internal as Wai
-import SAML.WebSSO.Config
-import SAML.WebSSO.SP
-import SAML.WebSSO.Types
-import SAML.WebSSO.XML
+import SAML2.WebSSO.Config
+import SAML2.WebSSO.SP
+import SAML2.WebSSO.Types
+import SAML2.WebSSO.XML
 import Servant.API.ContentTypes
 import Servant.API hiding (URI(..))
 import Servant.Multipart
@@ -51,7 +51,7 @@ import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
 import qualified Data.Text as ST
 import qualified Network.HTTP.Types.Header as HttpTypes
-import qualified SAML.WebSSO.XML.Meta as Meta
+import qualified SAML2.WebSSO.XML.Meta as Meta
 
 
 ----------------------------------------------------------------------
@@ -66,7 +66,7 @@ type APIAuthResp = "authresp" :> MultipartForm Mem AuthnResponseBody :> PostVoid
 -- FUTUREWORK: respond with redirect in case of success, instead of responding with Void and
 -- handling all cases with exceptions: https://github.com/haskell-servant/servant/issues/117
 
-api :: (SP m, SPNT m) => ST -> ServerT API m
+api :: SPHandler m => ST -> ServerT API m
 api appName = meta appName :<|> authreq :<|> authresp
 
 
@@ -236,14 +236,14 @@ getResponseURI = resp =<< (^. cfgSPSsoURI) <$> getConfig
 ----------------------------------------------------------------------
 -- handlers
 
-meta :: SPNT m => ST -> m Meta.SPDesc
+meta :: SPHandler m => ST -> m Meta.SPDesc
 meta appName = do
   enterH "meta"
   landing <- getLandingURI
   resp <- getResponseURI
   Meta.spMeta <$> Meta.spDesc appName landing resp
 
-authreq :: SPNT m => ST -> m (FormRedirect AuthnRequest)
+authreq :: SPHandler m => ST -> m (FormRedirect AuthnRequest)
 authreq idpname = do
   enterH "authreq"
   uri <- (^. idpRequestUri) <$> getIdPConfig idpname
@@ -252,7 +252,7 @@ authreq idpname = do
   leaveH $ FormRedirect uri req
 
 -- | Get config and pass the missing idp credentials to the response constructor.
-resolveBody :: SPNT m => AuthnResponseBody -> m AuthnResponse
+resolveBody :: SPHandler m => AuthnResponseBody -> m AuthnResponse
 resolveBody (AuthnResponseBody mkbody) = do
   idps <- (^. cfgIdps) <$> getConfig
   pubkeys <- forM idps $ \idp -> do
@@ -261,7 +261,7 @@ resolveBody (AuthnResponseBody mkbody) = do
       SignCreds SignDigestSha256 (SignKeyRSA pubkey) -> pure (idp ^. idpIssuer, pubkey)
   either throwError pure $ mkbody (`Map.lookup` Map.fromList pubkeys)
 
-authresp :: SPNT m => AuthnResponseBody -> m Void
+authresp :: SPHandler m => AuthnResponseBody -> m Void
 authresp body = do
   enterH "authresp: entering"
   resp <- resolveBody body

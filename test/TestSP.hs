@@ -7,7 +7,7 @@ import Control.Monad.Except
 import Control.Monad.State
 import Lens.Micro
 import Lens.Micro.TH
-import SAML.WebSSO
+import SAML2.WebSSO
 import Servant.Server
 import Text.XML.DSig
 import Text.XML.Util
@@ -68,8 +68,8 @@ instance SP TestSP where
   getNow :: TestSP Time
   getNow = gets (^. ctxNow)
 
-instance SPNT TestSP where
-  type NT TestSP = Ctx
+instance SPHandler TestSP where
+  type NTCTX TestSP = Ctx
 
   nt :: forall x. Ctx -> TestSP x -> Handler x
   nt ctx (TestSP m) = m `evalStateT` ctx

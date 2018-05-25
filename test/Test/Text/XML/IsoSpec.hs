@@ -80,10 +80,6 @@ instance IsoXML 'CtxElem WBCList where
   isoXml = fromPrism wbclist . matchElem "WBCList" id (matchMany (cons . matchNode isoXml isoXml) . nil)
 
 
--- TODO: this is interesting: can we still make mistakes by not rendering all data so that when we
--- parse the serialized string back it will give us a different value?
-
-
 ----------------------------------------------------------------------
 -- test plumbing
 

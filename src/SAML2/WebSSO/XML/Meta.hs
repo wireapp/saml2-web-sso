@@ -1,4 +1,4 @@
-module SAML.WebSSO.XML.Meta
+module SAML2.WebSSO.XML.Meta
   ( SPDescPre(..), SPDesc(..)
   , spdValidUntil
   , spdCacheDuration
@@ -19,9 +19,9 @@ import Data.Time
 import GHC.Stack
 import Lens.Micro
 import Lens.Micro.TH
-import SAML.WebSSO.SP
-import SAML.WebSSO.Types
-import SAML.WebSSO.XML
+import SAML2.WebSSO.SP
+import SAML2.WebSSO.Types
+import SAML2.WebSSO.XML
 import Text.XML
 import Text.XML.Cursor
 import Text.XML.Util

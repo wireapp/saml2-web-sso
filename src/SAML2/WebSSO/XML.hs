@@ -1,4 +1,4 @@
-module SAML.WebSSO.XML where
+module SAML2.WebSSO.XML where
 
 import Control.Category (Category(..))
 import Control.Exception (SomeException)
@@ -14,7 +14,7 @@ import Data.Typeable (Proxy(Proxy), Typeable)
 import GHC.Stack
 import Lens.Micro
 import Prelude hiding ((.), id)
-import SAML.WebSSO.Types
+import SAML2.WebSSO.Types
 import Text.Show.Pretty (ppShow)
 import Text.XML.Cursor
 import Text.XML hiding (renderText)
@@ -317,7 +317,9 @@ importStatement (HS.StatementAttribute st) =
 importStatement (HS.StatementAuthn st) = do
   x0 <- importTime $ HS.authnStatementInstant st
   let x1 = cs <$> HS.authnStatementSessionIndex st
-  -- TODO: make sure HS.AuthnContext doesn't hold anything that we need to take into account
+  -- TODO: not done yet.
+  -- TODO: in general, we need to check for absence of all fields allowed by the specs that we don't
+  -- want to handle.  at least we need to crash if they are present.
   pure AuthnStatement
     { _astAuthnInstant        = x0 :: Time
     , _astSessionIndex        = x1 :: Maybe ST

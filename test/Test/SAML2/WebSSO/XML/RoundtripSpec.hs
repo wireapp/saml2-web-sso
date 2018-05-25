@@ -1,12 +1,12 @@
 {-# OPTIONS_GHC -Wno-unused-binds #-}
 
-module Test.SAML.WebSSO.XML.RoundtripSpec (spec) where
+module Test.SAML2.WebSSO.XML.RoundtripSpec (spec) where
 
 import Arbitrary
 import Data.List.NonEmpty
 import Data.String.Conversions
 import Hedgehog
-import SAML.WebSSO
+import SAML2.WebSSO
 import Test.Hspec
 import Text.XML
 import URI.ByteString
@@ -127,7 +127,7 @@ genIssuer = Issuer <$> genNameID
 
 -- | TODO: what else do we need here?
 genNameID :: Gen NameID
-genNameID = entityNameID <$> genURI
+genNameID = Gen.choice [entityNameID <$> genURI, opaqueNameID <$> (genNiceText $ Range.linear 1 10)]
 
 genNonEmpty :: Range Int -> Gen a -> Gen (NonEmpty a)
 genNonEmpty rng gen = (:|) <$> gen <*> Gen.list rng gen

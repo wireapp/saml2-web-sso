@@ -3,18 +3,19 @@
 -- | This is a sample application composed of the end-points in "SAML.WebSSO.API" plus a minimum of
 -- functionality to make a running web application.  Some parts of this module could be handy to
 -- build other apps, but it is more likely to serve as a tutorial.
-module SAML.WebSSO.API.Example where
+module SAML2.WebSSO.API.Example where
 
 import Data.Proxy
 import Data.String.Conversions
 import GHC.Stack
 import Lens.Micro
 import Network.Wai hiding (Response)
-import SAML.WebSSO.API
-import SAML.WebSSO.Config
-import SAML.WebSSO.SP
+import SAML2.WebSSO.API
+import SAML2.WebSSO.Config
+import SAML2.WebSSO.SP
 import Servant.API hiding (URI(..))
 import Servant.Server
+import Servant.Utils.Enter
 import Text.Hamlet.XML
 import Text.XML.Util
 import URI.ByteString
@@ -23,8 +24,13 @@ import Web.Cookie
 
 -- | The most straight-forward 'Application' that can be constructed from 'api', 'API'.
 app :: Application
-app = setHttpCachePolicy
-    $ serve (Proxy @APPAPI) appapi
+app = app' (Proxy @Handler) ()
+
+app' :: forall m.
+        ( Enter (ServerT APPAPI m) m Handler (Server APPAPI)
+        , SP m, SPHandler m
+        ) => Proxy m -> NTCTX m -> Application
+app' Proxy ctx = setHttpCachePolicy $ serve (Proxy @APPAPI) (enter (NT (nt @m ctx)) appapi :: Server APPAPI)
 
 type SPAPI =
        Header "Cookie" SetCookie :> Get '[HTML] LoginStatus
@@ -35,10 +41,10 @@ type APPAPI =
        "sp"  :> SPAPI
   :<|> "sso" :> API
 
-spapi :: (SP m, SPNT m) => ServerT SPAPI m
+spapi :: SPHandler m => ServerT SPAPI m
 spapi = loginStatus :<|> localLogout :<|> singleLogout
 
-appapi :: (SP m, SPNT m) => ServerT APPAPI m
+appapi :: SPHandler m => ServerT APPAPI m
 appapi = spapi :<|> api "toy-sp"
 
 loginStatus :: SP m => Maybe SetCookie -> m LoginStatus
@@ -48,7 +54,7 @@ loginStatus cookie = do
   pure $ maybe (NotLoggedIn loginPath) (LoggedInAs logoutPath . cs . setCookieValue) cookie
 
 -- | only logout on this SP.
-localLogout :: (SP m, SPNT m) => m Void
+localLogout :: SPHandler m => m Void
 localLogout = (`redirect` [cookieToHeader $ togglecookie Nothing]) =<< getPath SpPathHome
 
 -- | as in [3/4.4]

@@ -1,12 +1,12 @@
 {-# OPTIONS_GHC -Wno-unused-binds -Wno-orphans #-}
 
-module Test.SAML.WebSSO.APISpec (spec) where
+module Test.SAML2.WebSSO.APISpec (spec) where
 
 import Data.Either
 import Data.EitherR
 import Data.String.Conversions
 import Lens.Micro
-import SAML.WebSSO
+import SAML2.WebSSO
 import Servant
 import Servant.Utils.Enter
 import Shelly (shelly, run, setStdin, silently)

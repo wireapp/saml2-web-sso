@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module SAML.WebSSO.SP where
+module SAML2.WebSSO.SP where
 
 import Control.Monad.Except
 import Control.Monad.Writer
@@ -20,8 +20,8 @@ import qualified Data.Map as Map
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
 
-import SAML.WebSSO.Config
-import SAML.WebSSO.Types
+import SAML2.WebSSO.Config
+import SAML2.WebSSO.Types
 import Text.XML.Util
 
 
@@ -29,9 +29,7 @@ import Text.XML.Util
 class (HasConfig m, Monad m) => SP m where
   logger :: LogLevel -> String -> m ()
   default logger :: MonadIO m => LogLevel -> String -> m ()
-  logger atleast msg = do
-    cfgsays <- (^. cfgLogLevel) <$> getConfig
-    liftIO $ loggerIO cfgsays atleast msg
+  logger = loggerConfIO
 
   createUUID :: m UUID
   default createUUID :: MonadIO m => m UUID
@@ -41,16 +39,16 @@ class (HasConfig m, Monad m) => SP m where
   default getNow :: MonadIO m => m Time
   getNow = Time <$> liftIO getCurrentTime
 
--- | HTTP handling of the service provider.  TODO: rename to 'SPHandler'?
-class (SP m, MonadError ServantErr m) => SPNT m where
-  type NT m :: *
-  nt :: forall x. NT m -> m x -> Handler x
+-- | HTTP handling of the service provider.
+class (SP m, MonadError ServantErr m) => SPHandler m where
+  type NTCTX m :: *
+  nt :: forall x. NTCTX m -> m x -> Handler x
 
 instance SP IO
 instance SP Handler
 
-instance SPNT Handler where
-  type NT Handler = ()
+instance SPHandler Handler where
+  type NTCTX Handler = ()
   nt :: forall x. () -> Handler x -> Handler x
   nt () = id
 
@@ -62,10 +60,15 @@ instance HasConfig Handler where
 ----------------------------------------------------------------------
 -- combinators
 
+loggerConfIO :: (HasConfig m, MonadIO m) => LogLevel -> String -> m ()
+loggerConfIO atleast msg = do
+  cfgsays <- (^. cfgLogLevel) <$> getConfig
+  liftIO $ loggerIO cfgsays atleast msg
+
 loggerIO :: LogLevel -> LogLevel -> String -> IO ()
 loggerIO cfgsays atleast msg = if atleast < cfgsays
-  then pure ()
-  else putStrLn msg
+  then putStrLn msg
+  else pure ()
 
 -- | Microsoft Active Directory requires IDs to be of the form @id<32 hex digits>@, so the
 -- @UUID.toText@ needs to be tweaked a little.
@@ -226,7 +229,7 @@ getIdPMeta = undefined
 getUser :: SP m => String -> m ()
 getUser = undefined
 
-getIdPConfig :: SPNT m => ST -> m IdPConfig
+getIdPConfig :: SPHandler m => ST -> m IdPConfig
 getIdPConfig idpname = maybe crash pure . Map.lookup idpname . mkmap . (^. cfgIdps) =<< getConfig
   where
     crash = throwError err404 { errBody = "unknown IdP: " <> cs (show idpname) }

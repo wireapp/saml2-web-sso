@@ -10,7 +10,7 @@ import Data.List
 import Data.String.Conversions
 import Data.Typeable
 import GHC.Stack
-import SAML.WebSSO
+import SAML2.WebSSO
 import System.Environment
 import System.FilePath
 import System.IO.Temp

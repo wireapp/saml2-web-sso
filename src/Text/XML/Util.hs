@@ -32,7 +32,7 @@ die Proxy msg = throwError $
 renderURI :: URI -> ST
 renderURI = cs . serializeURIRef'
 
-parseURI' :: MonadError String m => ST -> m URI  -- TODO: find a better name.  make renderURI match that name.
+parseURI' :: MonadError String m => ST -> m URI
 parseURI' = either (die (Proxy @URI)) pure . parseURI laxURIParserOptions . cs . ST.strip
 
 unsafeParseURI :: ST -> URI
