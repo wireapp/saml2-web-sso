@@ -13,4 +13,4 @@ main = do
   let settings = defaultSettings
         & setHost (fromString $ config ^. cfgSPHost)
         . setPort (config ^. cfgSPPort)
-  runSettings settings app
+  runSettings settings =<< app

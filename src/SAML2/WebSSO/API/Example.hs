@@ -25,14 +25,17 @@ import Web.Cookie
 
 
 -- | The most straight-forward 'Application' that can be constructed from 'api', 'API'.
-app :: Application
+app :: IO Application
 app = app' (Proxy @Handler) ()
 
 app' :: forall m.
         ( Enter (ServerT APPAPI m) m Handler (Server APPAPI)
         , SP m, SPHandler m
-        ) => Proxy m -> NTCTX m -> Application
-app' Proxy ctx = setHttpCachePolicy $ serve (Proxy @APPAPI) (enter (NT (nt @m ctx)) appapi :: Server APPAPI)
+        ) => Proxy m -> NTCTX m -> IO Application
+app' Proxy ctx = do
+  let served :: Application
+      served = serve (Proxy @APPAPI) (enter (NT (nt @m ctx)) appapi :: Server APPAPI)
+  pure . setHttpCachePolicy $ served
 
 type SPAPI =
        Header "Cookie" SetCookie :> Get '[HTML] LoginStatus
