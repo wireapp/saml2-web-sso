@@ -43,7 +43,7 @@ import Text.Hamlet.XML
 import Text.Show.Pretty (ppShow)
 import Text.XML
 import Text.XML.Cursor
-import Text.XML.DSig
+import Text.XML.DSig (SignCreds(SignCreds), SignDigest(SignDigestSha256), SignKey(SignKeyRSA), verify, keyInfoToCreds)
 import Text.XML.Util
 import URI.ByteString
 import Web.Cookie
