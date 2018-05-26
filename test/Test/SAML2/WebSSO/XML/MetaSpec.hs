@@ -23,7 +23,7 @@ spec = do
   describe "spDesc" $ do
     it "does not smoke" $ do
       have <- testSP testCtx1 $ spDesc
-        "drnick" (unsafeParseURI "http://example.com/") (unsafeParseURI "http://example.com/sso/login") fallbackContact
+        "drnick" (unsafeParseURI "http://example.com/") (unsafeParseURI "http://example.com/sso/login") (fallbackContact :| [])
       let want = spdescpre (have ^. spdID)
       have `shouldBe` want
 

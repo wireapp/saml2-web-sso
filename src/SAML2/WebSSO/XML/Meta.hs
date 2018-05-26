@@ -52,10 +52,10 @@ instance HasXMLRoot SPDesc where
   renderRoot (SPDesc (Document _ el _)) = el
 
 
-spDesc :: SP m => ST -> URI -> URI -> SPContactPerson -> m SPDescPre
+spDesc :: SP m => ST -> URI -> URI -> NonEmpty SPContactPerson -> m SPDescPre
 spDesc nick org resp contact = createUUID >>= \uuid -> spDesc' uuid nick org resp contact
 
-spDesc' :: SP m => UUID.UUID -> ST -> URI -> URI -> SPContactPerson -> m SPDescPre
+spDesc' :: SP m => UUID.UUID -> ST -> URI -> URI -> NonEmpty SPContactPerson -> m SPDescPre
 spDesc' uuid nick org resp contact = do
   let _spdID             = uuid
       _spdCacheDuration  = months 1
@@ -63,7 +63,7 @@ spDesc' uuid nick org resp contact = do
       _spdOrgDisplayName = nick
       _spdOrgURL         = org
       _spdResponseURL    = resp
-      _spdContacts       = contact :| []
+      _spdContacts       = contact
 
       years  n = days n * 365
       months n = days n * 30
