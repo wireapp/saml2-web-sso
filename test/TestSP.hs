@@ -34,18 +34,18 @@ testCtx1 = Ctx
 verbose :: Ctx -> Ctx
 verbose = ctxConfig . cfgLogLevel .~ DEBUG
 
-testCtx2 :: Ctx
-testCtx2 = testCtx1 & ctxConfig . cfgIdps .~ [myidp]
+mkTestCtx2 :: IO Ctx
+mkTestCtx2 = mkmyidp <&> \myidp -> testCtx1 & ctxConfig . cfgIdps .~ [myidp]
 
-myidp :: IdPConfig
-myidp = IdPConfig
-  "myidp"
-  (unsafeParseURI "https://login.microsoftonline.com/682febe8-021b-4fde-ac09-e60085f05181/FederationMetadata/2007-06/FederationMetadata.xml")
-  (mkIssuer "https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/")
-  (unsafeParseURI "http://myidp.io/sso")
-  cert
-  where
-    Right cert = parseKeyInfo $ readSample "microsoft-idp-keyinfo.xml"
+mkmyidp :: IO IdPConfig
+mkmyidp = do
+  Right cert <- parseKeyInfo <$> readSampleIO "microsoft-idp-keyinfo.xml"
+  pure $ IdPConfig
+    "myidp"
+    (unsafeParseURI "https://login.microsoftonline.com/682febe8-021b-4fde-ac09-e60085f05181/FederationMetadata/2007-06/FederationMetadata.xml")
+    (mkIssuer "https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/")
+    (unsafeParseURI "http://myidp.io/sso")
+    cert
 
 timeLongAgo     :: Time
 timeLongAgo     = unsafeReadTime "1918-04-14T09:58:58.457Z"

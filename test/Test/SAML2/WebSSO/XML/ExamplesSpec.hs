@@ -41,7 +41,7 @@ spec = describe "XML serialization" $ do
             good = "2013-03-18T03:28:54" <> List.take 8 decimals <> "Z"
         renderTime (unsafeReadTime good) `shouldBe` renderTime (unsafeReadTime bad)
 
-    roundtrip 0 (readSample "microsoft-authnrequest-1.xml") Samples.microsoft_authnrequest_1
+    roundtrip 0 (readSampleIO "microsoft-authnrequest-1.xml") Samples.microsoft_authnrequest_1
     -- roundtrip 1 (readSample "microsoft-authnresponse-0.xml") Samples.microsoft_authnresponse_0
     -- roundtrip 2 (readSample "microsoft-authnresponse-1.xml") Samples.microsoft_authnresponse_1
     -- roundtrip 3 (readSample "microsoft-authnresponse-2.xml") Samples.microsoft_authnresponse_2
@@ -55,21 +55,21 @@ spec = describe "XML serialization" $ do
       -- (this blob is just to demonstrate that centrify responses can be parsed; should be a
       -- simple roundtrip once we're done fixing things, except for the encoding.)
 
-      let base64raw :: LT = readSample "centrify-response-1.base64"
-
-          Right (xmlraw :: LBS)
-              = EL.decode
-              . cs @String @LBS
-              . List.filter (`notElem` ("\r\n" :: [Char]))
-              . cs @LT @String
-              $ base64raw
-          Right (xmldoc :: Document) = parseText def $ cs xmlraw
-          Right (saml2doc :: AuthnResponse) = parseFromDocument xmldoc
-
-          have = cs xmlraw :: LT
-          want = undefined :: AuthnResponse
-
       it @Expectation "parse succeeds" . liftIO $ do
+        base64raw :: LT <- readSampleIO "centrify-response-1.base64"
+
+        let Right (xmlraw :: LBS)
+                = EL.decode
+                . cs @String @LBS
+                . List.filter (`notElem` ("\r\n" :: [Char]))
+                . cs @LT @String
+                $ base64raw
+            Right (xmldoc :: Document) = parseText def $ cs xmlraw
+            Right (saml2doc :: AuthnResponse) = parseFromDocument xmldoc
+
+            have = cs xmlraw :: LT
+            want = undefined :: AuthnResponse
+
         -- print base64raw
         -- print xmlraw
         -- putStrLn (ppShow xmldoc)

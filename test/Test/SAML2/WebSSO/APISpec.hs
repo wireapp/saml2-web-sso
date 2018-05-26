@@ -180,31 +180,36 @@ spec = describe "API" $ do
       it "responds with 404" $ do
         get "/authreq/no-such-idp" `shouldRespondWith` 404
 
-    context "known idp" . withapp (Proxy @APIAuthReq) authreq testCtx2 $ do
+    context "known idp" . withapp' (Proxy @APIAuthReq) authreq mkTestCtx2 $ do
       it "responds with 200" $ do
         get "/authreq/myidp" `shouldRespondWith` 200
 
       it "responds with a body that contains the IdPs response URL" $ do
+        myidp <- liftIO mkmyidp
         get "/authreq/myidp" `shouldRespondWith` 200
           { matchBody = bodyContains . cs . renderURI $ myidp ^. idpRequestUri }
 
   describe "authresp" $ do
-    let postresp = postHtmlForm "/authresp" body
-        body = [("SAMLResponse", cs . EL.encode . cs $ readSample "microsoft-authnresponse-2.xml")]
+    let mkpostresp = readSampleIO "microsoft-authnresponse-2.xml"
+          <&> \sample -> postHtmlForm "/authresp" [("SAMLResponse", cs . EL.encode . cs $ sample)]
 
     context "unknown idp" . withapp (Proxy @APIAuthResp) authresp testCtx1 $ do
       let errmsg = "invalid signature: unknown issuer: Issuer {fromIssuer = NameID {_nameID = NameIDFEntity \"https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/\", _nameIDNameQ = Nothing, _nameIDSPNameQ = Nothing, _nameIDSPProvidedID = Nothing}}"
-      it "responds with 400" $ postresp `shouldRespondWith`
-        400 { matchBody = bodyContains errmsg }
+      it "responds with 400" $ do
+        postresp <- liftIO mkpostresp
+        postresp `shouldRespondWith` 400 { matchBody = bodyContains errmsg }
 
-    context "known idp, bad timestamp" . withapp (Proxy @APIAuthResp) authresp testCtx2 $ do
+    context "known idp, bad timestamp" . withapp' (Proxy @APIAuthResp) authresp mkTestCtx2 $ do
       it "responds with 402" $ do
+        postresp <- liftIO mkpostresp
         postresp `shouldRespondWith`
           403 { matchBody = bodyEquals "violation of NotBefore condition" }
 
-    let testCtx2' = testCtx2 & ctxNow .~ unsafeReadTime "2018-04-14T09:53:59Z"
-    context "known idp, good timestamp" . withapp (Proxy @APIAuthResp) authresp testCtx2' $ do
-      it "responds with 302" $ postresp `shouldRespondWith` 302
+    let mkTestCtx2' = mkTestCtx2 <&> ctxNow .~ unsafeReadTime "2018-04-14T09:53:59Z"
+    context "known idp, good timestamp" . withapp' (Proxy @APIAuthResp) authresp mkTestCtx2' $ do
+      it "responds with 302" $ do
+        postresp <- liftIO mkpostresp
+        postresp `shouldRespondWith` 302
 
 
   describe "idp smoke tests" $ do
