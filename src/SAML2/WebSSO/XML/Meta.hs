@@ -128,7 +128,9 @@ spMeta' spdesc = HS.SPSSODescriptor
       , HS.indexedEndpointIndex = 0 :: HX.UnsignedShort
       , HS.indexedEndpointIsDefault = True :: HX.Boolean
       } :| [] :: HX.List1 HS.IndexedEndpoint
-    , HS.descriptorAttributeConsumingService = [] :: [HS.AttributeConsumingService]  -- TODO
+    , HS.descriptorAttributeConsumingService = [] :: [HS.AttributeConsumingService]
+      -- (for identification we do not need any attributes, but can use the 'SubjectID' that is
+      -- always included in the response.)
     }
 
 
