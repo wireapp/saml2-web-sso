@@ -16,7 +16,6 @@ import SAML2.WebSSO
 import System.Environment
 import System.FilePath
 import System.IO.Temp
-import System.IO.Unsafe (unsafePerformIO)
 import System.Process (system)
 import Test.Hspec
 import Text.Show.Pretty
@@ -79,21 +78,21 @@ haskellCodeFromXML Proxy ifilepath_ = do
   Prelude.appendFile ofilepath $ g typ
 
 
-{-# NOINLINE readSample #-}
-readSample :: FilePath -> LT
-readSample = unsafePerformIO . readSampleIO
-
 readSampleIO :: FilePath -> IO LT
 readSampleIO fpath = do
   root <- getEnv "SAML2_WEB_SSO_ROOT"
   LT.readFile $ root </> "test/samples" </> fpath
 
 
-roundtrip :: forall a. (Eq a, Show a, HasXMLRoot a) => Int -> LT -> a -> Spec
-roundtrip serial rendered parsed = describe ("roundtrip-" <> show serial) $ do
+roundtrip :: forall a. (Eq a, Show a, HasXMLRoot a) => Int -> IO LT -> a -> Spec
+roundtrip serial mkrendered parsed = describe ("roundtrip-" <> show serial) $ do
   let tweak = fmapL show . parseText def
-  it "encode" $ tweak rendered `assertXmlRoundtrip` tweak (encode parsed)
-  it "decode" $ Right parsed `shouldBe` fmapL show (decode rendered)
+  it "encode" $ do
+    rendered <- mkrendered
+    tweak rendered `assertXmlRoundtrip` tweak (encode parsed)
+  it "decode" $ do
+    rendered <- mkrendered
+    Right parsed `shouldBe` fmapL show (decode rendered)
 
 -- | If we get two XML structures that differ, compute the diff.
 assertXmlRoundtrip :: HasCallStack

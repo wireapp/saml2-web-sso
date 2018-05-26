@@ -12,6 +12,7 @@ import Control.Monad (when)
 import Data.Aeson
 import Data.Aeson.TH
 import Data.Monoid
+import Data.List.NonEmpty
 import Data.String.Conversions
 import GHC.Generics
 import Lens.Micro
@@ -39,6 +40,7 @@ data Config = Config
   , _cfgSPPort            :: Int
   , _cfgSPAppURI          :: URI
   , _cfgSPSsoURI          :: URI
+  , _cfgContacts          :: NonEmpty SPContactPerson
   , _cfgIdps              :: [IdPConfig]
   }
   deriving (Eq, Show, Generic)
@@ -64,6 +66,7 @@ makeLenses ''IdPConfig
 
 deriveJSON deriveJSONOptions ''Config
 deriveJSON deriveJSONOptions ''IdPConfig
+deriveJSON deriveJSONOptions ''SPContactPerson
 
 instance FromJSON URI where
   parseJSON = (>>= either unerror pure . parseURI') . parseJSON
@@ -97,7 +100,17 @@ fallbackConfig = Config
   , _cfgSPPort            = 8081
   , _cfgSPAppURI          = unsafeParseURI "https://me.wire.com/sp"
   , _cfgSPSsoURI          = unsafeParseURI "https://me.wire.com/sso"
+  , _cfgContacts          = fallbackContact :| []
   , _cfgIdps              = mempty
+  }
+
+fallbackContact :: SPContactPerson
+fallbackContact = SPContactPerson
+  { _spcntCompany   = "evil corp."
+  , _spcntGivenName = "Dr."
+  , _spcntSurname   = "Girlfriend"
+  , _spcntEmail     = unsafeParseURI "email:president@evil.corp"
+  , _spcntPhone     = "+314159265"
   }
 
 

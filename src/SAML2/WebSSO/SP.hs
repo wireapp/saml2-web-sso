@@ -223,13 +223,7 @@ judgeConditions (Conditions lowlimit uplimit onetimeonly) = do
 
 
 ----------------------------------------------------------------------
--- to be used in the future?
-
-getIdPMeta :: SP m => m ()
-getIdPMeta = undefined
-
-getUser :: SP m => String -> m ()
-getUser = undefined
+-- helpers
 
 getIdPConfig :: SPHandler m => ST -> m IdPConfig
 getIdPConfig idpname = maybe crash pure . Map.lookup idpname . mkmap . (^. cfgIdps) =<< getConfig

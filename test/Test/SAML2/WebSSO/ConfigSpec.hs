@@ -7,6 +7,7 @@ module Test.SAML2.WebSSO.ConfigSpec (spec) where
 import Arbitrary
 import Data.Aeson
 import Data.Aeson.Types
+import Data.List.NonEmpty
 import Data.String.Conversions
 import Hedgehog
 import SAML2.WebSSO
@@ -35,6 +36,7 @@ spec = describe "Config" $ do
           , _cfgSPPort   = 443
           , _cfgSPAppURI = unsafeParseURI "https://me.wire.com/sp"
           , _cfgSPSsoURI = unsafeParseURI "https://me.wire.com/sso"
+          , _cfgContacts = fallbackContact :| []
           , _cfgIdps =
             [ IdPConfig
               { _idpPath       = "azure-test"
@@ -56,5 +58,14 @@ genConfig = do
   _cfgSPPort     <- Gen.int (Range.linear 1 9999)
   _cfgSPAppURI   <- genURI
   _cfgSPSsoURI   <- genURI
+  _cfgContacts   <- (:|) <$> genSPContactPerson <*> Gen.list (Range.linear 0 3) genSPContactPerson
   _cfgIdps       <- pure mempty
   pure Config{..}
+
+genSPContactPerson :: Gen SPContactPerson
+genSPContactPerson = SPContactPerson
+  <$> genNiceWord
+  <*> genNiceWord
+  <*> genNiceWord
+  <*> genURI
+  <*> genNiceWord
