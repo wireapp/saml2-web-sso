@@ -243,7 +243,7 @@ meta appName = do
   enterH "meta"
   landing <- getLandingURI
   resp <- getResponseURI
-  Meta.spMeta <$> Meta.spDesc appName landing resp
+  Meta.spMeta <$> Meta.spDesc appName landing resp undefined
 
 authreq :: SPHandler m => ST -> m (FormRedirect AuthnRequest)
 authreq idpname = do

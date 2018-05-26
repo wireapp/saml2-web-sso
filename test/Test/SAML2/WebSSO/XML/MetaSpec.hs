@@ -4,6 +4,7 @@ module Test.SAML2.WebSSO.XML.MetaSpec (spec) where
 
 import Control.Lens
 import Data.EitherR
+import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Maybe (fromJust)
 import Data.String.Conversions
 import Data.Time
@@ -15,13 +16,15 @@ import Text.XML.Util
 import Util
 
 import qualified Data.UUID as UUID
+import qualified Network.URI as OldURI
 
 
 spec :: Spec
 spec = do
   describe "spDesc" $ do
     it "does not smoke" $ do
-      have <- testSP testCtx1 $ spDesc "drnick" (unsafeParseURI "http://example.com/") (unsafeParseURI "http://example.com/sso/login")
+      have <- testSP testCtx1 $ spDesc
+        "drnick" (unsafeParseURI "http://example.com/") (unsafeParseURI "http://example.com/sso/login") person
       let want = spdescpre (have ^. spdID)
       have `shouldBe` want
 
@@ -42,4 +45,14 @@ spdescpre uuid = SPDescPre
   , _spdOrgDisplayName = "drnick"
   , _spdOrgURL = unsafeParseURI "http://example.com/"
   , _spdResponseURL = unsafeParseURI "http://example.com/sso/login"
+  , _spdContacts = person :| []
+  }
+
+person :: SPContactPerson
+person = SPContactPerson
+  { _spcntCompany   = "evil corp."
+  , _spcntGivenName = "Dr."
+  , _spcntSurname   = "Girlfriend"
+  , _spcntEmail     = fromJust $ OldURI.parseURI "email:president@evil.corp"
+  , _spcntPhone     = "+314159265"
   }

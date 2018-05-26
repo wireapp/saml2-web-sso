@@ -1,5 +1,5 @@
 module SAML2.WebSSO.XML.Meta
-  ( SPDescPre(..), SPDesc(..)
+  ( SPDescPre(..), SPContactPerson(..), SPDesc(..)
   , spdID
   , spdValidUntil
   , spdCacheDuration
@@ -63,23 +63,36 @@ data SPDescPre = SPDescPre
   , _spdOrgDisplayName :: ST
   , _spdOrgURL         :: URI
   , _spdResponseURL    :: URI
+  , _spdContacts       :: NonEmpty SPContactPerson
   }
   deriving (Eq, Show)
 
+data SPContactPerson = SPContactPerson
+  { _spcntCompany   :: ST
+  , _spcntGivenName :: ST
+  , _spcntSurname   :: ST
+  , _spcntEmail     :: HX.URI
+  , _spcntPhone     :: ST
+  }
+  deriving (Eq, Show)
+
+
 makeLenses ''SPDescPre
+makeLenses ''SPContactPerson
 
 
-spDesc :: SP m => ST -> URI -> URI -> m SPDescPre
-spDesc nick org resp = createUUID >>= \uuid -> spDesc' uuid nick org resp
+spDesc :: SP m => ST -> URI -> URI -> SPContactPerson -> m SPDescPre
+spDesc nick org resp contact = createUUID >>= \uuid -> spDesc' uuid nick org resp contact
 
-spDesc' :: SP m => UUID.UUID -> ST -> URI -> URI -> m SPDescPre
-spDesc' uuid nick org resp = do
+spDesc' :: SP m => UUID.UUID -> ST -> URI -> URI -> SPContactPerson -> m SPDescPre
+spDesc' uuid nick org resp contact = do
   let _spdID             = uuid
       _spdCacheDuration  = months 1
       _spdOrgName        = nick
       _spdOrgDisplayName = nick
       _spdOrgURL         = org
       _spdResponseURL    = resp
+      _spdContacts       = contact :| []
 
       years  n = days n * 365
       months n = days n * 30
@@ -113,16 +126,17 @@ spMeta' spdesc = HS.SPSSODescriptor
         , HS.organizationDisplayName = HS.Localized "EN" (cs $ spdesc ^. spdOrgDisplayName) :| []
         , HS.organizationURL = HS.Localized "EN" (castURL $ spdesc ^. spdOrgURL) :| [] :: HX.List1 HS.LocalizedURI
         }
-      , HS.roleDescriptorContactPerson = [HS.ContactPerson  -- TODO
-        { HS.contactType = HS.ContactTypeSupport
-        , HS.contactAttrs = []
-        , HS.contactExtensions = HS.Extensions []
-        , HS.contactCompany = Just "evil corp."
-        , HS.contactGivenName = Just "Dr."
-        , HS.contactSurName = Just "Girlfriend"
-        , HS.contactEmailAddress = [fromJust $ OldURI.parseURI "email:president@evil.corp"] :: [HX.AnyURI]
-        , HS.contactTelephoneNumber = ["+314159265"]
-        }] :: [HS.Contact]
+      , HS.roleDescriptorContactPerson = toList (spdesc ^. spdContacts) <&> \contact ->
+          HS.ContactPerson
+            { HS.contactType = HS.ContactTypeSupport
+            , HS.contactAttrs = []
+            , HS.contactExtensions = HS.Extensions []
+            , HS.contactCompany = Just . cs $ contact ^. spcntCompany
+            , HS.contactGivenName = Just . cs $ contact ^. spcntGivenName
+            , HS.contactSurName = Just . cs $ contact ^. spcntSurname
+            , HS.contactEmailAddress = [contact ^. spcntEmail] :: [HX.AnyURI]
+            , HS.contactTelephoneNumber = [cs $ contact ^. spcntPhone]
+            }
       }
     , HS.descriptorSSO = HS.SSODescriptor
       { HS.ssoDescriptorArtifactResolutionService = [] :: [HS.IndexedEndpoint]
