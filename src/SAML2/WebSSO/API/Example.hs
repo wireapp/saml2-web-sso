@@ -7,6 +7,7 @@
 -- build other apps, but it is more likely to serve as a tutorial.
 module SAML2.WebSSO.API.Example where
 
+import Control.Monad.Reader
 import Data.Proxy
 import Data.String.Conversions
 import GHC.Stack
@@ -26,7 +27,7 @@ import Web.Cookie
 
 -- | The most straight-forward 'Application' that can be constructed from 'api', 'API'.
 app :: IO Application
-app = app' (Proxy @Handler) ()
+app = app' (Proxy @(ReaderT Config Handler)) =<< configIO
 
 app' :: forall m.
         ( Enter (ServerT APPAPI m) m Handler (Server APPAPI)

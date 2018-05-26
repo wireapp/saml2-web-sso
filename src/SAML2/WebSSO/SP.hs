@@ -5,6 +5,7 @@
 module SAML2.WebSSO.SP where
 
 import Control.Monad.Except
+import Control.Monad.Reader
 import Control.Monad.Writer
 import Data.Foldable (toList)
 import Data.List
@@ -46,17 +47,16 @@ class (SP m, MonadError ServantErr m) => SPHandler m where
   type NTCTX m :: *
   nt :: forall x. NTCTX m -> m x -> Handler x
 
-instance SP IO
-instance SP Handler
+-- | If you read the 'Config' initially in 'IO' and then pass it into the monad via 'Reader', you
+-- safe disk load and redundant debug logs.
+instance SPHandler (ReaderT Config Handler) where
+  type NTCTX (ReaderT Config Handler) = Config
+  nt cfg m = m `runReaderT` cfg
 
-instance SPHandler Handler where
-  type NTCTX Handler = ()
-  nt :: forall x. () -> Handler x -> Handler x
-  nt () = id
+instance SP (ReaderT Config Handler)
 
-
-instance HasConfig Handler where
-  getConfig = liftIO getConfig
+instance Monad m => HasConfig (ReaderT Config m) where
+  getConfig = ask
 
 
 ----------------------------------------------------------------------

@@ -148,6 +148,3 @@ writeConfig cfg = (`Yaml.encodeFile` cfg) =<< configFilePath
 
 class Monad m => HasConfig m where
   getConfig :: m Config
-
-instance HasConfig IO where
-  getConfig = configIO

@@ -10,6 +10,12 @@ import TestSP
 import qualified Samples
 
 
+instance HasConfig IO where
+  getConfig = configIO
+
+instance SP IO
+
+
 ----------------------------------------------------------------------
 -- tests
 
