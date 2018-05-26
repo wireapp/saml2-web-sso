@@ -208,7 +208,8 @@ spec = describe "API" $ do
 
 
   describe "idp smoke tests" $ do
-    burnIdP "octa.yaml" "octa-resp-1.base64"
+    pure ()
+    -- burnIdP "octa.yaml" "octa-resp-1.base64"
     -- burnIdP "microsoft.yaml" "..."  -- TODO
     -- burnIdP "centrify.yaml" "..."  -- TODO
 
