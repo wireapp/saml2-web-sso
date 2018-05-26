@@ -12,6 +12,7 @@ import Control.Monad (when)
 import Data.Aeson
 import Data.Aeson.TH
 import Data.Monoid
+import Data.List.NonEmpty
 import Data.String.Conversions
 import GHC.Generics
 import Lens.Micro
@@ -52,6 +53,7 @@ data IdPConfig = IdPConfig
   , _idpIssuer          :: Issuer
   , _idpRequestUri      :: URI
   , _idpPublicKey       :: X509.SignedCertificate
+  , _idpContacts        :: NonEmpty SPContactPerson
   }
   deriving (Eq, Show, Generic)
 
@@ -64,6 +66,7 @@ makeLenses ''IdPConfig
 
 deriveJSON deriveJSONOptions ''Config
 deriveJSON deriveJSONOptions ''IdPConfig
+deriveJSON deriveJSONOptions ''SPContactPerson
 
 instance FromJSON URI where
   parseJSON = (>>= either unerror pure . parseURI') . parseJSON

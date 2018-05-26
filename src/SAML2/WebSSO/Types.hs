@@ -6,7 +6,8 @@ import Data.Aeson
 import Data.List.NonEmpty
 import Data.Monoid
 import Data.String.Conversions (ST)
-import Data.Time (UTCTime(..), formatTime, defaultTimeLocale)
+import Data.Time (UTCTime(..), NominalDiffTime, formatTime, defaultTimeLocale)
+import Data.UUID as UUID
 import GHC.Stack
 import Lens.Micro.TH
 import Text.XML.Util
@@ -51,6 +52,30 @@ instance ToJSON Issuer where
 
 ----------------------------------------------------------------------
 -- meta
+
+-- | high-level, condensed data uesd for constructing an 'SPDesc'.  what is not in here is set to
+-- some constant default.
+data SPDescPre = SPDescPre
+  { _spdID             :: UUID.UUID
+  , _spdValidUntil     :: UTCTime          -- FUTUREWORK: Time
+  , _spdCacheDuration  :: NominalDiffTime  -- FUTUREWORK: Duration
+  , _spdOrgName        :: ST
+  , _spdOrgDisplayName :: ST
+  , _spdOrgURL         :: URI
+  , _spdResponseURL    :: URI
+  , _spdContacts       :: NonEmpty SPContactPerson
+  }
+  deriving (Eq, Show)
+
+data SPContactPerson = SPContactPerson
+  { _spcntCompany   :: ST
+  , _spcntGivenName :: ST
+  , _spcntSurname   :: ST
+  , _spcntEmail     :: URI
+  , _spcntPhone     :: ST
+  }
+  deriving (Eq, Show)
+
 
 -- | [4/2.3.2]
 data EntityDescriptor = EntityDescriptor
@@ -395,6 +420,8 @@ makeLenses ''RequestedAuthnContext
 makeLenses ''Response
 makeLenses ''Role
 makeLenses ''RoleDescriptor
+makeLenses ''SPContactPerson
+makeLenses ''SPDescPre
 makeLenses ''SPSSODescriptor
 makeLenses ''Statement
 makeLenses ''Status

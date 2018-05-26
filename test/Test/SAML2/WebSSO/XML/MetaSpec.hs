@@ -16,7 +16,6 @@ import Text.XML.Util
 import Util
 
 import qualified Data.UUID as UUID
-import qualified Network.URI as OldURI
 
 
 spec :: Spec
@@ -24,7 +23,7 @@ spec = do
   describe "spDesc" $ do
     it "does not smoke" $ do
       have <- testSP testCtx1 $ spDesc
-        "drnick" (unsafeParseURI "http://example.com/") (unsafeParseURI "http://example.com/sso/login") person
+        "drnick" (unsafeParseURI "http://example.com/") (unsafeParseURI "http://example.com/sso/login") mycontact
       let want = spdescpre (have ^. spdID)
       have `shouldBe` want
 
@@ -45,14 +44,5 @@ spdescpre uuid = SPDescPre
   , _spdOrgDisplayName = "drnick"
   , _spdOrgURL = unsafeParseURI "http://example.com/"
   , _spdResponseURL = unsafeParseURI "http://example.com/sso/login"
-  , _spdContacts = person :| []
-  }
-
-person :: SPContactPerson
-person = SPContactPerson
-  { _spcntCompany   = "evil corp."
-  , _spcntGivenName = "Dr."
-  , _spcntSurname   = "Girlfriend"
-  , _spcntEmail     = fromJust $ OldURI.parseURI "email:president@evil.corp"
-  , _spcntPhone     = "+314159265"
+  , _spdContacts = mycontact :| []
   }

@@ -19,7 +19,6 @@ import Data.String.Conversions
 import Data.Time
 import GHC.Stack
 import Lens.Micro
-import Lens.Micro.TH
 import SAML2.WebSSO.SP
 import SAML2.WebSSO.Types
 import SAML2.WebSSO.XML
@@ -51,34 +50,6 @@ instance HasXML SPDesc where
 
 instance HasXMLRoot SPDesc where
   renderRoot (SPDesc (Document _ el _)) = el
-
-
--- | high-level, condensed data uesd for constructing an 'SPDesc'.  what is not in here is set to
--- some constant default.
-data SPDescPre = SPDescPre
-  { _spdID             :: UUID.UUID
-  , _spdValidUntil     :: UTCTime          -- FUTUREWORK: Time
-  , _spdCacheDuration  :: NominalDiffTime  -- FUTUREWORK: Duration
-  , _spdOrgName        :: ST
-  , _spdOrgDisplayName :: ST
-  , _spdOrgURL         :: URI
-  , _spdResponseURL    :: URI
-  , _spdContacts       :: NonEmpty SPContactPerson
-  }
-  deriving (Eq, Show)
-
-data SPContactPerson = SPContactPerson
-  { _spcntCompany   :: ST
-  , _spcntGivenName :: ST
-  , _spcntSurname   :: ST
-  , _spcntEmail     :: HX.URI
-  , _spcntPhone     :: ST
-  }
-  deriving (Eq, Show)
-
-
-makeLenses ''SPDescPre
-makeLenses ''SPContactPerson
 
 
 spDesc :: SP m => ST -> URI -> URI -> SPContactPerson -> m SPDescPre
@@ -134,7 +105,7 @@ spMeta' spdesc = HS.SPSSODescriptor
             , HS.contactCompany = Just . cs $ contact ^. spcntCompany
             , HS.contactGivenName = Just . cs $ contact ^. spcntGivenName
             , HS.contactSurName = Just . cs $ contact ^. spcntSurname
-            , HS.contactEmailAddress = [contact ^. spcntEmail] :: [HX.AnyURI]
+            , HS.contactEmailAddress = [castURL $ contact ^. spcntEmail] :: [HX.AnyURI]
             , HS.contactTelephoneNumber = [cs $ contact ^. spcntPhone]
             }
       }
