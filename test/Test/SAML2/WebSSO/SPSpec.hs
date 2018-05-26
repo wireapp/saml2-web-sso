@@ -1,5 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 module Test.SAML2.WebSSO.SPSpec (spec) where
 
 import Lens.Micro
