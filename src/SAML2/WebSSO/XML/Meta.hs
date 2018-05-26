@@ -143,7 +143,7 @@ spMeta' spdesc = HS.SPSSODescriptor
       , HS.indexedEndpointIndex = 0 :: HX.UnsignedShort
       , HS.indexedEndpointIsDefault = True :: HX.Boolean
       } :| [] :: HX.List1 HS.IndexedEndpoint
-    , HS.descriptorAttributeConsumingService = [] :: [HS.AttributeConsumingService]
+    , HS.descriptorAttributeConsumingService = [] :: [HS.AttributeConsumingService]  -- TODO
     }
 
 
