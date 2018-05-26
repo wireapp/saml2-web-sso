@@ -7,7 +7,6 @@ module TestSP where
 import Control.Exception (throwIO, ErrorCall(..))
 import Control.Monad.Except
 import Control.Monad.State
-import Data.List.NonEmpty (NonEmpty((:|)))
 import Lens.Micro
 import Lens.Micro.TH
 import SAML2.WebSSO
@@ -47,16 +46,6 @@ mkmyidp = do
     (mkIssuer "https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/")
     (unsafeParseURI "http://myidp.io/sso")
     cert
-    (mycontact :| [])
-
-mycontact :: SPContactPerson
-mycontact = SPContactPerson
-  { _spcntCompany   = "evil corp."
-  , _spcntGivenName = "Dr."
-  , _spcntSurname   = "Girlfriend"
-  , _spcntEmail     = unsafeParseURI "email:president@evil.corp"
-  , _spcntPhone     = "+314159265"
-  }
 
 timeLongAgo     :: Time
 timeLongAgo     = unsafeReadTime "1918-04-14T09:58:58.457Z"
