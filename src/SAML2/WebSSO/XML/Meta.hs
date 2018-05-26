@@ -52,8 +52,8 @@ instance HasXMLRoot SPDesc where
 -- | high-level, condensed data uesd for constructing an 'SPDesc'.  what is not in here is set to
 -- some constant default.
 data SPDescPre = SPDescPre
-  { _spdValidUntil     :: UTCTime          -- TODO: Time
-  , _spdCacheDuration  :: NominalDiffTime  -- TODO: Duration
+  { _spdValidUntil     :: UTCTime          -- FUTUREWORK: Time
+  , _spdCacheDuration  :: NominalDiffTime  -- FUTUREWORK: Duration
   , _spdOrgName        :: ST
   , _spdOrgDisplayName :: ST
   , _spdOrgURL         :: URI
@@ -80,7 +80,7 @@ spDesc nick org resp = do
   pure SPDescPre {..}
 
 
--- | TODO: this can throw async errors!  this shouldn't be necessary!
+-- | FUTUREWORK: this can throw async errors!  this shouldn't be necessary!
 spMeta :: HasCallStack => SPDescPre -> SPDesc
 spMeta spdesc = either (error . show) SPDesc . parseLBS def . HX.samlToXML $ spMeta' spdesc
 
