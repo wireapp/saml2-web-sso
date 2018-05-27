@@ -6,26 +6,22 @@ module Text.XML.DSig
   ( SignCreds(..), SignDigest(..), SignKey(..)
   , parseKeyInfo, renderKeyInfo, keyInfoToCreds
 
-  , verify, verifyIO, Verified, fmapVerified, unverify
+  , verify, verifyIO
   )
 where
 
-import Control.Exception (SomeException, try)
+import Control.Exception (throwIO, ErrorCall(ErrorCall))
 import Control.Monad.Except
 import Data.List.NonEmpty
 import Data.Monoid ((<>))
 import Data.String.Conversions
 import GHC.Stack
 import System.IO.Unsafe (unsafePerformIO)
-import Text.XML
-import Text.XML.Util
 
 import qualified Crypto.PubKey.RSA as RSA
-import qualified Data.Map as Map
 import qualified Data.X509 as X509
 import qualified SAML2.XML as HS hiding (URI, Node)
 import qualified SAML2.XML.Signature as HS
-import qualified Text.XML.HXT.Core as HXT
 
 
 ----------------------------------------------------------------------
@@ -77,43 +73,15 @@ q = [decodeASN1 DER, decodeASN1 BER] <*> [q1]
 ----------------------------------------------------------------------
 -- signature verification
 
--- | [1/5]
---
--- DEPRECATED: Verified "use 'simpleVerifyAuthnResponse' instead (less type safety, but more flexible and understandable)."
-newtype Verified a = Verified { unverify :: a }
-  deriving (Eq, Show)
+verify :: forall m. (MonadError String m) => RSA.PublicKey -> LBS -> String -> m ()
+verify key el signedID = either (throwError . show) pure . unsafePerformIO
+                       $ verifyIO key el signedID
 
-verify :: forall m. (MonadError String m)
-       => RSA.PublicKey -> Element -> m (Verified Element)
-verify key el = either (throwError . show @SomeException) pure . unsafePerformIO . try $ verifyIO key el
+verifyIO :: RSA.PublicKey -> LBS -> String -> IO (Either HS.SignatureError ())
+verifyIO key el signedID = do
+  el' <- either (throwIO . ErrorCall) pure $ HS.xmlToDocE el
+  HS.verifySignature (HS.PublicKeys Nothing . Just $ key) signedID el'
 
--- | Assumptions: the signedReference points to the root element; the signature is part of the
--- signed tree (enveloped signature).
-verifyIO :: forall m. (m ~ IO {- FUTUREWORK: allow this to be any MonadThrow instance -})
-       => RSA.PublicKey -> Element -> m (Verified Element)
-verifyIO key el = do
-  el' <- maybe (err "no parse") pure mkel'
-  sid <- maybe (err "no signed-ID") pure mkSid
-  HS.verifySignature key' sid el' >>= \case
-    Left verificationError -> fail $ show verificationError
-    Right ()               -> pure $ Verified el
-  where
-    key' :: HS.PublicKeys
-    key' = HS.PublicKeys Nothing . Just $ key
-
-    mkel' :: Maybe HXT.XmlTree
-    mkel' = HS.xmlToDoc . renderLBS def . mkDocument $ el
-
-    mkSid :: Maybe String
-    mkSid = cs <$> Map.lookup "ID" (elementAttributes el)
-
-    err :: String -> m a
-    err = fail . ("signature verification failed: " <>)
-
--- | This fake 'Functor' instance leaks the integrity of the contents, but we need this because we
--- want to first check the signature, then parse the application data.  Use with care!
-fmapVerified :: (a -> b) -> Verified a -> Verified b
-fmapVerified f (Verified a) = Verified $ f a
 
 
 

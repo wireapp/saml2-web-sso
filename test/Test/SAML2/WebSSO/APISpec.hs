@@ -203,7 +203,7 @@ spec = describe "API" $ do
       it "responds with 402" $ do
         postresp <- liftIO mkpostresp
         postresp `shouldRespondWith`
-          403 { matchBody = bodyEquals "violation of NotBefore condition" }
+          403 { matchBody = bodyContains "violation of NotBefore condition" }
 
     let mkTestCtx2' = mkTestCtx2 <&> ctxNow .~ unsafeReadTime "2018-04-14T09:53:59Z"
     context "known idp, good timestamp" . withapp' (Proxy @APIAuthResp) authresp mkTestCtx2' $ do
@@ -213,14 +213,13 @@ spec = describe "API" $ do
 
 
   describe "idp smoke tests" $ do
-    pure ()
-    -- burnIdP "octa.yaml" "octa-resp-1.base64"
-    -- burnIdP "microsoft.yaml" "..."  -- TODO
-    -- burnIdP "centrify.yaml" "..."  -- TODO
+    burnIdP "octa.yaml" "octa-resp-1.base64" (unsafeReadTime "2018-05-25T10:53:16Z")
+    burnIdP "microsoft-idp-config.yaml" "microsoft-authnresponse-2.base64" (unsafeReadTime "2018-04-14T10:53:57Z")
+    -- TODO: centrify
 
 
-burnIdP :: FilePath -> FilePath -> Spec
-burnIdP cfgPath respXmlPath = do
+burnIdP :: FilePath -> FilePath -> Time -> Spec
+burnIdP cfgPath respXmlPath currentTime = do
   let ctx :: IO Ctx
       ctx = getIdP <&> \idp -> testCtx1 & ctxConfig . cfgIdps .~ [idp]
 
@@ -233,10 +232,9 @@ burnIdP cfgPath respXmlPath = do
         idp <- liftIO getIdP
         get ("/authreq/" <> cs (idp ^. idpPath)) `shouldRespondWith` 200
 
-    describe "authresp" . withapp' (Proxy @APIAuthResp) authresp ctx $ do
+    describe "authresp" . withapp' (Proxy @APIAuthResp) authresp (ctx <&> ctxNow .~ currentTime) $ do
       it "responds with 302" $ do
         sample <- liftIO $ cs <$> readSampleIO respXmlPath
         let postresp = postHtmlForm "/authresp" body
             body = [("SAMLResponse", sample)]
-        postresp `shouldRespondWith` ""
-        postresp `shouldRespondWith` 302
+        postresp `shouldRespondWith` 302 { matchBody = bodyEquals "" }

@@ -217,8 +217,8 @@ requireAttributeText key as = case filter ((== key) . (^. stattrName)) as of
 judgeConditions :: (HasCallStack, MonadJudge m, SP m) => Conditions -> m ()
 judgeConditions (Conditions lowlimit uplimit onetimeonly) = do
   now <- getNow
-  deny ["violation of NotBefore condition"    | maybe False (now <)  lowlimit]
-  deny ["violation of NotOnOrAfter condition" | maybe False (now >=) uplimit]
+  deny [cs $ "violation of NotBefore condition: "  <> show now <> " >= " <> show lowlimit | maybe False (now <)  lowlimit]
+  deny [cs $ "violation of NotOnOrAfter condition" <> show now <> " < "  <> show uplimit  | maybe False (now >=) uplimit]
   deny ["unsupported flag: OneTimeUse" | onetimeonly]
 
 
