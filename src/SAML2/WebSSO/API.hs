@@ -96,7 +96,8 @@ parseAuthnResponseBody base64 = \lookupPublicKey -> do
 -- | Pull assertions sub-forest and pass all trees in it to 'verify' individually.  The 'LBS'
 -- argument must be a valid 'AuthnResponse'.  All assertions need to be signed by the same issuer
 -- with the same key.
-simpleVerifyAuthnResponse :: MonadError String m => Maybe Issuer -> (Issuer -> Either String RSA.PublicKey) -> LBS -> m ()
+simpleVerifyAuthnResponse :: forall m. MonadError String m
+  => Maybe Issuer -> (Issuer -> Either String RSA.PublicKey) -> LBS -> m ()
 simpleVerifyAuthnResponse Nothing _ _ = throwError "missing issuer in response."
 simpleVerifyAuthnResponse (Just issuer) getkey raw = case getkey issuer of
   Left errmsg -> throwError errmsg
@@ -109,8 +110,17 @@ simpleVerifyAuthnResponse (Just issuer) getkey raw = case getkey issuer of
         assertions :: [Element]
         assertions = catMaybes $ elemOnly . node <$>
                      (doc $/ element "{urn:oasis:names:tc:SAML:2.0:assertion}Assertion")
+    when (null assertions) $
+      throwError $ "no assertions: " <> show raw
 
-    verify key `mapM_` assertions
+    let assertionID :: Element -> m String
+        assertionID el@(Element _ attrs _)
+          = maybe (throwError $ "assertion without ID: " <> show el) (pure . cs)
+          $ Map.lookup "ID" attrs
+    nodeids :: [String]
+      <- assertionID `mapM` assertions
+
+    verify key raw `mapM_` nodeids
 
 
 ----------------------------------------------------------------------
