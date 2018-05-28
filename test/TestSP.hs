@@ -4,9 +4,11 @@
 
 module TestSP where
 
+import Control.Concurrent.MVar
 import Control.Exception (throwIO, ErrorCall(..))
 import Control.Monad.Except
 import Control.Monad.State
+import Data.Monoid
 import Lens.Micro
 import Lens.Micro.TH
 import SAML2.WebSSO
@@ -17,25 +19,36 @@ import Util
 
 
 data Ctx = Ctx
-  { _ctxNow    :: Time
-  , _ctxConfig :: Config
+  { _ctxNow            :: Time
+  , _ctxConfig         :: Config
+  , _ctxAssertionStore :: MVar AssertionStore
+  , _ctxRequestStore   :: MVar RequestStore
   }
-  deriving (Eq, Show)
+
+instance Show Ctx where
+  show (Ctx n c _ _) = "(Ctx " <> show (n, c) <> ")"
 
 makeLenses ''Ctx
 
-testCtx1 :: Ctx
-testCtx1 = Ctx
-  { _ctxNow = timeNow
-  , _ctxConfig = fallbackConfig & cfgLogLevel .~ SILENT
-  }
+mkTestCtx1 :: IO Ctx
+mkTestCtx1 = do
+  let _ctxNow         = timeNow
+      _ctxConfig      = fallbackConfig & cfgLogLevel .~ SILENT
+                                       & cfgSPAppURI .~ unsafeParseURI "https://zb2.zerobuzz.net:60443/"
+                                       & cfgSPSsoURI .~ unsafeParseURI "https://zb2.zerobuzz.net:60443/"
+  _ctxAssertionStore <- newMVar mempty
+  _ctxRequestStore <- newMVar mempty
+  pure Ctx {..}
 
 -- | Use this to see more output on a per-test basis.
 verbose :: Ctx -> Ctx
 verbose = ctxConfig . cfgLogLevel .~ DEBUG
 
 mkTestCtx2 :: IO Ctx
-mkTestCtx2 = mkmyidp <&> \myidp -> testCtx1 & ctxConfig . cfgIdps .~ [myidp]
+mkTestCtx2 = do
+  myidp <- mkmyidp
+  testCtx1 <- mkTestCtx1
+  pure $ testCtx1 & ctxConfig . cfgIdps .~ [myidp]
 
 mkmyidp :: IO IdPConfig
 mkmyidp = do
@@ -46,6 +59,11 @@ mkmyidp = do
     (mkIssuer "https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/")
     (unsafeParseURI "http://myidp.io/sso")
     cert
+
+mkTestCtx3 :: IO Ctx
+mkTestCtx3 = mkTestCtx2
+  <&> ctxNow .~ unsafeReadTime "2018-03-11T17:14:13Z"
+  <&> ctxConfig . cfgSPSsoURI .~ unsafeParseURI "https://zb2.zerobuzz.net:60443/"
 
 timeLongAgo     :: Time
 timeLongAgo     = unsafeReadTime "1918-04-14T09:58:58.457Z"
@@ -67,8 +85,22 @@ instance HasConfig TestSP where
   getConfig = gets (^. ctxConfig)
 
 instance SP TestSP where
-  getNow :: TestSP Time
   getNow = gets (^. ctxNow)
+
+instance SPStore TestSP where
+  storeRequest req keepAroundUntil = do
+    store <- gets (^. ctxRequestStore)
+    simpleStoreRequest store req keepAroundUntil
+
+  checkAgainstRequest req = do
+    store <- gets (^. ctxRequestStore)
+    now <- getNow
+    simpleCheckAgainstRequest store req now
+
+  storeAssertion aid time = do
+    store <- gets (^. ctxAssertionStore)
+    now <- getNow
+    simpleStoreAssertion store now aid time
 
 instance SPHandler TestSP where
   type NTCTX TestSP = Ctx

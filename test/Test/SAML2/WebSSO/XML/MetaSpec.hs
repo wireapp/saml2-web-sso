@@ -22,6 +22,7 @@ spec :: Spec
 spec = do
   describe "spDesc" $ do
     it "does not smoke" $ do
+      testCtx1 <- mkTestCtx1
       have <- testSP testCtx1 $ spDesc
         "drnick" (unsafeParseURI "http://example.com/") (unsafeParseURI "http://example.com/sso/login") (fallbackContact :| [])
       let want = spdescpre (have ^. spdID)
@@ -38,7 +39,7 @@ spec = do
 spdescpre :: UUID.UUID -> SPDescPre
 spdescpre uuid = SPDescPre
   { _spdID = uuid
-  , _spdValidUntil = addUTCTime (60 * 60 * 24 * 365) $ fromTime timeNow
+  , _spdValidUntil = addUTCTime (60 * 60 * 24 * 365) $ fromTime timeNow  -- TODO: use 'addTime'
   , _spdCacheDuration = 2592000
   , _spdOrgName = "drnick"
   , _spdOrgDisplayName = "drnick"

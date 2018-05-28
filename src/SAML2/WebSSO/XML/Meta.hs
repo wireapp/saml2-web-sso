@@ -69,7 +69,7 @@ spDesc' uuid nick org resp contact = do
       months n = days n * 30
       days   n = n * 60 * 60 * 24
 
-  _spdValidUntil        <- addUTCTime (years 1) . fromTime <$> getNow
+  Time _spdValidUntil <- addTime (years 1) <$> getNow
   pure SPDescPre {..}
 
 

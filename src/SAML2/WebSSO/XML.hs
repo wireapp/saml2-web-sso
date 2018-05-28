@@ -6,7 +6,7 @@ import Control.Monad
 import Control.Monad.Except
 import Data.EitherR
 import Data.List.NonEmpty (NonEmpty((:|)))
-import Data.Maybe (fromMaybe, isNothing, maybeToList)
+import Data.Maybe (fromMaybe, isNothing, maybeToList, catMaybes)
 import Data.Monoid ((<>))
 import Data.String.Conversions
 import Data.Time
@@ -143,7 +143,7 @@ exportEntityDescriptor = error . ppShow
 importAuthnRequest :: MonadError String m => HS.AuthnRequest -> m AuthnRequest
 importAuthnRequest req = do
   let proto = HS.requestProtocol $ HS.authnRequest req
-  x0 :: ID        <- importID $ HS.protocolID proto
+  x0              <- importID $ HS.protocolID proto
   x1 :: Version   <- importVersion $ HS.protocolVersion proto
   x2 :: Time      <- importTime $ HS.protocolIssueInstant proto
   x3 :: Issuer    <- importRequiredIssuer $ HS.protocolIssuer proto
@@ -202,8 +202,8 @@ importAuthnResponse rsp = do
   let rsptyp :: HS.StatusResponseType = HS.response rsp
       proto  :: HS.ProtocolType       = HS.statusProtocol rsptyp
 
-  x0 :: ID           <- importID $ HS.protocolID proto
-  x1 :: Maybe ID     <- (importID . cs) `fmapFlipM` HS.statusInResponseTo rsptyp
+  x0                 <- importID $ HS.protocolID proto
+  x1                 <- (importID . cs) `fmapFlipM` HS.statusInResponseTo rsptyp
   x2 :: Version      <- importVersion $ HS.protocolVersion proto
   x3 :: Time         <- importTime $ HS.protocolIssueInstant proto
   x4 :: Maybe URI    <- fmapFlipM importURI $ HS.protocolDestination proto
@@ -246,7 +246,7 @@ importAssertion (HS.NotEncrypted ass) = do
 
   pure Assertion
     { _assVersion      = x0 :: Version
-    , _assID           = x1 :: ID
+    , _assID           = x1 :: ID Assertion
     , _assIssueInstant = x2 :: Time
     , _assIssuer       = x3 :: Issuer
     , _assConditions   = x4 :: Maybe Conditions
@@ -299,6 +299,14 @@ importConditions conds = do
   x0 <- fmapFlipM importTime $ HS.conditionsNotBefore conds
   x1 <- fmapFlipM importTime $ HS.conditionsNotOnOrAfter conds
   let x2 = HS.OneTimeUse `elem` HS.conditions conds
+  x3 :: Maybe (NonEmpty URI)
+    <- do
+         let pull (HS.AudienceRestriction us) = Just $ HS.audience <$> us
+             pull _ = Nothing
+             uris :: [NonEmpty HS.URI] = catMaybes $ pull <$> HS.conditions conds
+         case uris of
+           [] -> pure Nothing
+           (x : xs') -> Just <$> importURI `mapM` nelConcat (x :| xs')
 
   unless (HS.conditions conds `notElem` [[], [HS.OneTimeUse]]) $
     die (Proxy @Conditions) ("unsupported conditions" :: String, HS.conditions conds)
@@ -307,6 +315,7 @@ importConditions conds = do
     { _condNotBefore    = x0
     , _condNotOnOrAfter = x1
     , _condOneTimeUse   = x2
+    , _condAudienceRestriction = x3
     }
 
 
@@ -357,10 +366,10 @@ importAttributeValue [ HS.NTree (HS.XAttr qn) [HS.NTree (HS.XText thistype) []]
 importAttributeValue bad = die (Proxy @AttributeValue) bad
 
 
-importID :: (HasCallStack, MonadError String m) => HS.ID -> m ID
+importID :: (HasCallStack, MonadError String m) => HS.ID -> m (ID a)
 importID = pure . ID . cs
 
-exportID :: HasCallStack => ID -> HS.ID
+exportID :: HasCallStack => ID a -> HS.ID
 exportID (ID t) = cs t
 
 importBaseID :: (HasCallStack, ConvertibleStrings s ST) => HS.BaseID s -> BaseID
@@ -403,6 +412,7 @@ exportNameID name = HS.NameID
     unform (NameIDFKerberos    n) = (HS.Identified HS.NameIDFormatKerberos, n)
     unform (NameIDFEntity      n) = (HS.Identified HS.NameIDFormatEntity, n)
     unform (NameIDFPersistent  n) = (HS.Identified HS.NameIDFormatPersistent, n)
+    unform (NameIDFTransient   n) = (HS.Identified HS.NameIDFormatTransient, n)
 
 importVersion :: (HasCallStack, MonadError String m) => HS.SAMLVersion -> m Version
 importVersion HS.SAML20 = pure Version_2_0
@@ -436,7 +446,7 @@ importIssuer :: (HasCallStack, MonadError String m) => HS.Issuer -> m Issuer
 importIssuer = fmap Issuer . importNameID . HS.issuer
 
 exportIssuer :: HasCallStack => Issuer -> HS.Issuer
-exportIssuer = HS.Issuer . exportNameID . fromIssuer
+exportIssuer = HS.Issuer . exportNameID . _fromIssuer
 
 importOptionalIssuer :: (HasCallStack, MonadError String m) => Maybe HS.Issuer -> m (Maybe Issuer)
 importOptionalIssuer = fmapFlipM importIssuer

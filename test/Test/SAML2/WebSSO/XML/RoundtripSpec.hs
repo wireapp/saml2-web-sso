@@ -119,7 +119,7 @@ genTime = pure $ unsafeReadTime "2013-03-18T07:33:56Z"
 genDuration :: Gen Duration
 genDuration = pure Duration
 
-genID :: Gen ID
+genID :: Gen (ID a)
 genID = ID <$> genNiceText (Range.singleton 2)
 
 genIssuer :: Gen Issuer
@@ -150,8 +150,8 @@ genResponse genPayload = do
   x8 <- Gen.small genPayload
 
   pure Response
-    { _rspID           = x0 :: ID
-    , _rspInRespTo     = x1 :: Maybe ID
+    { _rspID           = x0
+    , _rspInRespTo     = x1
     , _rspVersion      = x2 :: Version
     , _rspIssueInstant = x3 :: Time
     , _rspDestination  = x4 :: Maybe URI
@@ -171,7 +171,7 @@ genAssertion = do
 
   pure Assertion
     { _assVersion       = x0 :: Version
-    , _assID            = x1 :: ID
+    , _assID            = x1
     , _assIssueInstant  = x2 :: Time
     , _assIssuer        = x3 :: Issuer
     , _assConditions    = x5 :: Maybe Conditions
@@ -183,6 +183,7 @@ genConditions = Conditions
   <$> Gen.maybe genTime
   <*> Gen.maybe genTime
   <*> Gen.bool
+  <*> Gen.maybe (genNonEmpty (Range.linear 0 2) genURI)
 
 genSubjectAndStatements :: Gen SubjectAndStatements
 genSubjectAndStatements = SubjectAndStatements <$> genSubject <*> genNonEmpty (Range.linear 0 15) genStatement

@@ -1,9 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module SAML2.WebSSO.SP where
 
+import Control.Concurrent.MVar
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.Writer
@@ -22,11 +24,15 @@ import URI.ByteString
 import qualified Data.Map as Map
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
+import qualified Data.Text as ST
 
 import SAML2.WebSSO.Config
 import SAML2.WebSSO.Types
 import Text.XML.Util
 
+
+----------------------------------------------------------------------
+-- class
 
 -- | Application logic of the service provider.
 class (HasConfig m, Monad m) => SP m where
@@ -36,27 +42,93 @@ class (HasConfig m, Monad m) => SP m where
 
   createUUID :: m UUID
   default createUUID :: MonadIO m => m UUID
-  createUUID = liftIO UUID.nextRandom
+  createUUID = createUUIDIO
 
   getNow :: m Time
   default getNow :: MonadIO m => m Time
-  getNow = Time <$> liftIO getCurrentTime
+  getNow = getNowIO
+
+class (SP m) => SPStore m where
+  -- Store 'AuthnRequest' for later check against the recipient in the 'AuthnResponse'.  Will be
+  -- stored until 'Time', afterwards is considered garbage-collectible.
+  storeRequest :: ID AuthnRequest -> Time -> m ()
+
+  -- Do we know of an 'AuthnRequest' with that 'ID'?
+  checkAgainstRequest :: ID AuthnRequest -> m Bool
+
+  -- Store 'Assertion's to prevent replay attack.  'Time' argument is end of life (IDs may be
+  -- garbage collected after that time).  If assertion has already been stored and is not dead yet,
+  -- return 'False'.
+  storeAssertion :: ID Assertion -> Time -> m Bool
 
 -- | HTTP handling of the service provider.
-class (SP m, MonadError ServantErr m) => SPHandler m where
+class (SP m, SPStore m, MonadError ServantErr m) => SPHandler m where
   type NTCTX m :: *
   nt :: forall x. NTCTX m -> m x -> Handler x
 
+
+----------------------------------------------------------------------
+-- default instance
+
+newtype SimpleSP a = SimpleSP (ReaderT (Config, MVar RequestStore, MVar AssertionStore) Handler a)
+  deriving (Functor, Applicative, Monad, MonadError ServantErr)
+
+type RequestStore = Map.Map (ID AuthnRequest) Time
+type AssertionStore = Map.Map (ID Assertion) Time
+
 -- | If you read the 'Config' initially in 'IO' and then pass it into the monad via 'Reader', you
 -- safe disk load and redundant debug logs.
-instance SPHandler (ReaderT Config Handler) where
-  type NTCTX (ReaderT Config Handler) = Config
-  nt cfg m = m `runReaderT` cfg
+instance SPHandler SimpleSP where
+  type NTCTX SimpleSP = Config
+  nt cfg (SimpleSP m) = do
+    requests   <- liftIO $ newMVar mempty
+    assertions <- liftIO $ newMVar mempty
+    m `runReaderT` (cfg, requests, assertions)
 
-instance SP (ReaderT Config Handler)
+instance SP SimpleSP where
+  logger level msg = getConfig >>= \cfg -> SimpleSP (loggerIO (cfg ^. cfgLogLevel) level msg)
+  createUUID       = SimpleSP $ createUUIDIO
+  getNow           = SimpleSP $ getNowIO
 
-instance Monad m => HasConfig (ReaderT Config m) where
-  getConfig = ask
+instance SPStore SimpleSP where
+  storeRequest req keepAroundUntil = do
+    store <- (^. _2) <$> SimpleSP ask
+    SimpleSP $ simpleStoreRequest store req keepAroundUntil
+
+  checkAgainstRequest req = do
+    store <- (^. _2) <$> SimpleSP ask
+    now <- getNow
+    SimpleSP $ simpleCheckAgainstRequest store req now
+
+  storeAssertion aid tim = do
+    store <- (^. _3) <$> SimpleSP ask
+    now <- getNow
+    SimpleSP $ simpleStoreAssertion store now aid tim
+
+instance HasConfig SimpleSP where
+  getConfig = (^. _1) <$> SimpleSP ask
+
+-- | insert
+simpleStoreRequest :: MonadIO m => MVar RequestStore -> ID AuthnRequest -> Time -> m ()
+simpleStoreRequest store req keepAroundUntil =
+  liftIO $ modifyMVar_ store (pure . Map.insert req keepAroundUntil)
+
+simpleCheckAgainstRequest :: MonadIO m => MVar RequestStore -> ID AuthnRequest -> Time -> m Bool
+simpleCheckAgainstRequest store req now =
+  (> Just now) . Map.lookup req <$> liftIO (readMVar store)
+
+simpleStoreAssertion :: MonadIO m => MVar AssertionStore -> Time -> ID Assertion -> Time -> m Bool
+simpleStoreAssertion store now aid time = do
+  let go :: AssertionStore -> (AssertionStore, Bool)
+      go = (_2 %~ null) . runWriter . Map.alterF go' aid
+
+      go' :: Maybe Time -> Writer [()] (Maybe Time)
+      go' (Just time') = if time' < now
+        then pure $ Just time
+        else tell [()] >> pure (Just time')
+      go' Nothing = pure $ Just time
+
+  liftIO $ modifyMVar store (pure . go)
 
 
 ----------------------------------------------------------------------
@@ -65,39 +137,54 @@ instance Monad m => HasConfig (ReaderT Config m) where
 loggerConfIO :: (HasConfig m, MonadIO m) => LogLevel -> String -> m ()
 loggerConfIO level msg = do
   cfgsays <- (^. cfgLogLevel) <$> getConfig
-  liftIO $ loggerIO cfgsays level msg
+  loggerIO cfgsays level msg
 
-loggerIO :: LogLevel -> LogLevel -> String -> IO ()
+loggerIO :: MonadIO m => LogLevel -> LogLevel -> String -> m ()
 loggerIO cfgsays level msg = if level <= cfgsays
-  then putStrLn msg
+  then liftIO $ putStrLn msg
   else pure ()
+
+createUUIDIO :: MonadIO m => m UUID
+createUUIDIO = liftIO UUID.nextRandom
+
+getNowIO :: MonadIO m => m Time
+getNowIO = Time <$> liftIO getCurrentTime
 
 -- | Microsoft Active Directory requires IDs to be of the form @id<32 hex digits>@, so the
 -- @UUID.toText@ needs to be tweaked a little.
-createID :: SP m => m ID
+createID :: SP m => m (ID a)
 createID = ID . fixMSAD . UUID.toText <$> createUUID
   where
     fixMSAD :: ST -> ST
     fixMSAD = cs . ("id" <>) . filter (/= '-') . cs
 
-createAuthnRequest :: SP m => Issuer -> m AuthnRequest
-createAuthnRequest issuer = do
-  x0 <- createID
-  x1 <- (^. cfgVersion) <$> getConfig
-  x2 <- getNow
-
-  pure AuthnRequest
-    { _rqID               = x0 :: ID
-    , _rqVersion          = x1 :: Version
-    , _rqIssueInstant     = x2 :: Time
-    , _rqIssuer           = issuer
-    }
+createAuthnRequest :: (SP m, SPStore m) => m AuthnRequest
+createAuthnRequest = do
+  _rqID           <- createID
+  _rqVersion      <- (^. cfgVersion) <$> getConfig
+  _rqIssueInstant <- getNow
+  _rqIssuer       <- Issuer . entityNameID <$> getLandingURI
+  storeRequest _rqID (addTime (30 * 24 * 60 * 60) _rqIssueInstant)
+  pure AuthnRequest{..}
 
 redirect :: MonadError ServantErr m => URI -> [Header] -> m void
 redirect uri extra = throwError err302 { errHeaders = ("Location", cs $ renderURI uri) : extra }
 
 reject :: MonadError ServantErr m => LBS -> m void
 reject msg = throwError err403 { errBody = msg }
+
+
+----------------------------------------------------------------------
+-- paths
+
+appendURI :: SBS -> URI -> SBS
+appendURI path uri = norm uri { uriPath = uriPath uri <> path }
+  where
+    norm :: URI -> SBS
+    norm = normalizeURIRef' httpNormalization
+
+getLandingURI :: (HasCallStack, SP m) => m URI
+getLandingURI = (^. cfgSPAppURI) <$> getConfig
 
 
 ----------------------------------------------------------------------
@@ -109,20 +196,20 @@ reject msg = throwError err403 { errBody = msg }
 --
 -- NOTE: @-XGeneralizedNewtypeDeriving@ does not help with the boilerplate instances below, since
 -- this is a transformer stack and not a concrete 'Monad'.
-newtype JudgeT m a = JudgeT { fromJudgeT :: ExceptT [ST] (WriterT [ST] m) a }
+newtype JudgeT m a = JudgeT { fromJudgeT :: ExceptT [String] (WriterT [String] m) a }
 
 runJudgeT :: forall m. (Monad m, SP m) => JudgeT m AccessVerdict -> m AccessVerdict
 runJudgeT (JudgeT em) = fmap collectErrors . runWriterT $ runExceptT em
   where
-    collectErrors :: (Either [ST] AccessVerdict, [ST]) -> AccessVerdict
-    collectErrors (Left errs, errs')    = AccessDenied $ errs' <> errs
-    collectErrors (Right _, errs@(_:_)) = AccessDenied errs
+    collectErrors :: (Either [String] AccessVerdict, [String]) -> AccessVerdict
+    collectErrors (Left errs, errs')    = AccessDenied . fmap cs $ errs' <> errs
+    collectErrors (Right _, errs@(_:_)) = AccessDenied . fmap cs $ errs
     collectErrors (Right v, [])         = v
 
 -- the parts of the MonadError, MonadWriter interfaces we want here.
 class (Functor m, Applicative m, Monad m) => MonadJudge m where
-  deny :: [ST] -> m ()
-  giveup :: [ST] -> m a
+  deny :: [String] -> m ()
+  giveup :: [String] -> m a
 
 instance (Functor m, Applicative m, Monad m) => MonadJudge (JudgeT m) where
   deny = JudgeT . tell
@@ -142,84 +229,170 @@ instance (HasConfig m) => HasConfig (JudgeT m) where
   getConfig = JudgeT . lift . lift $ getConfig
 
 instance SP m => SP (JudgeT m) where
-  logger level = JudgeT . lift . lift . logger level
-  createUUID = JudgeT . lift . lift $ createUUID
-  getNow     = JudgeT . lift . lift $ getNow
+  logger level     = JudgeT . lift . lift . logger level
+  createUUID       = JudgeT . lift . lift $ createUUID
+  getNow           = JudgeT . lift . lift $ getNow
+
+instance SPStore m => SPStore (JudgeT m) where
+  storeRequest r      = JudgeT . lift . lift . storeRequest r
+  checkAgainstRequest = JudgeT . lift . lift . checkAgainstRequest
+  storeAssertion i    = JudgeT . lift . lift . storeAssertion i
 
 
-judge :: (SP m) => AuthnResponse -> m AccessVerdict
+-- | [3/4.1.4.2], [3/4.1.4.3]; specific to active-directory:
+-- <https://docs.microsoft.com/en-us/azure/active-directory/develop/active-directory-single-sign-on-protocol-reference>
+judge :: (SP m, SPStore m) => AuthnResponse -> m AccessVerdict
 judge resp = runJudgeT (judge' resp)
 
-judge' :: (HasCallStack, MonadJudge m, SP m) => AuthnResponse -> m AccessVerdict
-judge' resp = do
-  -- if any assertion has any violated conditions, you get 'AccessDenied'.
-  judgeConditions `mapM_` catMaybes ((^. assConditions) <$> resp ^. rspPayload)
+-- TODO: crash for any extensions of the xml tree that we don't understand!
 
-  -- status must be success.
+judge' :: (HasCallStack, MonadJudge m, SP m, SPStore m) => AuthnResponse -> m AccessVerdict
+judge' resp = do
   case resp ^. rspStatus of
     StatusSuccess -> pure ()
-    bad -> deny ["status: " <> cs (show bad)]
+    bad -> deny ["status: " <> show bad]
 
-  -- issuer must be present and unique in assertions
-  issuer <- case nub $ (^. assIssuer) <$> resp ^. rspPayload of
+  checkInResponseTo `mapM_` (resp ^. rspInRespTo)
+  checkNotInFuture "Issuer instant" $ resp ^. rspIssueInstant
+  checkDestination  "response destination" `mapM_` (resp ^. rspDestination)
+  checkAssertions (resp ^. rspIssuer) (resp ^. rspPayload)
+
+checkInResponseTo :: (SPStore m, MonadJudge m) => ID AuthnRequest -> m ()
+checkInResponseTo req = do
+  ok <- checkAgainstRequest req
+  unless ok . deny $ ["invalid InResponseTo field: " <> show req]
+
+checkNotInFuture :: (SP m, MonadJudge m) => String -> Time -> m ()
+checkNotInFuture msg tim = do
+  now <- getNow
+  unless (tim < now) $
+    deny [msg <> " in the future: " <> show tim]
+
+-- | check that the response is intended for us (based on config's sso uri).  use for both response
+-- destination and subject confirmation recipient.  only do prefix check because which sub-url the
+-- IdP is aiming for is out of our hands here, and having the app's sso root url should be safe.
+checkDestination :: (HasConfig m, MonadJudge m) => String -> URI -> m ()
+checkDestination msg (renderURI -> haveDest) = do
+  (renderURI . (^. cfgSPSsoURI) <$> getConfig) >>= \wantDest -> do
+    unless (wantDest `ST.isPrefixOf` haveDest) $ do
+      deny ["bad " <> msg <> ": expected " <> show wantDest <> ", got " <> show haveDest]
+
+checkAssertions :: (SP m, SPStore m, MonadJudge m) => Maybe Issuer -> [Assertion] -> m AccessVerdict
+checkAssertions _ [] = giveup ["no assertions"]
+checkAssertions missuer assertions = do
+  forM_ assertions $ \ass -> do
+    checkNotInFuture "Assertion IssueInstant" (ass ^. assIssueInstant)
+    storeAssertion (ass ^. assID) (ass ^. assEndOfLife)
+  judgeConditions `mapM_` catMaybes ((^. assConditions) <$> assertions)
+
+  issuer <- case nub $ (^. assIssuer) <$> assertions of
     [i] -> pure i
     [] -> giveup ["no statement issuer"]
-    bad@(_:_:_) -> giveup ["multiple statement issuers not supported", cs $ show bad]
+    bad@(_:_:_) -> giveup ["multiple statement issuers not supported", show bad]
 
-  case resp ^. rspPayload of
-    [ass] -> case ass ^. assContents of
-      SubjectAndStatements (Subject subject subjconds) (toList -> stmts) -> do
-        checkAuthnStatement stmts
-        checkSubjectConditions subjconds
-        pure . AccessGranted $ UserId issuer subject
-    []                           -> giveup ["no assertions"]
-    _:_:_                        -> giveup ["not supported: more than one assertion"]
+  unless (isJust $ issuer ^? fromIssuer . nameID . _NameIDFEntity) $
+    deny ["issuer must be entity: " <> show issuer]
 
-  -- TODO: 'judge' must only accept 'AuthResponse' values wrapped in 'SignaturesVerified', which can
-  -- only be constructed by "Text.XML.DSig".
+  unless (maybe True (issuer ==) missuer) $
+    deny ["issuers mismatch: " <> show (missuer, issuer)]
 
-  -- TODO: implement 'checkSubjectConditions'!
+  subject
+    <- do
+         -- subject must occur at least once; there must not be two different subjects.  (this is probably a
+         -- slight restriction of the excessively vague specs.)
+         case nub $ (^. assContents . sasSubject) <$> assertions of
+           [Subject s _] -> pure s
+           []                -> giveup ["no subjects"]
+           bad@(_:_:_)       -> giveup ["more than one subject: " <> show bad]
 
-  -- TODO: check requirements in [3/4.1.4.2]!
-  -- (resp ^. rspInRespTo, if Just, must match request ID.  and other rules.)
+  checkSubjectConfirmations assertions
 
-  -- TODO: in case of error, log response (would xml be better?) and SP context for extraction of
-  -- failing test cases in case of prod failures.
+  let statements :: [Statement]
+      statements = mconcat $ (^. assContents . sasStatements . to toList) <$> assertions
 
-  -- also double-check against https://docs.microsoft.com/en-us/azure/active-directory/develop/active-directory-single-sign-on-protocol-reference
+  when (null statements) $
+    deny ["no statements in assertions"]
 
-checkAuthnStatement :: MonadJudge m => [Statement] -> m ()
-checkAuthnStatement = mapM_ go
-  where
-    go (AuthnStatement _ _ Nothing Nothing) = pure ()
-    go (bad@AuthnStatement{})               = giveup ["bad AuthnStatement: " <> cs (show bad)]
-    go _                                    = pure ()
+  when (null . catMaybes $ (^? _AuthnStatement) <$> statements) $
+    deny ["no AuthnStatement in assertions"]
 
+  checkStatement `mapM_` statements
+  pure . AccessGranted $ UserId issuer subject
 
-checkSubjectConditions :: MonadJudge m => [SubjectConfirmation] -> m ()
-checkSubjectConditions _ = pure ()
+checkStatement :: (SP m, MonadJudge m) => Statement -> m ()
+checkStatement = \case
+  (AuthnStatement issued _ mtimeout _) -> do
+    checkNotInFuture "AuthnStatement IssueInstance" issued
+    forM_ mtimeout $ \timeout -> do
+      now <- getNow
+      when (timeout <= now) $ deny ["AuthnStatement expired at " <> show timeout]
+  (AttributeStatement{}) -> pure ()
 
+-- | Check all 'SubjectConfirmation's and 'Subject's in all 'Assertion'.  Deny if not at least one
+-- confirmation has method "bearer".
+checkSubjectConfirmations :: (SP m, SPStore m, MonadJudge m) => [Assertion] -> m ()
+checkSubjectConfirmations assertions = do
+  bearerFlags :: [[HasBearerConfirmation]] <- forM assertions $
+    \assertion -> case assertion ^. assContents . sasSubject of
+      Subject _ confs -> checkSubjectConfirmation assertion `mapM` confs
 
-getAttributeStatements :: [Statement] -> [Attribute]
-getAttributeStatements = mconcat . fmap go
-  where
-    go (AttributeStatement as) = toList as
-    go _                       = []
+  unless (mconcat (mconcat bearerFlags) == HasBearerConfirmation) $
+    deny ["no bearer-confirmed subject"]
 
+  pure ()
 
-requireAttributeText :: MonadJudge m => ST -> [Attribute] -> m ST
-requireAttributeText key as = case filter ((== key) . (^. stattrName)) as of
-  [(^. stattrValues) -> [val]] -> case val of AttributeValueUntyped txt -> pure txt
-  []                           -> giveup ["attribute not found: " <> key]
-  bad@(_:_)                    -> giveup ["attribute not found more than once: " <> cs (show (key, bad))]
+data HasBearerConfirmation = HasBearerConfirmation | NoBearerConfirmation
+  deriving (Eq, Ord, Bounded, Enum)
 
+instance Monoid HasBearerConfirmation where
+  mappend a b = min a b
+  mempty = maxBound
+
+-- | Locally check one 'SubjectConfirmation' and deny if there is a problem.  If this is a
+-- confirmation of method "bearer", return 'HasBearerConfirmation'.
+checkSubjectConfirmation :: (SPStore m, MonadJudge m) => Assertion -> SubjectConfirmation -> m HasBearerConfirmation
+checkSubjectConfirmation ass conf = do
+  let bearer = if (conf ^. scMethod) == SubjectConfirmationMethodBearer
+        then HasBearerConfirmation
+        else NoBearerConfirmation
+
+  when (bearer == HasBearerConfirmation) $ do
+    unless (any (isJust . (^. condAudienceRestriction)) (ass ^. assConditions)) $
+      deny ["bearer-confirmed assertions must be audience-restricted."]
+      -- (the actual validation of the field, given it is Just, happens in 'judgeConditions'.)
+
+  pure bearer
+
+checkSubjectConfirmationData :: (HasConfig m, SP m, SPStore m, MonadJudge m)
+  => HasBearerConfirmation -> SubjectConfirmationData -> m ()
+checkSubjectConfirmationData bearer confdat = do
+  when (bearer == HasBearerConfirmation) $ do
+    unless (isNothing $ confdat ^. scdNotBefore) $
+      deny ["bearer confirmation must not have attribute."]
+
+  checkDestination "confirmation recipient" $ confdat ^. scdRecipient
+
+  getNow >>= \now -> when (now >= confdat ^. scdNotOnOrAfter) $
+    deny ["SubjectConfirmation with invalid NotOnOfAfter: " <> show (confdat ^. scdNotOnOrAfter)]
+
+  checkInResponseTo `mapM_` (confdat ^. scdInResponseTo)
 
 judgeConditions :: (HasCallStack, MonadJudge m, SP m) => Conditions -> m ()
-judgeConditions (Conditions lowlimit uplimit onetimeonly) = do
+judgeConditions (Conditions lowlimit uplimit onetimeuse maudiences) = do
   now <- getNow
-  deny [cs $ "violation of NotBefore condition: "  <> show now <> " >= " <> show lowlimit | maybe False (now <)  lowlimit]
-  deny [cs $ "violation of NotOnOrAfter condition" <> show now <> " < "  <> show uplimit  | maybe False (now >=) uplimit]
-  deny ["unsupported flag: OneTimeUse" | onetimeonly]
+  when (maybe False (now <) lowlimit) $
+    deny ["violation of NotBefore condition: "  <> show now <> " >= " <> show lowlimit]
+  when (maybe False (now >=) uplimit) $
+    deny ["violation of NotOnOrAfter condition" <> show now <> " < "  <> show uplimit]
+  when onetimeuse $
+    deny ["unsupported flag: OneTimeUse"]
+
+  us <- getLandingURI
+  case maudiences of
+    Just aus | us `notElem` aus
+      -> deny [show (renderURI us) <> " is not in the target audience " <>
+               show (renderURI <$> toList aus) <> " of this response."]
+    _ -> pure ()
 
 
 ----------------------------------------------------------------------
