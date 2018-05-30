@@ -9,7 +9,6 @@ import Hedgehog
 import SAML2.WebSSO
 import Test.Hspec
 import Text.XML
-import URI.ByteString
 import Util
 
 import qualified Data.Map as Map
@@ -62,21 +61,13 @@ genRole = Gen.choice
 
 genRoleDescriptor :: Gen RoleDescriptor
 genRoleDescriptor = do
-  x0 <- Gen.maybe genID
-  x1 <- Gen.maybe genTime
-  x2 <- Gen.maybe genDuration
-  x3 <- genNonEmpty (Range.linear 1 5) genNiceWord
-  x4 <- Gen.maybe genURI
-  x7 <- Gen.list (Range.linear 0 5) genKeyDescriptor
-
-  pure RoleDescriptor
-    { _rssoID                         = x0
-    , _rssoValidUntil                 = x1
-    , _rssoCacheDuration              = x2
-    , _rssoProtocolSupportEnumeration = x3
-    , _rssoErrorURL                   = x4
-    , _rssoKeyDescriptors             = x7
-    }
+  _rssoID                         <- Gen.maybe genID
+  _rssoValidUntil                 <- Gen.maybe genTime
+  _rssoCacheDuration              <- Gen.maybe genDuration
+  _rssoProtocolSupportEnumeration <- genNonEmpty (Range.linear 1 5) genNiceWord
+  _rssoErrorURL                   <- Gen.maybe genURI
+  _rssoKeyDescriptors             <- Gen.list (Range.linear 0 5) genKeyDescriptor
+  pure RoleDescriptor {..}
 
 genKeyDescriptor :: Gen KeyDescriptor
 genKeyDescriptor = KeyDescriptor
@@ -86,19 +77,13 @@ genKeyDescriptor = KeyDescriptor
 
 genIDPSSODescriptor :: Gen IDPSSODescriptor
 genIDPSSODescriptor = do
-  x0 <- Gen.bool
-  x1 <- genNonEmpty (Range.linear 0 5) genEndPointNoRespLoc
-  x2 <- Gen.list (Range.linear 0 5) genEndPointNoRespLoc
-  x3 <- Gen.list (Range.linear 0 5) genEndPointAllowRespLoc
-  x4 <- Gen.list (Range.linear 0 5) genURI
+  _idpWantAuthnRequestsSigned  <- Gen.bool
+  _idpSingleSignOnService      <- genNonEmpty (Range.linear 0 5) genEndPointNoRespLoc
+  _idNameIDMappingService      <- Gen.list (Range.linear 0 5) genEndPointNoRespLoc
+  _idAssertionIDRequestService <- Gen.list (Range.linear 0 5) genEndPointAllowRespLoc
+  _idAttributeProfile          <- Gen.list (Range.linear 0 5) genURI
 
-  pure IDPSSODescriptor
-    { _idpWantAuthnRequestsSigned  = x0
-    , _idpSingleSignOnService      = x1
-    , _idNameIDMappingService      = x2
-    , _idAssertionIDRequestService = x3
-    , _idAttributeProfile          = x4
-    }
+  pure IDPSSODescriptor {..}
 
 genEndPointNoRespLoc :: Gen EndPointNoRespLoc
 genEndPointNoRespLoc = EndPoint <$> genNiceWord <*> genURI <*> pure ()
@@ -140,43 +125,27 @@ genAuthnResponse = genResponse $ Gen.list (Range.linear 0 100) genAssertion
 
 genResponse :: forall payload. Gen payload -> Gen (Response payload)
 genResponse genPayload = do
-  x0 <- genID
-  x1 <- Gen.maybe genID
-  x2 <- genVersion
-  x3 <- genTime
-  x4 <- Gen.maybe genURI
-  x5 <- Gen.maybe genIssuer
-  x7 <- genStatus
-  x8 <- Gen.small genPayload
+  _rspID           <- genID
+  _rspInRespTo     <- Gen.maybe genID
+  _rspVersion      <- genVersion
+  _rspIssueInstant <- genTime
+  _rspDestination  <- Gen.maybe genURI
+  _rspIssuer       <- Gen.maybe genIssuer
+  _rspStatus       <- genStatus
+  _rspPayload      <- Gen.small genPayload
 
-  pure Response
-    { _rspID           = x0
-    , _rspInRespTo     = x1
-    , _rspVersion      = x2 :: Version
-    , _rspIssueInstant = x3 :: Time
-    , _rspDestination  = x4 :: Maybe URI
-    , _rspIssuer       = x5 :: Maybe Issuer
-    , _rspStatus       = x7 :: Status
-    , _rspPayload      = x8 :: payload
-    }
+  pure Response {..}
 
 genAssertion :: Gen Assertion
 genAssertion = do
-  x0 <- genVersion
-  x1 <- genID
-  x2 <- genTime
-  x3 <- genIssuer
-  x5 <- Gen.maybe genConditions
-  x6 <- genSubjectAndStatements
+  _assVersion      <- genVersion
+  _assID           <- genID
+  _assIssueInstant <- genTime
+  _assIssuer       <- genIssuer
+  _assConditions   <- Gen.maybe genConditions
+  _assContents     <- genSubjectAndStatements
 
-  pure Assertion
-    { _assVersion       = x0 :: Version
-    , _assID            = x1
-    , _assIssueInstant  = x2 :: Time
-    , _assIssuer        = x3 :: Issuer
-    , _assConditions    = x5 :: Maybe Conditions
-    , _assContents      = x6 :: SubjectAndStatements
-    }
+  pure Assertion {..}
 
 genConditions :: Gen Conditions
 genConditions = Conditions
@@ -203,19 +172,13 @@ genSubjectConfirmationMethod = Gen.enumBounded
 
 genSubjectConfirmationData :: Gen SubjectConfirmationData
 genSubjectConfirmationData = do
-  x0 <- Gen.maybe genTime
-  x1 <- genTime
-  x2 <- genURI
-  x3 <- Gen.maybe genID
-  x4 <- Gen.maybe genIP
+  _scdNotBefore    <- Gen.maybe genTime
+  _scdNotOnOrAfter <- genTime
+  _scdRecipient    <- genURI
+  _scdInResponseTo <- Gen.maybe genID
+  _scdAddress      <- Gen.maybe genIP
 
-  pure SubjectConfirmationData
-    { _scdNotBefore    = x0
-    , _scdNotOnOrAfter = x1
-    , _scdRecipient    = x2
-    , _scdInResponseTo = x3
-    , _scdAddress      = x4
-    }
+  pure SubjectConfirmationData {..}
 
 genIP :: Gen IP
 genIP = IP <$> (genNiceText $ Range.linear 1 10)
@@ -223,17 +186,11 @@ genIP = IP <$> (genNiceText $ Range.linear 1 10)
 genStatement :: Gen Statement
 genStatement = Gen.choice
   [ do
-      x0 <- genTime
-      x1 <- Gen.maybe genNiceWord
-      x2 <- Gen.maybe genTime
-      x3 <- Gen.maybe genLocality
-
-      pure AuthnStatement
-        { _astAuthnInstant        = x0 :: Time
-        , _astSessionIndex        = x1 :: Maybe ST
-        , _astSessionNotOnOrAfter = x2 :: Maybe Time
-        , _astSubjectLocality     = x3 :: Maybe Locality
-        }
+      _astAuthnInstant        <- genTime
+      _astSessionIndex        <- Gen.maybe genNiceWord
+      _astSessionNotOnOrAfter <- Gen.maybe genTime
+      _astSubjectLocality     <- Gen.maybe genLocality
+      pure AuthnStatement {..}
 
 --  , AttributeStatement <$> Gen.list (Range.linear 1 15) genAttribute
   ]
