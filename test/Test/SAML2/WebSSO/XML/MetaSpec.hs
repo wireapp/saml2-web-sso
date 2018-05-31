@@ -39,7 +39,7 @@ spec = do
 spdescpre :: UUID.UUID -> SPDescPre
 spdescpre uuid = SPDescPre
   { _spdID = uuid
-  , _spdValidUntil = addUTCTime (60 * 60 * 24 * 365) $ fromTime timeNow  -- TODO: use 'addTime'
+  , _spdValidUntil = fromTime $ addTime (60 * 60 * 24 * 365) timeNow
   , _spdCacheDuration = 2592000
   , _spdOrgName = "drnick"
   , _spdOrgDisplayName = "drnick"

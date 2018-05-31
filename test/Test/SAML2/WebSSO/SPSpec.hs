@@ -43,6 +43,8 @@ spec = describe "SP" $ do
 
 specSimpleSP :: Spec
 specSimpleSP = describe "SimpleSP" $ do
+-- TODO: test SimpleSP a lot better.
+
   describe "simpleStoreRequest" $ do
     it "stores requests" $ do
       store <- newMVar mempty
@@ -206,3 +208,7 @@ specExecuteVerdict :: Spec
 specExecuteVerdict =
   describe "executeVerdict" $ do
     it "..." pending
+
+
+-- TODO: prop test: generate authnresponse and judge it.  both accept and denied are acceptable
+-- results, but this will catch errors like crashes.

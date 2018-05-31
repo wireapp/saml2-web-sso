@@ -53,7 +53,7 @@ parseFromDocument :: (HasXML a, MonadError String m) => Document -> m a
 parseFromDocument = parse . fromDocument
 
 
--- TODO: perhaps we want to split this up: HasXML (for nameSpaces), and HasXMLParse, HasXMLRender,
+-- FUTUREWORK: perhaps we want to split this up: HasXML (for nameSpaces), and HasXMLParse, HasXMLRender,
 -- and drop the assymetric, little used render function from HasXML?
 
 class HasXML a where
@@ -300,9 +300,8 @@ importStatement (HS.StatementAttribute st) =
 importStatement (HS.StatementAuthn st) = do
   _astAuthnInstant <- importTime $ HS.authnStatementInstant st
   let _astSessionIndex = cs <$> HS.authnStatementSessionIndex st
-  -- TODO: not done yet.
-  -- TODO: in general, we need to check for absence of all fields allowed by the specs that we don't
-  -- want to handle.  at least we need to crash if they are present.
+  -- TODO: not done yet.  in general, we need to check for absence of all fields allowed by the
+  -- specs that we don't want to handle.  at least we need to crash if they are present.
   let _astSessionNotOnOrAfter = Nothing
       _astSubjectLocality     = Nothing
   pure AuthnStatement {..}
