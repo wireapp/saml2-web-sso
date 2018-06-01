@@ -50,7 +50,7 @@ spapi :: SPHandler m => ServerT SPAPI m
 spapi = loginStatus :<|> localLogout :<|> singleLogout
 
 appapi :: SPHandler m => ServerT APPAPI m
-appapi = spapi :<|> api "toy-sp"
+appapi = spapi :<|> api "toy-sp" simpleOnSuccess
 
 loginStatus :: SP m => Maybe SetCookie -> m LoginStatus
 loginStatus cookie = do

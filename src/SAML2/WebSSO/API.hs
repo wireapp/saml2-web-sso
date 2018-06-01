@@ -68,8 +68,8 @@ type APIAuthResp = "authresp" :> MultipartForm Mem AuthnResponseBody :> PostVoid
 -- FUTUREWORK: respond with redirect in case of success, instead of responding with Void and
 -- handling all cases with exceptions: https://github.com/haskell-servant/servant/issues/117
 
-api :: SPHandler m => ST -> ServerT API m
-api appName = meta appName :<|> authreq :<|> authresp
+api :: SPHandler m => ST -> (UserId -> m Void) -> ServerT API m
+api appName onsuccess = meta appName :<|> authreq :<|> authresp onsuccess
 
 
 ----------------------------------------------------------------------
@@ -272,8 +272,11 @@ mkLookupPubKey = do
     let errmsg = "unknown issuer: " <> show issuer <> "; known issuers: " <> show ((^. idpIssuer) <$> idps)
     in maybe (Left errmsg) Right . Map.lookup issuer $ Map.fromList pubkeys
 
-authresp :: SPHandler m => AuthnResponseBody -> m Void
-authresp body = do
+simpleOnSuccess :: SPHandler m => UserId -> m Void
+simpleOnSuccess uid = getLandingURI >>= (`redirect` [cookieToHeader . togglecookie . Just . cs . show $ uid])
+
+authresp :: SPHandler m => (UserId -> m Void) -> AuthnResponseBody -> m Void
+authresp onsuccess body = do
   enterH "authresp: entering"
   resp <- resolveBody body
   enterH $ "authresp: " <> ppShow resp
@@ -283,7 +286,7 @@ authresp body = do
     AccessDenied reasons
       -> logger INFO (show reasons) >> reject (cs $ ST.intercalate ", " reasons)
     AccessGranted uid
-      -> getLandingURI >>= (`redirect` [cookieToHeader . togglecookie . Just . cs . show $ uid])
+      -> onsuccess uid
 
 
 ----------------------------------------------------------------------
