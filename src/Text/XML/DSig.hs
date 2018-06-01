@@ -60,7 +60,7 @@ keyInfoToCreds cert = do
   pure $ SignCreds digest key
 
 
-{- TODO: this fails, but i don't know why.  it this base64 encoding after all?
+{- this fails, but i don't know why.  it this base64 encoding after all?
 
 q :: [Either ASN1Error [ASN1]]
 q = [decodeASN1 DER, decodeASN1 BER] <*> [q1]

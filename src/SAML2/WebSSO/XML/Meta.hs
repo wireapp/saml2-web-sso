@@ -16,7 +16,6 @@ import Data.List.NonEmpty
 import Data.Maybe
 import Data.Proxy
 import Data.String.Conversions
-import Data.Time
 import GHC.Stack
 import Lens.Micro
 import SAML2.WebSSO.SP
@@ -69,7 +68,7 @@ spDesc' uuid nick org resp contact = do
       months n = days n * 30
       days   n = n * 60 * 60 * 24
 
-  _spdValidUntil        <- addUTCTime (years 1) . fromTime <$> getNow
+  Time _spdValidUntil <- addTime (years 1) <$> getNow
   pure SPDescPre {..}
 
 

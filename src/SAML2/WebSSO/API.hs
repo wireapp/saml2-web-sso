@@ -223,15 +223,6 @@ setHttpCachePolicy ap rq respond = ap rq $ respond . addHeadersToResponse httpCa
 ----------------------------------------------------------------------
 -- paths
 
-appendURI :: SBS -> URI -> SBS
-appendURI path uri = norm uri { uriPath = uriPath uri <> path }
-  where
-    norm :: URI -> SBS
-    norm = normalizeURIRef' httpNormalization
-
-getLandingURI :: (HasCallStack, SP m, MonadError ServantErr m) => m URI
-getLandingURI = (^. cfgSPAppURI) <$> getConfig
-
 getResponseURI :: forall m. (HasCallStack, SP m, MonadError ServantErr m) => m URI
 getResponseURI = resp =<< (^. cfgSPSsoURI) <$> getConfig
   where
@@ -260,8 +251,7 @@ authreq :: SPHandler m => ST -> m (FormRedirect AuthnRequest)
 authreq idpname = do
   enterH "authreq"
   uri <- (^. idpRequestUri) <$> getIdPConfig idpname
-  issuer <- Issuer . entityNameID <$> getLandingURI
-  req <- createAuthnRequest issuer
+  req <- createAuthnRequest
   leaveH $ FormRedirect uri req
 
 -- | Get config and pass the missing idp credentials to the response constructor.

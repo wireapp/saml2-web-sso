@@ -1,10 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- | work in progress.
+-- | work in progress.  we may drop this part of teh library for some other approach.
 --
--- TODO: this is a clone of JsonGrammar for xml, and it should probably go to a separate package.
+-- FUTUREWORK: this is a clone of JsonGrammar for xml, and it should probably go to a separate package.
 --
--- TODO: as for the missing error messages (lens 'Prism's have 'Nothing' in case of error): use a
+-- FUTUREWORK: as for the missing error messages (lens 'Prism's have 'Nothing' in case of error): use a
 -- variant of 'trace' for reporting errors that can be disabled / replaced by @\x -> unsafePerformIO
 -- (log x) `seq` x@ in production.
 module Text.XML.Iso where
@@ -267,7 +267,7 @@ renderAttrVal = \case
   g1 :<> g2    -> \val -> renderAttrVal g1 val <|> renderAttrVal g2 val
 
   Pure _ rdr   -> rdr
-  bad@(Many _) -> renderFailed "renderAttrVal/Many" bad  -- TODO: allow this?  same attr occuring 0 or more than 2 times?  how does xml work?
+  bad@(Many _) -> renderFailed "renderAttrVal/Many" bad  -- FUTUREWORK: allow this?  same attr occuring 0 or more than 2 times?  how does xml work?
 
 
 renderContent :: forall t1 t2. HasCallStack => Grammar 'CtxCont (ST :- t1) t2 -> t2 -> Maybe (ST :- t1)
@@ -305,6 +305,6 @@ parseElem _ = undefined
 
 -- Elem case: first parse the attrs, then the nodes.  reverse of render case.
 
--- TODO: ignoreOtherAttrs, ignoreOtherChildren: if we don't add this everywhere, unparsed stuff will
+-- FUTUREWORK: ignoreOtherAttrs, ignoreOtherChildren: if we don't add this everywhere, unparsed stuff will
 -- throw errors.  perhaps there should be syntactic sugar for where we want this, not sure.  or we
 -- refer people who want lenient parsers with no error reporting whatsoever to xml-conduit cursors.

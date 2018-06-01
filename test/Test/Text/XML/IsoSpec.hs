@@ -23,19 +23,19 @@ import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
 
--- TODO: ElemUniq, ElemsMany1, ElemsMany0, OnlyElems; similarly for Attr*
+-- FUTUREWORK: ElemUniq, ElemsMany1, ElemsMany0, OnlyElems; similarly for Attr*
 
--- TODO: error handling 0: figure out how to Show stacks and grammars.  we don't have to show everything, just the stuff that's easy.
+-- FUTUREWORK: error handling 0: figure out how to Show stacks and grammars.  we don't have to show everything, just the stuff that's easy.
 
--- TODO: error handling 1: turn Maybe into Either ST.
+-- FUTUREWORK: error handling 1: turn Maybe into Either ST.
 
--- TODO: error handling 2: make 'Pure' take a proper @MonadXmlParse m => m@, not the silly @Either ST@.
+-- FUTUREWORK: error handling 2: make 'Pure' take a proper @MonadXmlParse m => m@, not the silly @Either ST@.
 
--- TODO: CtxAttrVal for parsing attribute values from string to something more helpful (?)
+-- FUTUREWORK: CtxAttrVal for parsing attribute values from string to something more helpful (?)
 
--- TODO: we may need a dynamic Grammar context next to the stack as well, for name spaces and whatnot.
+-- FUTUREWORK: we may need a dynamic Grammar context next to the stack as well, for name spaces and whatnot.
 
--- TODO: CtxDocument?
+-- FUTUREWORK: CtxDocument?
 
 
 ----------------------------------------------------------------------

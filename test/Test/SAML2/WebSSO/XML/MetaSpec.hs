@@ -7,7 +7,6 @@ import Data.EitherR
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Maybe (fromJust)
 import Data.String.Conversions
-import Data.Time
 import SAML2.WebSSO
 import Test.Hspec
 import TestSP
@@ -22,6 +21,7 @@ spec :: Spec
 spec = do
   describe "spDesc" $ do
     it "does not smoke" $ do
+      testCtx1 <- mkTestCtx1
       have <- testSP testCtx1 $ spDesc
         "drnick" (unsafeParseURI "http://example.com/") (unsafeParseURI "http://example.com/sso/login") (fallbackContact :| [])
       let want = spdescpre (have ^. spdID)
@@ -38,7 +38,7 @@ spec = do
 spdescpre :: UUID.UUID -> SPDescPre
 spdescpre uuid = SPDescPre
   { _spdID = uuid
-  , _spdValidUntil = addUTCTime (60 * 60 * 24 * 365) $ fromTime timeNow
+  , _spdValidUntil = fromTime $ addTime (60 * 60 * 24 * 365) timeNow
   , _spdCacheDuration = 2592000
   , _spdOrgName = "drnick"
   , _spdOrgDisplayName = "drnick"

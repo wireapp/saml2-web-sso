@@ -12,7 +12,7 @@ import TestSP
 
 spec :: Spec
 spec = describe "API.Example" $ do
-  describe "meta" . with (app' (Proxy :: Proxy TestSP) testCtx1) $ do
+  describe "meta" . with (app' (Proxy :: Proxy TestSP) =<< mkTestCtx1) $ do
     it "responds with 200" $ do
       get "/sso/meta" `shouldRespondWith` 200
       get "/sp/logout/local" `shouldRespondWith` 302

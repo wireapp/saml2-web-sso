@@ -6,7 +6,7 @@ import Control.Monad
 import Control.Monad.Except
 import Data.EitherR
 import Data.List.NonEmpty (NonEmpty((:|)))
-import Data.Maybe (fromMaybe, isNothing, maybeToList)
+import Data.Maybe (fromMaybe, isNothing, maybeToList, catMaybes)
 import Data.Monoid ((<>))
 import Data.String.Conversions
 import Data.Time
@@ -53,7 +53,7 @@ parseFromDocument :: (HasXML a, MonadError String m) => Document -> m a
 parseFromDocument = parse . fromDocument
 
 
--- TODO: perhaps we want to split this up: HasXML (for nameSpaces), and HasXMLParse, HasXMLRender,
+-- FUTUREWORK: perhaps we want to split this up: HasXML (for nameSpaces), and HasXMLParse, HasXMLRender,
 -- and drop the assymetric, little used render function from HasXML?
 
 class HasXML a where
@@ -143,21 +143,16 @@ exportEntityDescriptor = error . ppShow
 importAuthnRequest :: MonadError String m => HS.AuthnRequest -> m AuthnRequest
 importAuthnRequest req = do
   let proto = HS.requestProtocol $ HS.authnRequest req
-  x0 :: ID        <- importID $ HS.protocolID proto
-  x1 :: Version   <- importVersion $ HS.protocolVersion proto
-  x2 :: Time      <- importTime $ HS.protocolIssueInstant proto
-  x3 :: Issuer    <- importRequiredIssuer $ HS.protocolIssuer proto
+  _rqID           <- importID $ HS.protocolID proto
+  _rqVersion      <- importVersion $ HS.protocolVersion proto
+  _rqIssueInstant <- importTime $ HS.protocolIssueInstant proto
+  _rqIssuer       <- importRequiredIssuer $ HS.protocolIssuer proto
   Nothing         <- fmapFlipM importURI $ HS.protocolDestination proto
 
   -- TODO: make sure everything in HS.AuthnRequest that might change the interpreation of the data
   -- we know is 'Nothing'.  also do this on all other 'import*' functions.  (or should we only do
   -- this once we have our own parsers only based on stack-prism and xml-conduit?)
-  pure AuthnRequest
-    { _rqID           = x0
-    , _rqVersion      = x1
-    , _rqIssueInstant = x2
-    , _rqIssuer       = x3
-    }
+  pure AuthnRequest {..}
 
 exportAuthnRequest :: AuthnRequest -> HS.AuthnRequest
 exportAuthnRequest req = defAuthnRequest proto
@@ -202,25 +197,16 @@ importAuthnResponse rsp = do
   let rsptyp :: HS.StatusResponseType = HS.response rsp
       proto  :: HS.ProtocolType       = HS.statusProtocol rsptyp
 
-  x0 :: ID           <- importID $ HS.protocolID proto
-  x1 :: Maybe ID     <- (importID . cs) `fmapFlipM` HS.statusInResponseTo rsptyp
-  x2 :: Version      <- importVersion $ HS.protocolVersion proto
-  x3 :: Time         <- importTime $ HS.protocolIssueInstant proto
-  x4 :: Maybe URI    <- fmapFlipM importURI $ HS.protocolDestination proto
-  x5 :: Maybe Issuer <- importOptionalIssuer $ HS.protocolIssuer proto
-  x6 :: Status       <- importStatus $ HS.status rsptyp
-  x7 :: [Assertion]  <- importAssertion `mapM` HS.responseAssertions rsp
+  _rspID           <- importID $ HS.protocolID proto
+  _rspInRespTo     <- (importID . cs) `fmapFlipM` HS.statusInResponseTo rsptyp
+  _rspVersion      <- importVersion $ HS.protocolVersion proto
+  _rspIssueInstant <- importTime $ HS.protocolIssueInstant proto
+  _rspDestination  <- fmapFlipM importURI $ HS.protocolDestination proto
+  _rspIssuer       <- importOptionalIssuer $ HS.protocolIssuer proto
+  _rspStatus       <- importStatus $ HS.status rsptyp
+  _rspPayload      <- importAssertion `mapM` HS.responseAssertions rsp
 
-  pure Response
-    { _rspID           = x0
-    , _rspInRespTo     = x1
-    , _rspVersion      = x2
-    , _rspIssueInstant = x3
-    , _rspDestination  = x4
-    , _rspIssuer       = x5
-    , _rspStatus       = x6
-    , _rspPayload      = x7
-    }
+  pure Response {..}
 
 exportAuthnResponse :: HasCallStack => AuthnResponse -> HS.Response
 exportAuthnResponse = error . ppShow
@@ -229,12 +215,12 @@ exportAuthnResponse = error . ppShow
 importAssertion :: (HasCallStack, MonadError String m) => HS.PossiblyEncrypted HS.Assertion -> m Assertion
 importAssertion bad@(HS.SoEncrypted _) = die (Proxy @Assertion) bad
 importAssertion (HS.NotEncrypted ass) = do
-  x0 <- importVersion $ HS.assertionVersion ass
-  x1 <- importID $ HS.assertionID ass
-  x2 <- importTime $ HS.assertionIssueInstant ass
-  x3 <- importIssuer $ HS.assertionIssuer ass
-  x4 <- fmapFlipM importConditions $ HS.assertionConditions ass
-  x5 <- do
+  _assVersion      <- importVersion $ HS.assertionVersion ass
+  _assID           <- importID $ HS.assertionID ass
+  _assIssueInstant <- importTime $ HS.assertionIssueInstant ass
+  _assIssuer       <- importIssuer $ HS.assertionIssuer ass
+  _assConditions   <- fmapFlipM importConditions $ HS.assertionConditions ass
+  _assContents     <- do
     subj  <- importSubject $ HS.assertionSubject ass
     when (null $ HS.assertionStatement ass) $
       die (Proxy @Assertion) ("no statements" :: String)
@@ -244,14 +230,7 @@ importAssertion (HS.NotEncrypted ass) = do
   unless (null $ HS.assertionAdvice ass) $
     die (Proxy @Assertion) (HS.assertionAdvice ass)
 
-  pure Assertion
-    { _assVersion      = x0 :: Version
-    , _assID           = x1 :: ID
-    , _assIssueInstant = x2 :: Time
-    , _assIssuer       = x3 :: Issuer
-    , _assConditions   = x4 :: Maybe Conditions
-    , _assContents     = x5 :: SubjectAndStatements
-    }
+  pure Assertion {..}
 
 
 importSubject :: (HasCallStack, MonadError String m) => HS.Subject -> m Subject
@@ -296,18 +275,22 @@ importIP = pure . IP . cs
 
 importConditions :: (HasCallStack, MonadError String m) => HS.Conditions -> m Conditions
 importConditions conds = do
-  x0 <- fmapFlipM importTime $ HS.conditionsNotBefore conds
-  x1 <- fmapFlipM importTime $ HS.conditionsNotOnOrAfter conds
-  let x2 = HS.OneTimeUse `elem` HS.conditions conds
+  _condNotBefore <- fmapFlipM importTime $ HS.conditionsNotBefore conds
+  _condNotOnOrAfter <- fmapFlipM importTime $ HS.conditionsNotOnOrAfter conds
+  let _condOneTimeUse = HS.OneTimeUse `elem` HS.conditions conds
+  _condAudienceRestriction :: Maybe (NonEmpty URI)
+    <- do
+         let pull (HS.AudienceRestriction us) = Just $ HS.audience <$> us
+             pull _ = Nothing
+             uris :: [NonEmpty HS.URI] = catMaybes $ pull <$> HS.conditions conds
+         case uris of
+           [] -> pure Nothing
+           (x : xs') -> Just <$> importURI `mapM` nelConcat (x :| xs')
 
   unless (HS.conditions conds `notElem` [[], [HS.OneTimeUse]]) $
     die (Proxy @Conditions) ("unsupported conditions" :: String, HS.conditions conds)
 
-  pure Conditions
-    { _condNotBefore    = x0
-    , _condNotOnOrAfter = x1
-    , _condOneTimeUse   = x2
-    }
+  pure Conditions {..}
 
 
 importStatement :: (HasCallStack, MonadError String m)
@@ -315,17 +298,13 @@ importStatement :: (HasCallStack, MonadError String m)
 importStatement (HS.StatementAttribute st) =
   AttributeStatement <$> (importAttribute `mapM` HS.attributeStatement st)
 importStatement (HS.StatementAuthn st) = do
-  x0 <- importTime $ HS.authnStatementInstant st
-  let x1 = cs <$> HS.authnStatementSessionIndex st
-  -- TODO: not done yet.
-  -- TODO: in general, we need to check for absence of all fields allowed by the specs that we don't
-  -- want to handle.  at least we need to crash if they are present.
-  pure AuthnStatement
-    { _astAuthnInstant        = x0 :: Time
-    , _astSessionIndex        = x1 :: Maybe ST
-    , _astSessionNotOnOrAfter = Nothing
-    , _astSubjectLocality     = Nothing
-    }
+  _astAuthnInstant <- importTime $ HS.authnStatementInstant st
+  let _astSessionIndex = cs <$> HS.authnStatementSessionIndex st
+  -- TODO: not done yet.  in general, we need to check for absence of all fields allowed by the
+  -- specs that we don't want to handle.  at least we need to crash if they are present.
+  let _astSessionNotOnOrAfter = Nothing
+      _astSubjectLocality     = Nothing
+  pure AuthnStatement {..}
 importStatement bad = die (Proxy @Statement) bad
 
 
@@ -357,10 +336,10 @@ importAttributeValue [ HS.NTree (HS.XAttr qn) [HS.NTree (HS.XText thistype) []]
 importAttributeValue bad = die (Proxy @AttributeValue) bad
 
 
-importID :: (HasCallStack, MonadError String m) => HS.ID -> m ID
+importID :: (HasCallStack, MonadError String m) => HS.ID -> m (ID a)
 importID = pure . ID . cs
 
-exportID :: HasCallStack => ID -> HS.ID
+exportID :: HasCallStack => ID a -> HS.ID
 exportID (ID t) = cs t
 
 importBaseID :: (HasCallStack, ConvertibleStrings s ST) => HS.BaseID s -> BaseID
@@ -403,6 +382,7 @@ exportNameID name = HS.NameID
     unform (NameIDFKerberos    n) = (HS.Identified HS.NameIDFormatKerberos, n)
     unform (NameIDFEntity      n) = (HS.Identified HS.NameIDFormatEntity, n)
     unform (NameIDFPersistent  n) = (HS.Identified HS.NameIDFormatPersistent, n)
+    unform (NameIDFTransient   n) = (HS.Identified HS.NameIDFormatTransient, n)
 
 importVersion :: (HasCallStack, MonadError String m) => HS.SAMLVersion -> m Version
 importVersion HS.SAML20 = pure Version_2_0
@@ -436,7 +416,7 @@ importIssuer :: (HasCallStack, MonadError String m) => HS.Issuer -> m Issuer
 importIssuer = fmap Issuer . importNameID . HS.issuer
 
 exportIssuer :: HasCallStack => Issuer -> HS.Issuer
-exportIssuer = HS.Issuer . exportNameID . fromIssuer
+exportIssuer = HS.Issuer . exportNameID . _fromIssuer
 
 importOptionalIssuer :: (HasCallStack, MonadError String m) => Maybe HS.Issuer -> m (Maybe Issuer)
 importOptionalIssuer = fmapFlipM importIssuer

@@ -2,13 +2,16 @@
 
 module SAML2.WebSSO.Types where
 
+import Control.Lens (makePrisms)  -- FUTUREWORK: this is missing in microlens-th
 import Data.Aeson
 import Data.List.NonEmpty
+import Data.Maybe
 import Data.Monoid
 import Data.String.Conversions (ST)
-import Data.Time (UTCTime(..), NominalDiffTime, formatTime, defaultTimeLocale)
+import Data.Time (UTCTime(..), NominalDiffTime, formatTime, defaultTimeLocale, addUTCTime)
 import Data.UUID as UUID
 import GHC.Stack
+import Lens.Micro
 import Lens.Micro.TH
 import Text.XML.Util
 import URI.ByteString  -- FUTUREWORK: should saml2-web-sso also use the URI from http-types?  we already
@@ -31,7 +34,7 @@ data AccessVerdict =
 data UserId = UserId { _uidTenant :: Issuer, _uidSubject :: NameID }
   deriving (Eq, Show)
 
-newtype Issuer = Issuer { fromIssuer :: NameID }
+newtype Issuer = Issuer { _fromIssuer :: NameID }
   deriving (Eq, Ord, Show)
 
 mkIssuer :: ST -> Issuer
@@ -80,7 +83,7 @@ data SPContactPerson = SPContactPerson
 -- | [4/2.3.2]
 data EntityDescriptor = EntityDescriptor
   { _edEntityID      :: ST
-  , _edID            :: Maybe ID
+  , _edID            :: Maybe (ID EntityDescriptor)
   , _edValidUntil    :: Maybe Time
   , _edCacheDuration :: Maybe Duration
   , _edExtensions    :: [EntityDescriptionExtension]
@@ -102,7 +105,7 @@ data Role =
 
 -- | [4/2.4.1]
 data RoleDescriptor = RoleDescriptor
-  { _rssoID                         :: Maybe ID
+  { _rssoID                         :: Maybe (ID RoleDescriptor)
   , _rssoValidUntil                 :: Maybe Time
   , _rssoCacheDuration              :: Maybe Duration
   , _rssoProtocolSupportEnumeration :: NonEmpty ST
@@ -163,7 +166,7 @@ type EndPointAllowRespLoc = EndPoint (Maybe URI)
 -- * <https://docs.microsoft.com/en-us/azure/active-directory/develop/active-directory-single-sign-on-protocol-reference>
 data AuthnRequest = AuthnRequest
   { -- abstract xml type
-    _rqID               :: ID
+    _rqID               :: ID AuthnRequest
   , _rqVersion          :: Version
   , _rqIssueInstant     :: Time
   , _rqIssuer           :: Issuer
@@ -194,8 +197,8 @@ type AuthnResponse = Response [Assertion]
 
 -- | [1/3.2.2]
 data Response payload = Response
-  { _rspID           :: ID
-  , _rspInRespTo     :: Maybe ID
+  { _rspID           :: ID (Response payload)
+  , _rspInRespTo     :: Maybe (ID AuthnRequest)
   , _rspVersion      :: Version
   , _rspIssueInstant :: Time
   , _rspDestination  :: Maybe URI
@@ -222,10 +225,13 @@ instance Show Time where
 data Duration = Duration  -- TODO: https://www.w3.org/TR/xmlschema-2/#duration
   deriving (Eq, Show)
 
+addTime :: NominalDiffTime -> Time -> Time  -- TODO: use 'Duration' instaed of 'NominalDiffTime'
+addTime n (Time t) = Time $ addUTCTime n t
+
 -- | IDs must be globally unique between all communication parties and adversaries with a negligible
 -- failure probability.  We should probably just use UUIDv4, but we may not have any choice.  [1/1.3.4]
-newtype ID = ID { renderID :: ST }
-  deriving (Eq, Show)
+newtype ID m = ID { renderID :: ST }
+  deriving (Eq, Ord, Show)
 
 -- | [1/2.2.1]
 data BaseID = BaseID
@@ -255,6 +261,7 @@ data UnqualifiedNameID
                            -- 1024@; 'nameIDNameQ', 'nameIDSPNameQ', 'nameIDSPProvidedID' MUST be
                            -- omitted.
   | NameIDFPersistent  ST  -- ^ @numchars <= 1024@; pseudonyms; use UUIDv4 where we have the choice.
+  | NameIDFTransient   ST
   deriving (Eq, Ord, Show)
 
 opaqueNameID :: ST -> NameID
@@ -265,13 +272,14 @@ entityNameID uri = NameID (NameIDFEntity (renderURI uri)) Nothing Nothing Nothin
 
 nameIDFormat :: HasCallStack => UnqualifiedNameID -> String
 nameIDFormat = \case
-  NameIDFUnspecified _ -> "urn:oasis:names:tc:SAML:2.0:nameid-format:unspecified"
-  NameIDFEmail _       -> "urn:oasis:names:tc:SAML:2.0:nameid-format:emailAddress"
-  NameIDFX509 _        -> "urn:oasis:names:tc:SAML:2.0:nameid-format:X509SubjectName"
-  NameIDFWindows _     -> "urn:oasis:names:tc:SAML:2.0:nameid-format:WindowsDomainQualifiedName"
+  NameIDFUnspecified _ -> "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"
+  NameIDFEmail _       -> "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
+  NameIDFX509 _        -> "urn:oasis:names:tc:SAML:1.1:nameid-format:X509SubjectName"
+  NameIDFWindows _     -> "urn:oasis:names:tc:SAML:1.1:nameid-format:WindowsDomainQualifiedName"
   NameIDFKerberos _    -> "urn:oasis:names:tc:SAML:2.0:nameid-format:kerberos"
   NameIDFEntity _      -> "urn:oasis:names:tc:SAML:2.0:nameid-format:entity"
   NameIDFPersistent _  -> "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
+  NameIDFTransient _   -> "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"
 
 data Version = Version_2_0
   deriving (Eq, Show, Bounded, Enum)
@@ -291,7 +299,7 @@ data Status =
 data Assertion
   = Assertion
     { _assVersion       :: Version
-    , _assID            :: ID
+    , _assID            :: ID Assertion
     , _assIssueInstant  :: Time
     , _assIssuer        :: Issuer
     , _assConditions    :: Maybe Conditions
@@ -305,11 +313,16 @@ data Conditions
     { _condNotBefore           :: Maybe Time
     , _condNotOnOrAfter        :: Maybe Time
     , _condOneTimeUse          :: Bool   -- ^ [1/2.5.1.5]
+    , _condAudienceRestriction :: Maybe (NonEmpty URI)  -- ^ 'Nothing' means do not restrict.
     }
   deriving (Eq, Show)
 
 -- | [1/2.3.3], [3/4.1.4.2]
-data SubjectAndStatements = SubjectAndStatements Subject (NonEmpty Statement)
+data SubjectAndStatements
+  = SubjectAndStatements
+    { _sasSubject    :: Subject
+    , _sasStatements :: NonEmpty Statement
+    }
   deriving (Eq, Show)
 
 -- | Information about the client and/or user attempting to authenticate / authorize against the SP.
@@ -340,8 +353,8 @@ data SubjectConfirmationData = SubjectConfirmationData
   { _scdNotBefore    :: Maybe Time
   , _scdNotOnOrAfter :: Time
   , _scdRecipient    :: URI
-  , _scdInResponseTo :: Maybe ID
-  , _scdAddress      :: Maybe IP
+  , _scdInResponseTo :: Maybe (ID AuthnRequest)
+  , _scdAddress      :: Maybe IP  -- ^ it's ok to ignore this
   }
   deriving (Eq, Show)
 
@@ -411,6 +424,7 @@ makeLenses ''EntityDescriptionExtension
 makeLenses ''EntityDescriptor
 makeLenses ''ID
 makeLenses ''IDPSSODescriptor
+makeLenses ''Issuer
 makeLenses ''KeyDescriptor
 makeLenses ''KeyDescriptorUse
 makeLenses ''Locality
@@ -430,5 +444,39 @@ makeLenses ''SubjectAndStatements
 makeLenses ''SubjectConfirmation
 makeLenses ''SubjectConfirmationData
 makeLenses ''Time
+makeLenses ''UnqualifiedNameID
 makeLenses ''UserId
 makeLenses ''Version
+
+makePrisms ''UnqualifiedNameID
+makePrisms ''Statement
+
+
+----------------------------------------------------------------------
+-- hand-crafted lenses
+
+-- | To counter replay attacks we need to store 'Assertions' until they invalidate.  If
+-- 'condNotOnOrAfter' is not specified, assume 'assIssueInstant' plus 30 days.
+assEndOfLife :: Lens' Assertion Time
+assEndOfLife = lens gt st
+  where
+    fallback :: Assertion -> Time
+    fallback ass = addTime (30 * 24 * 60 * 60) (ass ^. assIssueInstant)
+
+    gt :: Assertion -> Time
+    gt ass = fromMaybe (fallback ass)
+            . (^? to _assConditions . _Just . to _condNotOnOrAfter . _Just)
+            $ ass
+
+    st :: Assertion -> Time -> Assertion
+    st ass tim = ass & assConditions . _Just . condNotOnOrAfter .~ Just tim
+
+
+----------------------------------------------------------------------
+-- why is this not in the resp. packages?
+
+nelConcat :: NonEmpty (NonEmpty a) -> NonEmpty a
+nelConcat ((x :| xs) :| ys) = x :| mconcat (xs : (toList <$> ys))
+
+(<$$>) :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)
+(<$$>) = fmap . fmap
