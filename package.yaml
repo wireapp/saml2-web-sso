@@ -90,16 +90,12 @@ dependencies:
 library:
   source-dirs:
     - src
-  include-dirs:
-    - src
 
 tests:
   spec:
     main: Spec.hs
     source-dirs:
       - test
-    include-dirs:
-      - src
     ghc-options: -threaded -rtsopts -with-rtsopts=-N
     dependencies:
       - saml2-web-sso
