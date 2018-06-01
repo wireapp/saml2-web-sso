@@ -16,7 +16,6 @@ import Data.List.NonEmpty
 import Data.Maybe
 import Data.Proxy
 import Data.String.Conversions
-import Data.Time
 import GHC.Stack
 import Lens.Micro
 import SAML2.WebSSO.SP

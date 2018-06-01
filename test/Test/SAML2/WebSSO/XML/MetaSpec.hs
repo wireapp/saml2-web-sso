@@ -7,7 +7,6 @@ import Data.EitherR
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Maybe (fromJust)
 import Data.String.Conversions
-import Data.Time
 import SAML2.WebSSO
 import Test.Hspec
 import TestSP
