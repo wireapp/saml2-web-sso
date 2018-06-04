@@ -125,7 +125,7 @@ simpleStoreAssertion store now aid time = do
       go' :: Maybe Time -> Writer [()] (Maybe Time)
       go' (Just time') = if time' < now
         then pure $ Just time
-        else tell [()] >> pure (Just time')
+        else tell [()] >> pure (Just (maximum [time, time']))
       go' Nothing = pure $ Just time
 
   liftIO $ modifyMVar store (pure . go)
