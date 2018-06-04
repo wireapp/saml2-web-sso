@@ -45,6 +45,8 @@ data Config = Config
   }
   deriving (Eq, Show, Generic)
 
+-- | FUTUREWORK: remove this in favor of tinylog's type.  more compatible with people who are using
+-- that.
 data LogLevel = SILENT | CRITICAL | ERROR | WARN | INFO | DEBUG
   deriving (Eq, Ord, Show, Enum, Bounded, Generic, FromJSON, ToJSON)
 
