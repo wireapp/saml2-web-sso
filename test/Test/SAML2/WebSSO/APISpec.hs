@@ -165,18 +165,16 @@ spec = describe "API" $ do
     it  "roundtrip-2" $ Right c2 `shouldBe` rndtrip c2
 
 
-  describe "meta" . withapp (Proxy @APIMeta) (meta "toy-sp") mkTestCtx1 $ do
-    it "responds with 200" $ do
-      get "/meta" `shouldRespondWith` 200
-    it "responds with an 'SPSSODescriptor'" $ do
+  describe "meta" . withapp (Proxy @APIMeta') (meta "toy-sp" (Proxy @API) (Proxy @APIAuthResp')) mkTestCtx1 $ do
+    it "responds with 200 and an 'SPSSODescriptor'" $ do
       get "/meta" `shouldRespondWith` 200 { matchBody = bodyContains "OrganizationName xml:lang=\"EN\">toy-sp" }
 
   describe "authreq" $ do
-    context "unknown idp" . withapp (Proxy @APIAuthReq) authreq mkTestCtx1 $ do
+    context "unknown idp" . withapp (Proxy @APIAuthReq') authreq mkTestCtx1 $ do
       it "responds with 404" $ do
         get "/authreq/no-such-idp" `shouldRespondWith` 404
 
-    context "known idp" . withapp (Proxy @APIAuthReq) authreq mkTestCtx2 $ do
+    context "known idp" . withapp (Proxy @APIAuthReq') authreq mkTestCtx2 $ do
       it "responds with 200" $ do
         get "/authreq/myidp" `shouldRespondWith` 200
 
@@ -189,13 +187,13 @@ spec = describe "API" $ do
     let mkpostresp = readSampleIO "microsoft-authnresponse-2.xml"
           <&> \sample -> postHtmlForm "/authresp" [("SAMLResponse", cs . EL.encode . cs $ sample)]
 
-    context "unknown idp" . withapp (Proxy @APIAuthResp) (authresp simpleOnSuccess) mkTestCtx1 $ do
+    context "unknown idp" . withapp (Proxy @APIAuthResp') (authresp simpleOnSuccess) mkTestCtx1 $ do
       let errmsg = "invalid signature: unknown issuer: Issuer {_fromIssuer = NameID {_nameID = NameIDFEntity \"https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/\", _nameIDNameQ = Nothing, _nameIDSPNameQ = Nothing, _nameIDSPProvidedID = Nothing}}"
       it "responds with 400" $ do
         postresp <- liftIO mkpostresp
         postresp `shouldRespondWith` 400 { matchBody = bodyContains errmsg }
 
-    context "known idp, bad timestamp" . withapp (Proxy @APIAuthResp) (authresp simpleOnSuccess) mkTestCtx2 $ do
+    context "known idp, bad timestamp" . withapp (Proxy @APIAuthResp') (authresp simpleOnSuccess) mkTestCtx2 $ do
       it "responds with 402" $ do
         postresp <- liftIO mkpostresp
         postresp `shouldRespondWith`
@@ -207,7 +205,7 @@ spec = describe "API" $ do
             <&> ctxNow .~ unsafeReadTime "2018-04-14T10:53:57Z"
             <&> ctxConfig . cfgSPAppURI .~ unsafeParseURI "https://zb2.zerobuzz.net:60443/authresp"
             <&> ctxRequestStore .~ reqstore
-    context "known idp, good timestamp" . withapp (Proxy @APIAuthResp) (authresp simpleOnSuccess) mkTestCtx3' $ do
+    context "known idp, good timestamp" . withapp (Proxy @APIAuthResp') (authresp simpleOnSuccess) mkTestCtx3' $ do
       it "responds with 302" $ do
         postresp <- liftIO mkpostresp
         postresp `shouldRespondWith` 302 { matchBody = bodyEquals "" }
@@ -238,13 +236,13 @@ burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
       getIdP = either (throwIO . ErrorCall . show) pure =<< (Yaml.decodeEither . cs <$> readSampleIO cfgPath)
 
   describe ("smoke tests: " <> show cfgPath) $ do
-    describe "authreq" . withapp (Proxy @APIAuthReq) authreq ctx $ do
+    describe "authreq" . withapp (Proxy @APIAuthReq') authreq ctx $ do
       it "responds with 200" $ do
         idp <- liftIO getIdP
         get ("/authreq/" <> cs (idp ^. idpPath))
           `shouldRespondWith` 200 { matchBody = bodyContains "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" }
 
-    describe "authresp" . withapp (Proxy @APIAuthResp) (authresp simpleOnSuccess) ctx $ do
+    describe "authresp" . withapp (Proxy @APIAuthResp') (authresp simpleOnSuccess) ctx $ do
       it "responds with 302" $ do
         sample <- liftIO $ cs <$> readSampleIO respXmlPath
         let postresp = postHtmlForm "/authresp" body
