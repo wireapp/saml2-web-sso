@@ -232,7 +232,7 @@ burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
                                     & ctxConfig . cfgSPAppURI .~ unsafeParseURI audienceURI
                                     & ctxRequestStore .~ reqstore
 
-      getIdP :: IO (IdPConfig ())
+      getIdP :: IO IdPConfig_
       getIdP = either (throwIO . ErrorCall . show) pure =<< (Yaml.decodeEither . cs <$> readSampleIO cfgPath)
 
   describe ("smoke tests: " <> show cfgPath) $ do

@@ -33,6 +33,8 @@ import qualified Data.Yaml as Yaml
 ----------------------------------------------------------------------
 -- data types
 
+type Config_ = Config (Maybe ())
+
 data Config extra = Config
   { _cfgVersion           :: Version
   , _cfgLogLevel          :: LogLevel
@@ -50,13 +52,15 @@ data Config extra = Config
 data LogLevel = SILENT | CRITICAL | ERROR | WARN | INFO | DEBUG
   deriving (Eq, Ord, Show, Enum, Bounded, Generic, FromJSON, ToJSON)
 
+type IdPConfig_ = IdPConfig (Maybe ())
+
 data IdPConfig extra = IdPConfig
   { _idpPath            :: ST
   , _idpMetadata        :: URI
   , _idpIssuer          :: Issuer
   , _idpRequestUri      :: URI
   , _idpPublicKey       :: X509.SignedCertificate
-  , _idpExtraInfo       :: Maybe extra
+  , _idpExtraInfo       :: extra
   }
   deriving (Eq, Show, Generic)
 

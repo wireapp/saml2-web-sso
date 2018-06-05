@@ -20,7 +20,7 @@ import Util
 
 data Ctx = Ctx
   { _ctxNow            :: Time
-  , _ctxConfig         :: Config ()
+  , _ctxConfig         :: Config_
   , _ctxAssertionStore :: MVar AssertionStore
   , _ctxRequestStore   :: MVar RequestStore
   }
@@ -50,7 +50,7 @@ mkTestCtx2 = do
   testCtx1 <- mkTestCtx1
   pure $ testCtx1 & ctxConfig . cfgIdps .~ [myidp]
 
-mkmyidp :: IO (IdPConfig ())
+mkmyidp :: IO IdPConfig_
 mkmyidp = do
   Right cert <- parseKeyInfo <$> readSampleIO "microsoft-idp-keyinfo.xml"
   pure $ IdPConfig
@@ -83,7 +83,7 @@ newtype TestSP a = TestSP { runTestSP :: StateT Ctx Handler a }
   deriving (Functor, Applicative, Monad, MonadIO, MonadState Ctx, MonadError ServantErr)
 
 instance HasConfig TestSP where
-  type ConfigExtra TestSP = ()
+  type ConfigExtra TestSP = Maybe ()
   getConfig = gets (^. ctxConfig)
 
 instance SP TestSP where

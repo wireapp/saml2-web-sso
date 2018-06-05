@@ -28,7 +28,7 @@ spec = describe "Config" $ do
 
   it "sample config" $ do
     want <- readSampleIO "server-config.yaml"
-    let have :: Config ()
+    let have :: Config_
         have = Config
           { _cfgVersion  = Version_2_0
           , _cfgLogLevel = DEBUG
