@@ -44,6 +44,16 @@ encode = Text.XML.renderText settings . renderToDocument
 decode :: forall m a. (HasXMLRoot a, MonadError String m) => LT -> m a
 decode = either (throwError . show @SomeException) parseFromDocument . parseText def
 
+encodeElem :: forall a. HasXML a => a -> LT
+encodeElem = Text.XML.renderText settings . mkDocument' . render
+  where
+    settings = def { rsNamespaces = nameSpaces (Proxy @a), rsXMLDeclaration = False }
+    mkDocument' [NodeElement el] = mkDocument el
+    mkDocument' bad = error $ "encodeElem: " <> show bad
+
+decodeElem :: forall a m. (HasXML a, MonadError String m) => LT -> m a
+decodeElem = either (throwError . show @SomeException) parseFromDocument . parseText def
+
 
 renderToDocument :: HasXMLRoot a => a -> Document
 renderToDocument = mkDocument . renderRoot

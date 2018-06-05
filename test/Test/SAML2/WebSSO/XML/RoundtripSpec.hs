@@ -20,7 +20,11 @@ spec :: Spec
 spec = hedgehog $ checkParallel $$(discover)
 
 mkprop :: forall a. (Eq a, Show a, HasXML a) => Gen a -> Property
-mkprop gen = property $ forAll gen >>= \v -> tripping v render (parse @a @(Either String))
+mkprop gen = property $ forAll gen >>= \v -> tripping v enc dec
+  where
+    (enc, dec) =
+      (encodeElem, decodeElem @a @(Either String))
+      -- (render, (parse @a @(Either String)))
 
 
 prop_tripNameID :: Property
