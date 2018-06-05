@@ -188,7 +188,7 @@ spec = describe "API" $ do
           <&> \sample -> postHtmlForm "/authresp" [("SAMLResponse", cs . EL.encode . cs $ sample)]
 
     context "unknown idp" . withapp (Proxy @APIAuthResp') (authresp simpleOnSuccess) mkTestCtx1 $ do
-      let errmsg = "invalid signature: unknown issuer: Issuer {_fromIssuer = NameID {_nameID = NameIDFEntity \"https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/\", _nameIDNameQ = Nothing, _nameIDSPNameQ = Nothing, _nameIDSPProvidedID = Nothing}}"
+      let errmsg = "invalid signature: unknown issuer: Issuer"
       it "responds with 400" $ do
         postresp <- liftIO mkpostresp
         postresp `shouldRespondWith` 400 { matchBody = bodyContains errmsg }

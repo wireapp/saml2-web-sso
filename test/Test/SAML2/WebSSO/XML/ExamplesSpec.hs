@@ -58,6 +58,7 @@ spec = describe "XML serialization" $ do
       it @Expectation "parse succeeds" . liftIO $ do
         base64raw :: LT <- readSampleIO "centrify-response-1.base64"
 
+        pendingWith "Issuer URL is 'Centrify', which isn't a valid URL.  Need to get a correct response doc first."
         let Right (xmlraw :: LBS)
                 = EL.decode
                 . cs @String @LBS

@@ -413,10 +413,13 @@ exportStatus StatusSuccess = HS.Status (HS.StatusCode HS.StatusSuccess []) Nothi
 exportStatus bad = error $ "not implemented: " <> show bad
 
 importIssuer :: (HasCallStack, MonadError String m) => HS.Issuer -> m Issuer
-importIssuer = fmap Issuer . importNameID . HS.issuer
+importIssuer = fmap Issuer . (nameIDToURI <=< importNameID) . HS.issuer
+  where
+    nameIDToURI (NameID (NameIDFEntity (parseURI' -> Right uri)) Nothing Nothing Nothing) = pure uri
+    nameIDToURI bad = die (Proxy @Issuer) bad
 
 exportIssuer :: HasCallStack => Issuer -> HS.Issuer
-exportIssuer = HS.Issuer . exportNameID . _fromIssuer
+exportIssuer = HS.Issuer . exportNameID . entityNameID . _fromIssuer
 
 importOptionalIssuer :: (HasCallStack, MonadError String m) => Maybe HS.Issuer -> m (Maybe Issuer)
 importOptionalIssuer = fmapFlipM importIssuer

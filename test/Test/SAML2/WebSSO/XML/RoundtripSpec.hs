@@ -108,7 +108,7 @@ genID :: Gen (ID a)
 genID = ID <$> genNiceText (Range.singleton 2)
 
 genIssuer :: Gen Issuer
-genIssuer = Issuer <$> genNameID
+genIssuer = Issuer <$> genURI
 
 -- | TODO: what else do we need here?
 genNameID :: Gen NameID

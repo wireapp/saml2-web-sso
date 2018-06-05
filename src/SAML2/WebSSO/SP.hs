@@ -164,7 +164,7 @@ createAuthnRequest = do
   _rqID           <- createID
   _rqVersion      <- (^. cfgVersion) <$> getConfig
   _rqIssueInstant <- getNow
-  _rqIssuer       <- Issuer . entityNameID <$> getLandingURI
+  _rqIssuer       <- Issuer <$> getLandingURI
   storeRequest _rqID (addTime (30 * 24 * 60 * 60) _rqIssueInstant)
   pure AuthnRequest{..}
 
@@ -291,9 +291,6 @@ checkAssertions missuer assertions = do
     [i] -> pure i
     [] -> giveup ["no statement issuer"]
     bad@(_:_:_) -> giveup ["multiple statement issuers not supported", show bad]
-
-  unless (isJust $ issuer ^? fromIssuer . nameID . _NameIDFEntity) $
-    deny ["issuer must be entity: " <> show issuer]
 
   unless (maybe True (issuer ==) missuer) $
     deny ["issuers mismatch: " <> show (missuer, issuer)]

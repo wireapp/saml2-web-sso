@@ -34,23 +34,20 @@ data AccessVerdict =
 data UserId = UserId { _uidTenant :: Issuer, _uidSubject :: NameID }
   deriving (Eq, Show)
 
-newtype Issuer = Issuer { _fromIssuer :: NameID }
+-- | More correctly, an 'Issuer' is a 'NameID', but we only support 'URI'.
+newtype Issuer = Issuer { _fromIssuer :: URI }
   deriving (Eq, Ord, Show)
 
 mkIssuer :: ST -> Issuer
-mkIssuer = Issuer . entityNameID . unsafeParseURI
+mkIssuer = Issuer . unsafeParseURI
 
 instance FromJSON Issuer where
   parseJSON = withText "Issuer" $ \uri -> case parseURI' uri of
-    Right i  -> pure . Issuer $ entityNameID i
+    Right i  -> pure $ Issuer i
     Left msg -> fail $ "Issuer: " <> show msg
 
 instance ToJSON Issuer where
-  toJSON (Issuer name) = toJSON $ nameIDToText name
-    where
-      nameIDToText :: HasCallStack => NameID -> ST
-      nameIDToText (NameID (NameIDFEntity uri) Nothing Nothing Nothing) = uri
-      nameIDToText bad = error $ "nameIDToText: not implemented: " <> show bad
+  toJSON = toJSON . renderURI . _fromIssuer
 
 
 ----------------------------------------------------------------------
