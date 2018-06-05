@@ -350,20 +350,22 @@ importBaseIDasNameID (importBaseID -> BaseID bid bidq bidspq) =
   NameID (NameIDFUnspecified bid) bidq bidspq Nothing
 
 importNameID :: (HasCallStack, MonadError String m) => HS.NameID -> m NameID
-importNameID (HS.NameID (HS.BaseID Nothing Nothing uri) (HS.Identified HS.NameIDFormatEntity) Nothing)
-  = pure $ NameID (NameIDFEntity $ cs uri) Nothing Nothing Nothing
-importNameID bad
-  = die (Proxy @NameID) bad
+importNameID bad@(HS.NameID (HS.BaseID _ _ _) (HS.Unidentified _) _)
+  = die (Proxy @NameID) (show bad)
+importNameID (HS.NameID (HS.BaseID m1 m2 nid) (HS.Identified hsNameIDFormat) m3)
+  = either (die (Proxy @NameID)) pure $
+    form hsNameIDFormat (cs nid) >>= \nid' -> mkNameID nid' (cs <$> m1) (cs <$> m2) (cs <$> m3)
   where
-    _form :: MonadError String m => HS.NameIDFormat -> ST -> m UnqualifiedNameID
-    _form HS.NameIDFormatUnspecified = pure . NameIDFUnspecified
-    _form HS.NameIDFormatEmail       = pure . NameIDFEmail
-    _form HS.NameIDFormatX509        = pure . NameIDFX509
-    _form HS.NameIDFormatWindows     = pure . NameIDFWindows
-    _form HS.NameIDFormatKerberos    = pure . NameIDFKerberos
-    _form HS.NameIDFormatEntity      = pure . NameIDFEntity
-    _form HS.NameIDFormatPersistent  = pure . NameIDFPersistent
-    _form _                          = undefined
+    form :: MonadError String m => HS.NameIDFormat -> ST -> m UnqualifiedNameID
+    form HS.NameIDFormatUnspecified = pure . NameIDFUnspecified
+    form HS.NameIDFormatEmail       = pure . NameIDFEmail
+    form HS.NameIDFormatX509        = pure . NameIDFX509
+    form HS.NameIDFormatWindows     = pure . NameIDFWindows
+    form HS.NameIDFormatKerberos    = pure . NameIDFKerberos
+    form HS.NameIDFormatEntity      = fmap NameIDFEntity . parseURI'
+    form HS.NameIDFormatPersistent  = pure . NameIDFPersistent
+    form HS.NameIDFormatTransient   = pure . NameIDFTransient
+    form b@HS.NameIDFormatEncrypted = \_ -> die (Proxy @NameID) (show b)
 
 exportNameID :: NameID -> HS.NameID
 exportNameID name = HS.NameID
@@ -380,7 +382,7 @@ exportNameID name = HS.NameID
     unform (NameIDFX509        n) = (HS.Identified HS.NameIDFormatX509, n)
     unform (NameIDFWindows     n) = (HS.Identified HS.NameIDFormatWindows, n)
     unform (NameIDFKerberos    n) = (HS.Identified HS.NameIDFormatKerberos, n)
-    unform (NameIDFEntity      n) = (HS.Identified HS.NameIDFormatEntity, n)
+    unform (NameIDFEntity      n) = (HS.Identified HS.NameIDFormatEntity, renderURI n)
     unform (NameIDFPersistent  n) = (HS.Identified HS.NameIDFormatPersistent, n)
     unform (NameIDFTransient   n) = (HS.Identified HS.NameIDFormatTransient, n)
 
@@ -415,7 +417,7 @@ exportStatus bad = error $ "not implemented: " <> show bad
 importIssuer :: (HasCallStack, MonadError String m) => HS.Issuer -> m Issuer
 importIssuer = fmap Issuer . (nameIDToURI <=< importNameID) . HS.issuer
   where
-    nameIDToURI (NameID (NameIDFEntity (parseURI' -> Right uri)) Nothing Nothing Nothing) = pure uri
+    nameIDToURI (NameID (NameIDFEntity uri) Nothing Nothing Nothing) = pure uri
     nameIDToURI bad = die (Proxy @Issuer) bad
 
 exportIssuer :: HasCallStack => Issuer -> HS.Issuer

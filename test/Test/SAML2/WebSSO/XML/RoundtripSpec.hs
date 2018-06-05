@@ -110,9 +110,27 @@ genID = ID <$> genNiceText (Range.singleton 2)
 genIssuer :: Gen Issuer
 genIssuer = Issuer <$> genURI
 
--- | TODO: what else do we need here?
 genNameID :: Gen NameID
-genNameID = Gen.choice [entityNameID <$> genURI, opaqueNameID <$> (genNiceText $ Range.linear 1 10)]
+genNameID = do
+  unid <- genUnqualifiedNameID
+  case unid of
+    NameIDFEntity uri -> pure $ entityNameID uri
+    _ -> either (error . show) pure =<<
+         (mkNameID unid <$> qualifier <*> qualifier <*> qualifier)
+  where
+    qualifier = Gen.maybe . genNiceText $ Range.exponential 1 2000
+
+genUnqualifiedNameID :: Gen UnqualifiedNameID
+genUnqualifiedNameID = Gen.choice
+  [ NameIDFUnspecified <$> genNiceText (Range.exponential 1 2000)
+  , NameIDFEmail       <$> genNiceText (Range.exponential 1 2000)
+  , NameIDFX509        <$> genNiceText (Range.exponential 1 2000)
+  , NameIDFWindows     <$> genNiceText (Range.exponential 1 2000)
+  , NameIDFKerberos    <$> genNiceText (Range.exponential 1 2000)
+  , NameIDFEntity      <$> genURI' (Just (Range.exponential 1 1024))
+  , NameIDFPersistent  <$> genNiceText (Range.exponential 1 1024)
+  , NameIDFTransient   <$> genNiceText (Range.exponential 1 2000)
+  ]
 
 genNonEmpty :: Range Int -> Gen a -> Gen (NonEmpty a)
 genNonEmpty rng gen = (:|) <$> gen <*> Gen.list rng gen

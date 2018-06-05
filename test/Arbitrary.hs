@@ -17,7 +17,11 @@ genVersion :: Gen Version
 genVersion = Gen.enumBounded
 
 genURI :: Gen URI
-genURI = pure $ unsafeParseURI "http://wire.com/"
+genURI = genURI' Nothing
+
+-- | arbitrary 'URI' with restricted length.
+genURI' :: Maybe (Range Int) -> Gen URI
+genURI' _ = pure $ unsafeParseURI "http://wire.com/"
 
 -- | pick N words from a dictionary of popular estonian first names.  this should yield enough
 -- entropy, but is much nicer to read.
