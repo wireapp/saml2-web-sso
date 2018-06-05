@@ -70,7 +70,7 @@ class (SP m, SPStore m, MonadError ServantErr m) => SPHandler m where
 ----------------------------------------------------------------------
 -- default instance
 
-newtype SimpleSP a = SimpleSP (ReaderT (Config, MVar RequestStore, MVar AssertionStore) Handler a)
+newtype SimpleSP a = SimpleSP (ReaderT (Config (), MVar RequestStore, MVar AssertionStore) Handler a)
   deriving (Functor, Applicative, Monad, MonadError ServantErr)
 
 type RequestStore = Map.Map (ID AuthnRequest) Time
@@ -79,7 +79,7 @@ type AssertionStore = Map.Map (ID Assertion) Time
 -- | If you read the 'Config' initially in 'IO' and then pass it into the monad via 'Reader', you
 -- safe disk load and redundant debug logs.
 instance SPHandler SimpleSP where
-  type NTCTX SimpleSP = Config
+  type NTCTX SimpleSP = Config ()
   nt cfg (SimpleSP m) = do
     requests   <- liftIO $ newMVar mempty
     assertions <- liftIO $ newMVar mempty
@@ -106,6 +106,7 @@ instance SPStore SimpleSP where
     SimpleSP $ simpleStoreAssertion store now aid tim
 
 instance HasConfig SimpleSP where
+  type ConfigExtra SimpleSP = ()
   getConfig = (^. _1) <$> SimpleSP ask
 
 -- | insert
@@ -226,6 +227,7 @@ instance (Functor m, Applicative m, Monad m) => Monad (JudgeT m) where
   (JudgeT x) >>= f = JudgeT (x >>= fromJudgeT . f)
 
 instance (HasConfig m) => HasConfig (JudgeT m) where
+  type ConfigExtra (JudgeT m) = ConfigExtra m
   getConfig = JudgeT . lift . lift $ getConfig
 
 instance SP m => SP (JudgeT m) where
@@ -398,7 +400,7 @@ judgeConditions (Conditions lowlimit uplimit onetimeuse maudiences) = do
 ----------------------------------------------------------------------
 -- helpers
 
-getIdPConfig :: SPHandler m => ST -> m IdPConfig
+getIdPConfig :: SPHandler m => ST -> m (IdPConfig (ConfigExtra m))
 getIdPConfig idpname = maybe crash pure . Map.lookup idpname . mkmap . (^. cfgIdps) =<< getConfig
   where
     crash = throwError err404 { errBody = "unknown IdP: " <> cs (show idpname) }

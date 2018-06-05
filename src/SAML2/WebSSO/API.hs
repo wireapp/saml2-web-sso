@@ -273,9 +273,9 @@ resolveBody :: SPHandler m => AuthnResponseBody -> m AuthnResponse
 resolveBody (AuthnResponseBody mkbody) = do
   either throwError pure . mkbody =<< mkLookupPubKey
 
-mkLookupPubKey :: SPHandler m => m (Issuer -> Either String RSA.PublicKey)
+mkLookupPubKey :: forall m. SPHandler m => m (Issuer -> Either String RSA.PublicKey)
 mkLookupPubKey = do
-  idps :: [IdPConfig]
+  idps :: [IdPConfig (ConfigExtra m)]
     <- (^. cfgIdps) <$> getConfig
   pubkeys :: [(Issuer, RSA.PublicKey)]
     <- forM idps $ \idp -> do

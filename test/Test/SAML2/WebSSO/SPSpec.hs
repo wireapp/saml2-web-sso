@@ -15,6 +15,7 @@ import qualified Samples
 
 
 instance HasConfig IO where
+  type ConfigExtra IO = ()
   getConfig = configIO
 
 instance SP IO

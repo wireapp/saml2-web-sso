@@ -33,7 +33,7 @@ import qualified Data.Yaml as Yaml
 ----------------------------------------------------------------------
 -- data types
 
-data Config = Config
+data Config extra = Config
   { _cfgVersion           :: Version
   , _cfgLogLevel          :: LogLevel
   , _cfgSPHost            :: String
@@ -41,7 +41,7 @@ data Config = Config
   , _cfgSPAppURI          :: URI
   , _cfgSPSsoURI          :: URI
   , _cfgContacts          :: NonEmpty SPContactPerson
-  , _cfgIdps              :: [IdPConfig]
+  , _cfgIdps              :: [IdPConfig extra]
   }
   deriving (Eq, Show, Generic)
 
@@ -50,12 +50,13 @@ data Config = Config
 data LogLevel = SILENT | CRITICAL | ERROR | WARN | INFO | DEBUG
   deriving (Eq, Ord, Show, Enum, Bounded, Generic, FromJSON, ToJSON)
 
-data IdPConfig = IdPConfig
+data IdPConfig extra = IdPConfig
   { _idpPath            :: ST
   , _idpMetadata        :: URI
   , _idpIssuer          :: Issuer
   , _idpRequestUri      :: URI
   , _idpPublicKey       :: X509.SignedCertificate
+  , _idpExtraInfo       :: Maybe extra
   }
   deriving (Eq, Show, Generic)
 
@@ -94,7 +95,7 @@ instance ToJSON X509.SignedCertificate where
 ----------------------------------------------------------------------
 -- default
 
-fallbackConfig :: Config
+fallbackConfig :: Config extra
 fallbackConfig = Config
   { _cfgVersion           = Version_2_0
   , _cfgLogLevel          = DEBUG
@@ -119,18 +120,18 @@ fallbackContact = SPContactPerson
 ----------------------------------------------------------------------
 -- IO
 
-configIO :: IO Config
+configIO :: (FromJSON extra, ToJSON extra) => IO (Config extra)
 configIO = readConfig =<< configFilePath
 
 configFilePath :: IO FilePath
 configFilePath = (</> "server.yaml") <$> getEnv "SAML2_WEB_SSO_ROOT"
 
-readConfig :: FilePath -> IO Config
+readConfig :: forall extra. (FromJSON extra, ToJSON extra) => FilePath -> IO (Config extra)
 readConfig filepath =
   either (\err -> fallbackConfig <$ warn err) (\cnf -> info cnf >> pure cnf)
   =<< Yaml.decodeFileEither filepath
   where
-    info :: Config -> IO ()
+    info :: Config extra -> IO ()
     info cfg = when (cfg ^. cfgLogLevel >= INFO) $
       hPutStrLn stderr . cs . Yaml.encode $ cfg
 
@@ -141,12 +142,13 @@ readConfig filepath =
 
 -- | Convenience function to write a config file if you don't already have one.  Writes to
 -- `$SAML2_WEB_SSO_ROOT/server.yaml`.  Warns if env does not contain the root.
-writeConfig :: Config -> IO ()
+writeConfig :: ToJSON extra => Config extra -> IO ()
 writeConfig cfg = (`Yaml.encodeFile` cfg) =<< configFilePath
 
 
 ----------------------------------------------------------------------
 -- class
 
-class Monad m => HasConfig m where
-  getConfig :: m Config
+class (Monad m) => HasConfig m where
+  type family ConfigExtra m :: *
+  getConfig :: m (Config (ConfigExtra m))
