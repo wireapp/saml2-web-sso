@@ -106,7 +106,7 @@ instance SPStore SimpleSP where
     SimpleSP $ simpleStoreAssertion store now aid tim
 
 instance HasConfig SimpleSP where
-  type ConfigExtra SimpleSP = Maybe ()
+  type ConfigExtra SimpleSP = ()
   getConfig = (^. _1) <$> SimpleSP ask
 
 -- | insert

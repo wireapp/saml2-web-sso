@@ -33,7 +33,7 @@ import qualified Data.Yaml as Yaml
 ----------------------------------------------------------------------
 -- data types
 
-type Config_ = Config (Maybe ())
+type Config_ = Config ()
 
 data Config extra = Config
   { _cfgVersion           :: Version
@@ -52,7 +52,7 @@ data Config extra = Config
 data LogLevel = SILENT | CRITICAL | ERROR | WARN | INFO | DEBUG
   deriving (Eq, Ord, Show, Enum, Bounded, Generic, FromJSON, ToJSON)
 
-type IdPConfig_ = IdPConfig (Maybe ())
+type IdPConfig_ = IdPConfig ()
 
 data IdPConfig extra = IdPConfig
   { _idpPath            :: ST

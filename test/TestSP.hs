@@ -59,7 +59,7 @@ mkmyidp = do
     (mkIssuer "https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/")
     (unsafeParseURI "http://myidp.io/sso")
     cert
-    Nothing
+    ()
 
 mkTestCtx3 :: IO Ctx
 mkTestCtx3 = mkTestCtx2
@@ -83,7 +83,7 @@ newtype TestSP a = TestSP { runTestSP :: StateT Ctx Handler a }
   deriving (Functor, Applicative, Monad, MonadIO, MonadState Ctx, MonadError ServantErr)
 
 instance HasConfig TestSP where
-  type ConfigExtra TestSP = Maybe ()
+  type ConfigExtra TestSP = ()
   getConfig = gets (^. ctxConfig)
 
 instance SP TestSP where
