@@ -123,19 +123,21 @@ genNameID = do
     _ -> either (error . show) pure =<<
          (mkNameID unid <$> qualifier <*> qualifier <*> qualifier)
   where
-    qualifier = Gen.maybe . genNiceText $ Range.exponential 1 2000
+    qualifier = Gen.maybe . genNiceText $ Range.exponential 1 100
 
 genUnqualifiedNameID :: Gen UnqualifiedNameID
 genUnqualifiedNameID = Gen.choice
-  [ NameIDFUnspecified <$> genNiceText (Range.exponential 1 2000)
-  , NameIDFEmail       <$> genNiceText (Range.exponential 1 2000)
-  , NameIDFX509        <$> genNiceText (Range.exponential 1 2000)
-  , NameIDFWindows     <$> genNiceText (Range.exponential 1 2000)
-  , NameIDFKerberos    <$> genNiceText (Range.exponential 1 2000)
-  , NameIDFEntity      <$> genURI' (Just (Range.exponential 1 1024))
-  , NameIDFPersistent  <$> genNiceText (Range.exponential 1 1024)
-  , NameIDFTransient   <$> genNiceText (Range.exponential 1 2000)
+  [ NameIDFUnspecified <$> mktxt 2000
+  , NameIDFEmail       <$> mktxt 2000
+  , NameIDFX509        <$> mktxt 2000
+  , NameIDFWindows     <$> mktxt 2000
+  , NameIDFKerberos    <$> mktxt 2000
+  , NameIDFEntity      <$> genURI' (Just (Range.linear 1 1024))
+  , NameIDFPersistent  <$> mktxt 1024
+  , NameIDFTransient   <$> mktxt 2000
   ]
+  where
+    mktxt charlen = cs <$> Gen.text (Range.linear 1 charlen) Gen.alpha
 
 genNonEmpty :: Range Int -> Gen a -> Gen (NonEmpty a)
 genNonEmpty rng gen = (:|) <$> gen <*> Gen.list rng gen

@@ -277,7 +277,7 @@ mkNameID nid@(NameIDFEntity uri) m1 m2 m3 = do
 mkNameID nid@(NameIDFPersistent txt) m1 m2 m3 = do
   mapM_ throwError $
     [ "mkNameID: persistent text too long: "
-      <> show nid
+      <> show (nid, ST.length txt)
     | ST.length txt > 1024
     ]
   pure $ NameID nid m1 m2 m3
