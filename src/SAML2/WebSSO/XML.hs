@@ -16,7 +16,6 @@ import Lens.Micro
 import Prelude hiding ((.), id)
 import SAML2.WebSSO.Types
 import Text.Show.Pretty (ppShow)
-import Text.XML.Cursor
 import Text.XML hiding (renderText)
 import Text.XML.Iso
 import Text.XML.Util
@@ -31,8 +30,8 @@ import qualified SAML2.Metadata as HS
 import qualified SAML2.Profiles as HS
 import qualified SAML2.XML as HS
 import qualified Text.XML
+import qualified Text.XML.HXT.Arrow.Pickle.Xml as HS
 import qualified Text.XML.HXT.DOM.TypeDefs as HS
-
 
 ----------------------------------------------------------------------
 -- HasXML class
@@ -50,7 +49,7 @@ renderToDocument :: HasXMLRoot a => a -> Document
 renderToDocument = mkDocument . renderRoot
 
 parseFromDocument :: (HasXML a, MonadError String m) => Document -> m a
-parseFromDocument = parse . fromDocument
+parseFromDocument doc = parse [NodeElement $ documentRoot doc]
 
 
 -- FUTUREWORK: perhaps we want to split this up: HasXML (for nameSpaces), and HasXMLParse, HasXMLRender,
@@ -64,14 +63,14 @@ class HasXML a where
   default render :: HasXMLRoot a => a -> [Node]
   render = (:[]) . NodeElement . renderRoot
 
-  parse  :: MonadError String m => Cursor -> m a
+  parse  :: MonadError String m => [Node] -> m a
 
 class HasXML a => HasXMLRoot a where
   renderRoot :: a -> Element
 
 
 instance HasXML Document where
-  parse (node -> NodeElement el) = pure $ Document defPrologue el defMiscellaneous
+  parse [NodeElement el] = pure $ Document defPrologue el defMiscellaneous
   parse bad = die (Proxy @Document) bad
 
 instance HasXMLRoot Document where
@@ -108,29 +107,38 @@ renderTime (Time utctime) =
 -- hack: use hsaml2 parsers and convert from SAMLProtocol instances
 
 wrapParse :: forall (m :: * -> *) them us.
-             (HasCallStack, MonadError String m, HS.SAMLProtocol them, HasXMLRoot us, Typeable us)
-          => (them -> m us) -> Cursor -> m us
-wrapParse imprt cursor = either (die (Proxy @us) . (, cursor)) imprt $ HS.xmlToSAML (renderCursor cursor)
-
-renderCursor :: HasCallStack => Cursor -> LBS
-renderCursor (node -> NodeElement el) = renderLBS def $ Document defPrologue el defMiscellaneous
-renderCursor bad = error $ "internal error: " <> show bad
+             (HasCallStack, MonadError String m, HS.XmlPickler them, HasXML us, Typeable us)
+          => (them -> m us) -> [Node] -> m us
+wrapParse imprt [NodeElement xml] = either (die (Proxy @us) . (, xml)) imprt $
+                                    HS.xmlToSAML (renderLBS def $ Document defPrologue xml defMiscellaneous)
+wrapParse _ badxml = error $ "internal error: " <> show badxml
 
 wrapRender :: forall them us.
+              (HasCallStack, HS.XmlPickler them, HasXML us)
+           => (us -> them) -> us -> [Node]
+wrapRender exprt = parseElement . HS.samlToXML . exprt
+  where
+    parseElement lbs = case parseLBS def lbs of
+      Right (Document _ el _) -> [NodeElement el]
+      Left msg  -> error $ show (Proxy @us, msg)
+
+wrapRenderRoot :: forall them us.
               (HasCallStack, HS.SAMLProtocol them, HasXMLRoot us)
            => (us -> them) -> us -> Element
-wrapRender exprt = parseElement (Proxy @us) . HS.samlToXML . exprt
-
-parseElement :: HasCallStack => Proxy a -> LBS -> Element
-parseElement proxy lbs = case parseLBS def lbs of
-  Right (Document _ el _) -> el
-  Left msg  -> error $ show (proxy, msg)
-
+wrapRenderRoot exprt = parseElement . HS.samlToXML . exprt
+  where
+    parseElement lbs = case parseLBS def lbs of
+      Right (Document _ el _) -> el
+      Left msg  -> error $ show (Proxy @us, msg)
 
 instance HasXML     AuthnRequest     where parse      = wrapParse importAuthnRequest
-instance HasXMLRoot AuthnRequest     where renderRoot = wrapRender exportAuthnRequest
+instance HasXMLRoot AuthnRequest     where renderRoot = wrapRenderRoot exportAuthnRequest
 instance HasXML     AuthnResponse    where parse      = wrapParse importAuthnResponse
-instance HasXMLRoot AuthnResponse    where renderRoot = wrapRender exportAuthnResponse
+instance HasXMLRoot AuthnResponse    where renderRoot = wrapRenderRoot exportAuthnResponse
+
+instance HasXML NameID where
+  parse = wrapParse importNameID
+  render = wrapRender exportNameID
 
 
 importEntityDescriptor :: (HasCallStack, MonadError String m) => HS.Descriptor -> m EntityDescriptor
