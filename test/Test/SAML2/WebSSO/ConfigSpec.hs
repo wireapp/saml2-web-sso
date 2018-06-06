@@ -4,7 +4,7 @@
 
 module Test.SAML2.WebSSO.ConfigSpec (spec) where
 
-import Arbitrary
+import SAML2.WebSSO.Test.Arbitrary
 import Data.Aeson
 import Data.Aeson.Types
 import Data.List.NonEmpty
@@ -17,8 +17,6 @@ import Text.XML.Util
 import Util
 
 import qualified Data.Yaml as Yaml
-import qualified Hedgehog.Gen as Gen
-import qualified Hedgehog.Range as Range
 
 
 spec :: Spec
@@ -49,25 +47,3 @@ spec = describe "Config" $ do
             ]
           }
     Yaml.decodeEither (cs want) `shouldBe` Right have
-
-
-genConfig :: Gen extra -> Gen (Config extra)
-genConfig genextra = do
-  _cfgVersion    <- genVersion
-  _cfgLogLevel   <- Gen.enumBounded
-  _cfgSPHost     <- cs <$> genNiceWord
-  _cfgSPPort     <- Gen.int (Range.linear 1 9999)
-  _cfgSPAppURI   <- genURI
-  _cfgSPSsoURI   <- genURI
-  _cfgContacts   <- (:|) <$> genSPContactPerson <*> Gen.list (Range.linear 0 3) genSPContactPerson
-  _cfgIdps       <- pure mempty
-  _cfgExtraInfo  <- Gen.maybe genextra
-  pure Config{..}
-
-genSPContactPerson :: Gen SPContactPerson
-genSPContactPerson = SPContactPerson
-  <$> genNiceWord
-  <*> genNiceWord
-  <*> genNiceWord
-  <*> genURI
-  <*> genNiceWord

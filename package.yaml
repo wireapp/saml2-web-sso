@@ -81,6 +81,11 @@ dependencies:
   - xml-types
   - yaml
 
+  # for SAML2.WebSSO.Test.*; we should have a cabal flag that allows users to disable these deps.
+  - hedgehog
+  - hedgehog-quickcheck
+  - QuickCheck
+
   # temporary, for debugging & dev
   - hsaml2
   - hxt
