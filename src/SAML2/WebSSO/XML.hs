@@ -150,6 +150,10 @@ instance HasXML NameID where
   parse = wrapParse importNameID
   render = wrapRender exportNameID
 
+instance HasXML Issuer where
+  parse = wrapParse importIssuer
+  render = wrapRender exportIssuer
+
 
 importEntityDescriptor :: (HasCallStack, MonadError String m) => HS.Descriptor -> m EntityDescriptor
 importEntityDescriptor = error . ppShow
