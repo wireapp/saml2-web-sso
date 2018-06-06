@@ -20,6 +20,9 @@ genURI :: Gen URI
 genURI = genURI' Nothing
 
 -- | arbitrary 'URI' with restricted length.
+--
+-- TODO: uri-bytestring has Arbitrary instances, but they are internal as of now.
+-- https://github.com/Soostone/uri-bytestring/issues/45
 genURI' :: Maybe (Range Int) -> Gen URI
 genURI' _ = pure $ unsafeParseURI "http://wire.com/"
 
