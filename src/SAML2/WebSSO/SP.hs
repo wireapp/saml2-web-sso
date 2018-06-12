@@ -184,7 +184,7 @@ appendURI path uri = norm uri { uriPath = uriPath uri <> path }
     norm :: URI -> SBS
     norm = normalizeURIRef' httpNormalization
 
-getLandingURI :: (HasCallStack, SP m) => m URI
+getLandingURI :: (HasCallStack, HasConfig m) => m URI
 getLandingURI = (^. cfgSPAppURI) <$> getConfig
 
 
