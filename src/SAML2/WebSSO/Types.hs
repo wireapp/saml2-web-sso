@@ -41,9 +41,6 @@ data UserId = UserId { _uidTenant :: Issuer, _uidSubject :: NameID }
 newtype Issuer = Issuer { _fromIssuer :: URI }
   deriving (Eq, Ord, Show)
 
-mkIssuer :: ST -> Issuer
-mkIssuer = Issuer . unsafeParseURI
-
 instance FromJSON Issuer where
   parseJSON = withText "Issuer" $ \uri -> case parseURI' uri of
     Right i  -> pure $ Issuer i

@@ -35,6 +35,7 @@ renderURI = cs . serializeURIRef'
 parseURI' :: MonadError String m => ST -> m URI
 parseURI' = either (die (Proxy @URI)) pure . parseURI laxURIParserOptions . cs . ST.strip
 
+-- | You probably should not use this.  If you have a string literal, consider "URI.ByteString.QQ".
 unsafeParseURI :: ST -> URI
 unsafeParseURI = either (error . ("could not parse config: " <>) . show) id . parseURI'
 

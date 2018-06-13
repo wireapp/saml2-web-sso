@@ -11,7 +11,7 @@ import SAML2.WebSSO
 import Test.Hspec
 import TestSP
 import Text.XML
-import Text.XML.Util
+import URI.ByteString.QQ
 import Util
 
 import qualified Data.UUID as UUID
@@ -23,7 +23,7 @@ spec = do
     it "does not smoke" $ do
       testCtx1 <- mkTestCtx1
       have <- testSP testCtx1 $ spDesc
-        "drnick" (unsafeParseURI "http://example.com/") (unsafeParseURI "http://example.com/sso/login") (fallbackContact :| [])
+        "drnick" [uri|http://example.com/|] [uri|http://example.com/sso/login|] (fallbackContact :| [])
       let want = spdescpre (have ^. spdID)
       have `shouldBe` want
 
@@ -42,7 +42,7 @@ spdescpre uuid = SPDescPre
   , _spdCacheDuration = 2592000
   , _spdOrgName = "drnick"
   , _spdOrgDisplayName = "drnick"
-  , _spdOrgURL = unsafeParseURI "http://example.com/"
-  , _spdResponseURL = unsafeParseURI "http://example.com/sso/login"
+  , _spdOrgURL = [uri|http://example.com/|]
+  , _spdResponseURL = [uri|http://example.com/sso/login|]
   , _spdContacts = fallbackContact :| []
   }

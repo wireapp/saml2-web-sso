@@ -21,6 +21,7 @@ import TestSP
 import Text.XML as XML
 import Text.XML.DSig
 import Text.XML.Util
+import URI.ByteString.QQ
 import Util
 
 import qualified Crypto.PubKey.RSA as RSA
@@ -120,9 +121,9 @@ spec = describe "API" $ do
               <>   "</body>"
               <> "</html>"
           Right (SomeSAMLRequest -> doc) = XML.parseText XML.def have
-          Right uri = parseURI' "https://ServiceProvider.com/SAML/SLO/Browser"
+          spuri = [uri|https://ServiceProvider.com/SAML/SLO/Browser|]
 
-      Right want `shouldBe` (fmapL show . parseText def . cs $ mimeRender (Proxy @HTML) (FormRedirect uri doc))
+      Right want `shouldBe` (fmapL show . parseText def . cs $ mimeRender (Proxy @HTML) (FormRedirect spuri doc))
 
   describe "simpleVerifyAuthnResponse" $ do
     let check goodsig knownkey expectOutcome =
@@ -139,7 +140,7 @@ spec = describe "API" $ do
                 foundkey _ = if knownkey then Right key else Left "foundkey failed"
 
                 go :: Either String ()
-                go = simpleVerifyAuthnResponse (Just $ mkIssuer "some_issuer") foundkey resp
+                go = simpleVerifyAuthnResponse (Just $ Issuer [uri|http://some_issuer/|]) foundkey resp
 
             if expectOutcome
               then go `shouldBe` Right ()
@@ -203,7 +204,7 @@ spec = describe "API" $ do
           reqstore <- newMVar $ Map.fromList [(ID "idcf2299ac551b42f1aa9b88804ed308c2", unsafeReadTime "2019-04-14T10:53:57Z")]
           mkTestCtx3
             <&> ctxNow .~ unsafeReadTime "2018-04-14T10:53:57Z"
-            <&> ctxConfig . cfgSPAppURI .~ unsafeParseURI "https://zb2.zerobuzz.net:60443/authresp"
+            <&> ctxConfig . cfgSPAppURI .~ [uri|https://zb2.zerobuzz.net:60443/authresp|]
             <&> ctxRequestStore .~ reqstore
     context "known idp, good timestamp" . withapp (Proxy @APIAuthResp') (authresp simpleOnSuccess) mkTestCtx3' $ do
       it "responds with 302" $ do

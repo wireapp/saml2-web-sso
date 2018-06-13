@@ -20,8 +20,6 @@ import System.Process (system)
 import Test.Hspec
 import Text.Show.Pretty
 import Text.XML
-import Text.XML.Util
-import URI.ByteString
 
 import qualified Data.Text.Lazy.IO as LT
 
@@ -46,9 +44,6 @@ dumpFile = showFile >=> putStrLn
 
 rerenderFile :: FilePath -> IO ()
 rerenderFile fp = showFile fp >>= Prelude.writeFile (fp <> "-")
-
-mkURI :: HasCallStack => String -> URI
-mkURI = unsafeParseURI . cs
 
 hedgehog :: IO Bool -> Spec
 hedgehog = it "hedgehog tests" . (`shouldReturn` True)

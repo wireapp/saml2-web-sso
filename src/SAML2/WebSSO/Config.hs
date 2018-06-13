@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE Strict, StrictData #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -23,8 +23,9 @@ import System.Environment
 import System.FilePath
 import System.IO
 import Text.XML.DSig
-import Text.XML.Util (unsafeParseURI, parseURI', renderURI)
+import Text.XML.Util (parseURI', renderURI)
 import URI.ByteString
+import URI.ByteString.QQ
 
 import qualified Data.X509 as X509
 import qualified Data.Yaml as Yaml
@@ -105,8 +106,8 @@ fallbackConfig = Config
   , _cfgLogLevel          = DEBUG
   , _cfgSPHost            = "localhost"
   , _cfgSPPort            = 8081
-  , _cfgSPAppURI          = unsafeParseURI "https://me.wire.com/sp"
-  , _cfgSPSsoURI          = unsafeParseURI "https://me.wire.com/sso"
+  , _cfgSPAppURI          = [uri|https://me.wire.com/sp|]
+  , _cfgSPSsoURI          = [uri|https://me.wire.com/sso|]
   , _cfgContacts          = fallbackContact :| []
   , _cfgIdps              = mempty
   }
@@ -116,7 +117,7 @@ fallbackContact = SPContactPerson
   { _spcntCompany   = "evil corp."
   , _spcntGivenName = "Dr."
   , _spcntSurname   = "Girlfriend"
-  , _spcntEmail     = unsafeParseURI "email:president@evil.corp"
+  , _spcntEmail     = [uri|email:president@evil.corp|]
   , _spcntPhone     = "+314159265"
   }
 

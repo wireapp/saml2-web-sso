@@ -10,8 +10,8 @@ import Hedgehog
 import SAML2.WebSSO
 import Test.QuickCheck (Arbitrary(arbitrary))
 import Text.XML
-import Text.XML.Util
 import URI.ByteString
+import URI.ByteString.QQ
 
 import qualified Data.Map as Map
 import qualified Data.Text as ST
@@ -32,7 +32,7 @@ genURI = genURI' Nothing
 -- TODO: uri-bytestring has Arbitrary instances, but they are internal as of now.
 -- https://github.com/Soostone/uri-bytestring/issues/45
 genURI' :: Maybe (Range Int) -> Gen URI
-genURI' _ = pure $ unsafeParseURI "http://wire.com/"
+genURI' _ = pure [uri|http://wire.com/|]
 
 -- | pick N words from a dictionary of popular estonian first names.  this should yield enough
 -- entropy, but is much nicer to read.
@@ -162,7 +162,7 @@ genNameID :: Gen NameID
 genNameID = do
   unid <- genUnqualifiedNameID
   case unid of
-    NameIDFEntity uri -> pure $ entityNameID uri
+    NameIDFEntity enturi -> pure $ entityNameID enturi
     _ -> either (error . show) pure =<<
          (mkNameID unid <$> qualifier <*> qualifier <*> qualifier)
   where

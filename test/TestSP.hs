@@ -14,7 +14,7 @@ import Lens.Micro.TH
 import SAML2.WebSSO
 import Servant.Server
 import Text.XML.DSig
-import Text.XML.Util
+import URI.ByteString.QQ
 import Util
 
 
@@ -34,8 +34,8 @@ mkTestCtx1 :: IO Ctx
 mkTestCtx1 = do
   let _ctxNow         = timeNow
       _ctxConfig      = fallbackConfig & cfgLogLevel .~ SILENT
-                                       & cfgSPAppURI .~ unsafeParseURI "https://zb2.zerobuzz.net:60443/"
-                                       & cfgSPSsoURI .~ unsafeParseURI "https://zb2.zerobuzz.net:60443/"
+                                       & cfgSPAppURI .~ [uri|https://zb2.zerobuzz.net:60443/|]
+                                       & cfgSPSsoURI .~ [uri|https://zb2.zerobuzz.net:60443/|]
   _ctxAssertionStore <- newMVar mempty
   _ctxRequestStore <- newMVar mempty
   pure Ctx {..}
@@ -55,16 +55,16 @@ mkmyidp = do
   Right cert <- parseKeyInfo <$> readSampleIO "microsoft-idp-keyinfo.xml"
   pure $ IdPConfig
     "myidp"
-    (unsafeParseURI "https://login.microsoftonline.com/682febe8-021b-4fde-ac09-e60085f05181/FederationMetadata/2007-06/FederationMetadata.xml")
-    (mkIssuer "https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/")
-    (unsafeParseURI "http://myidp.io/sso")
+    [uri|https://login.microsoftonline.com/682febe8-021b-4fde-ac09-e60085f05181/FederationMetadata/2007-06/FederationMetadata.xml|]
+    (Issuer [uri|https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/|])
+    [uri|http://myidp.io/sso|]
     cert
     ()
 
 mkTestCtx3 :: IO Ctx
 mkTestCtx3 = mkTestCtx2
   <&> ctxNow .~ unsafeReadTime "2018-03-11T17:14:13Z"
-  <&> ctxConfig . cfgSPSsoURI .~ unsafeParseURI "https://zb2.zerobuzz.net:60443/"
+  <&> ctxConfig . cfgSPSsoURI .~ [uri|https://zb2.zerobuzz.net:60443/|]
 
 timeLongAgo     :: Time
 timeLongAgo     = unsafeReadTime "1918-04-14T09:58:58.457Z"
