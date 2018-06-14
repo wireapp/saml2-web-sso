@@ -165,7 +165,8 @@ createAuthnRequest = do
   _rqVersion      <- (^. cfgVersion) <$> getConfig
   _rqIssueInstant <- getNow
   _rqIssuer       <- Issuer <$> getLandingURI
-  storeRequest _rqID (addTime (30 * 24 * 60 * 60) _rqIssueInstant)
+  let lifeExpectancySecs = 8 * 60 * 60  -- TODO: make this yaml-configurable.
+  storeRequest _rqID (addTime lifeExpectancySecs _rqIssueInstant)
   pure AuthnRequest{..}
 
 redirect :: MonadError ServantErr m => URI -> [Header] -> m void

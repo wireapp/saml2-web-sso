@@ -34,6 +34,7 @@ data AccessVerdict =
     }
   deriving (Eq, Show)
 
+-- TODO: find better name?  UserRef?  UserSamlName?  ...?
 data UserId = UserId { _uidTenant :: Issuer, _uidSubject :: NameID }
   deriving (Eq, Show)
 
