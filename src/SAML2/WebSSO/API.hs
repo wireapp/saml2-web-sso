@@ -265,7 +265,9 @@ authreq :: SPHandler m => ST -> m (FormRedirect AuthnRequest)
 authreq idpname = do
   enterH "authreq"
   uri <- (^. idpRequestUri) <$> getIdPConfig idpname
+  logger DEBUG $ "authreq uri: " <> cs (renderURI uri)
   req <- createAuthnRequest
+  logger DEBUG $ "authreq req: " <> show req
   leaveH $ FormRedirect uri req
 
 -- | Get config and pass the missing idp credentials to the response constructor.
@@ -293,9 +295,9 @@ authresp :: SPHandler m => (UserId -> m Void) -> AuthnResponseBody -> m Void
 authresp onsuccess body = do
   enterH "authresp: entering"
   resp <- resolveBody body
-  enterH $ "authresp: " <> ppShow resp
+  logger DEBUG $ "authresp: " <> ppShow resp
   verdict <- judge resp
-  logger DEBUG $ show verdict
+  logger DEBUG $ "authresp: " <> show verdict
   case verdict of
     AccessDenied reasons
       -> logger INFO (show reasons) >> reject (cs $ ST.intercalate ", " reasons)
