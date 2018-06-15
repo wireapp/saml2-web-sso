@@ -4,7 +4,7 @@ packages:
 - .
 - location:
     git: https://github.com/wireapp/hsaml2
-    commit: d917572c09591b9fa8c8907e41ba587b8d0f70d3
+    commit: 8a91c880740232dbd52ff73efb99ea179c2338c7
   extra-dep: true
 - location:
     git: https://github.com/wireapp/stack-prism

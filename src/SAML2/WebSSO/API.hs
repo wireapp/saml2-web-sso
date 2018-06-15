@@ -59,17 +59,25 @@ import qualified SAML2.WebSSO.XML.Meta as Meta
 ----------------------------------------------------------------------
 -- saml web-sso api
 
-type API = APIMeta :<|> APIAuthReq :<|> APIAuthResp
+type API = APIMeta'
+      :<|> APIAuthReq'
+      :<|> APIAuthResp'
 
-type APIMeta     = "meta" :> Get '[XML] Meta.SPDesc
-type APIAuthReq  = "authreq" :> Capture "idp" ST :> Get '[HTML] (FormRedirect AuthnRequest)
-type APIAuthResp = "authresp" :> MultipartForm Mem AuthnResponseBody :> PostVoid
+type APIMeta     = Get '[XML] Meta.SPDesc
+type APIAuthReq  = Capture "idp" ST :> Get '[HTML] (FormRedirect AuthnRequest)
+type APIAuthResp = MultipartForm Mem AuthnResponseBody :> PostVoid
 
 -- FUTUREWORK: respond with redirect in case of success, instead of responding with Void and
 -- handling all cases with exceptions: https://github.com/haskell-servant/servant/issues/117
 
-api :: SPHandler m => ST -> ServerT API m
-api appName = meta appName :<|> authreq :<|> authresp
+type APIMeta'     = "meta" :> APIMeta
+type APIAuthReq'  = "authreq" :> APIAuthReq
+type APIAuthResp' = "authresp" :> APIAuthResp
+
+api :: SPHandler m => ST -> (UserId -> m Void) -> ServerT API m
+api appName onsuccess = meta appName (Proxy @API) (Proxy @APIAuthResp')
+                   :<|> authreq
+                   :<|> authresp onsuccess
 
 
 ----------------------------------------------------------------------
@@ -223,14 +231,19 @@ setHttpCachePolicy ap rq respond = ap rq $ respond . addHeadersToResponse httpCa
 ----------------------------------------------------------------------
 -- paths
 
-getResponseURI :: forall m. (HasCallStack, SP m, MonadError ServantErr m) => m URI
-getResponseURI = resp =<< (^. cfgSPSsoURI) <$> getConfig
+getResponseURI :: forall m endpoint api.
+                  ( HasCallStack, SP m
+                  , MonadError ServantErr m
+                  , IsElem endpoint api, HasLink endpoint, ToHttpApiData (MkLink endpoint)
+                  )
+               => Proxy api -> Proxy endpoint -> m URI
+getResponseURI proxyAPI proxyAPIAuthResp = resp =<< (^. cfgSPSsoURI) <$> getConfig
   where
     resp :: URI -> m URI
     resp uri = either showmsg pure (parseURI' uri')
       where
         uri' :: ST
-        uri' = cs $ appendURI (cs . toUrlPiece $ safeLink (Proxy @API) (Proxy @APIAuthResp)) uri
+        uri' = cs $ appendURI (cs . toUrlPiece $ safeLink proxyAPI proxyAPIAuthResp) uri
 
         showmsg :: String -> m a
         showmsg msg = throwError err500 { errBody = "server configuration error: " <> cs (show (uri', msg)) }
@@ -239,11 +252,12 @@ getResponseURI = resp =<< (^. cfgSPSsoURI) <$> getConfig
 ----------------------------------------------------------------------
 -- handlers
 
-meta :: SPHandler m => ST -> m Meta.SPDesc
-meta appName = do
+meta :: (SPHandler m, IsElem endpoint api, HasLink endpoint, ToHttpApiData (MkLink endpoint))
+     => ST -> Proxy api -> Proxy endpoint -> m Meta.SPDesc
+meta appName proxyAPI proxyAPIAuthResp = do
   enterH "meta"
   landing <- getLandingURI
-  resp <- getResponseURI
+  resp <- getResponseURI proxyAPI proxyAPIAuthResp
   contacts <- (^. cfgContacts) <$> getConfig
   Meta.spMeta <$> Meta.spDesc appName landing resp contacts
 
@@ -251,7 +265,9 @@ authreq :: SPHandler m => ST -> m (FormRedirect AuthnRequest)
 authreq idpname = do
   enterH "authreq"
   uri <- (^. idpRequestUri) <$> getIdPConfig idpname
+  logger DEBUG $ "authreq uri: " <> cs (renderURI uri)
   req <- createAuthnRequest
+  logger DEBUG $ "authreq req: " <> show req
   leaveH $ FormRedirect uri req
 
 -- | Get config and pass the missing idp credentials to the response constructor.
@@ -259,9 +275,9 @@ resolveBody :: SPHandler m => AuthnResponseBody -> m AuthnResponse
 resolveBody (AuthnResponseBody mkbody) = do
   either throwError pure . mkbody =<< mkLookupPubKey
 
-mkLookupPubKey :: SPHandler m => m (Issuer -> Either String RSA.PublicKey)
+mkLookupPubKey :: forall m. SPHandler m => m (Issuer -> Either String RSA.PublicKey)
 mkLookupPubKey = do
-  idps :: [IdPConfig]
+  idps :: [IdPConfig (ConfigExtra m)]
     <- (^. cfgIdps) <$> getConfig
   pubkeys :: [(Issuer, RSA.PublicKey)]
     <- forM idps $ \idp -> do
@@ -272,18 +288,21 @@ mkLookupPubKey = do
     let errmsg = "unknown issuer: " <> show issuer <> "; known issuers: " <> show ((^. idpIssuer) <$> idps)
     in maybe (Left errmsg) Right . Map.lookup issuer $ Map.fromList pubkeys
 
-authresp :: SPHandler m => AuthnResponseBody -> m Void
-authresp body = do
+simpleOnSuccess :: SPHandler m => UserId -> m Void
+simpleOnSuccess uid = getLandingURI >>= (`redirect` [cookieToHeader . togglecookie . Just . cs . show $ uid])
+
+authresp :: SPHandler m => (UserId -> m Void) -> AuthnResponseBody -> m Void
+authresp onsuccess body = do
   enterH "authresp: entering"
   resp <- resolveBody body
-  enterH $ "authresp: " <> ppShow resp
+  logger DEBUG $ "authresp: " <> ppShow resp
   verdict <- judge resp
-  logger DEBUG $ show verdict
+  logger DEBUG $ "authresp: " <> show verdict
   case verdict of
     AccessDenied reasons
       -> logger INFO (show reasons) >> reject (cs $ ST.intercalate ", " reasons)
     AccessGranted uid
-      -> getLandingURI >>= (`redirect` [cookieToHeader . togglecookie . Just . cs . show $ uid])
+      -> onsuccess uid
 
 
 ----------------------------------------------------------------------

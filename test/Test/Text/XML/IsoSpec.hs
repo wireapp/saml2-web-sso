@@ -2,7 +2,7 @@
 
 module Test.Text.XML.IsoSpec (spec) where
 
-import Arbitrary
+import SAML2.WebSSO.Test.Arbitrary
 import Control.Category (Category(..))
 import Control.Monad
 import Data.Char (toLower)

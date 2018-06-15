@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE Strict, StrictData #-}
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -23,8 +23,9 @@ import System.Environment
 import System.FilePath
 import System.IO
 import Text.XML.DSig
-import Text.XML.Util (unsafeParseURI, parseURI', renderURI)
+import Text.XML.Util (parseURI', renderURI)
 import URI.ByteString
+import URI.ByteString.QQ
 
 import qualified Data.X509 as X509
 import qualified Data.Yaml as Yaml
@@ -33,7 +34,9 @@ import qualified Data.Yaml as Yaml
 ----------------------------------------------------------------------
 -- data types
 
-data Config = Config
+type Config_ = Config ()
+
+data Config extra = Config
   { _cfgVersion           :: Version
   , _cfgLogLevel          :: LogLevel
   , _cfgSPHost            :: String
@@ -41,19 +44,24 @@ data Config = Config
   , _cfgSPAppURI          :: URI
   , _cfgSPSsoURI          :: URI
   , _cfgContacts          :: NonEmpty SPContactPerson
-  , _cfgIdps              :: [IdPConfig]
+  , _cfgIdps              :: [IdPConfig extra]
   }
   deriving (Eq, Show, Generic)
 
+-- | FUTUREWORK: remove this in favor of tinylog's type.  more compatible with people who are using
+-- that.
 data LogLevel = SILENT | CRITICAL | ERROR | WARN | INFO | DEBUG
   deriving (Eq, Ord, Show, Enum, Bounded, Generic, FromJSON, ToJSON)
 
-data IdPConfig = IdPConfig
+type IdPConfig_ = IdPConfig ()
+
+data IdPConfig extra = IdPConfig
   { _idpPath            :: ST
   , _idpMetadata        :: URI
   , _idpIssuer          :: Issuer
   , _idpRequestUri      :: URI
   , _idpPublicKey       :: X509.SignedCertificate
+  , _idpExtraInfo       :: extra
   }
   deriving (Eq, Show, Generic)
 
@@ -92,14 +100,14 @@ instance ToJSON X509.SignedCertificate where
 ----------------------------------------------------------------------
 -- default
 
-fallbackConfig :: Config
+fallbackConfig :: Config extra
 fallbackConfig = Config
   { _cfgVersion           = Version_2_0
   , _cfgLogLevel          = DEBUG
   , _cfgSPHost            = "localhost"
   , _cfgSPPort            = 8081
-  , _cfgSPAppURI          = unsafeParseURI "https://me.wire.com/sp"
-  , _cfgSPSsoURI          = unsafeParseURI "https://me.wire.com/sso"
+  , _cfgSPAppURI          = [uri|https://me.wire.com/sp|]
+  , _cfgSPSsoURI          = [uri|https://me.wire.com/sso|]
   , _cfgContacts          = fallbackContact :| []
   , _cfgIdps              = mempty
   }
@@ -109,7 +117,7 @@ fallbackContact = SPContactPerson
   { _spcntCompany   = "evil corp."
   , _spcntGivenName = "Dr."
   , _spcntSurname   = "Girlfriend"
-  , _spcntEmail     = unsafeParseURI "email:president@evil.corp"
+  , _spcntEmail     = [uri|email:president@evil.corp|]
   , _spcntPhone     = "+314159265"
   }
 
@@ -117,18 +125,18 @@ fallbackContact = SPContactPerson
 ----------------------------------------------------------------------
 -- IO
 
-configIO :: IO Config
+configIO :: (FromJSON extra, ToJSON extra) => IO (Config extra)
 configIO = readConfig =<< configFilePath
 
 configFilePath :: IO FilePath
 configFilePath = (</> "server.yaml") <$> getEnv "SAML2_WEB_SSO_ROOT"
 
-readConfig :: FilePath -> IO Config
+readConfig :: forall extra. (FromJSON extra, ToJSON extra) => FilePath -> IO (Config extra)
 readConfig filepath =
   either (\err -> fallbackConfig <$ warn err) (\cnf -> info cnf >> pure cnf)
   =<< Yaml.decodeFileEither filepath
   where
-    info :: Config -> IO ()
+    info :: Config extra -> IO ()
     info cfg = when (cfg ^. cfgLogLevel >= INFO) $
       hPutStrLn stderr . cs . Yaml.encode $ cfg
 
@@ -139,12 +147,13 @@ readConfig filepath =
 
 -- | Convenience function to write a config file if you don't already have one.  Writes to
 -- `$SAML2_WEB_SSO_ROOT/server.yaml`.  Warns if env does not contain the root.
-writeConfig :: Config -> IO ()
+writeConfig :: ToJSON extra => Config extra -> IO ()
 writeConfig cfg = (`Yaml.encodeFile` cfg) =<< configFilePath
 
 
 ----------------------------------------------------------------------
 -- class
 
-class Monad m => HasConfig m where
-  getConfig :: m Config
+class (Monad m) => HasConfig m where
+  type family ConfigExtra m :: *
+  getConfig :: m (Config (ConfigExtra m))

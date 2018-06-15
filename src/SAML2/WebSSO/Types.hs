@@ -3,6 +3,7 @@
 module SAML2.WebSSO.Types where
 
 import Control.Lens (makePrisms)  -- FUTUREWORK: this is missing in microlens-th
+import Control.Monad.Except
 import Data.Aeson
 import Data.List.NonEmpty
 import Data.Maybe
@@ -18,6 +19,8 @@ import URI.ByteString  -- FUTUREWORK: should saml2-web-sso also use the URI from
                        -- depend on that via xml-conduit anyway.  (is it a probley though that it is
                        -- string-based?  is it less of a problem because we need it anyway?)
 
+import qualified Data.Text as ST
+
 
 ----------------------------------------------------------------------
 -- high-level
@@ -31,26 +34,21 @@ data AccessVerdict =
     }
   deriving (Eq, Show)
 
+-- TODO: find better name?  UserRef?  UserSamlName?  ...?
 data UserId = UserId { _uidTenant :: Issuer, _uidSubject :: NameID }
   deriving (Eq, Show)
 
-newtype Issuer = Issuer { _fromIssuer :: NameID }
+-- | More correctly, an 'Issuer' is a 'NameID', but we only support 'URI'.
+newtype Issuer = Issuer { _fromIssuer :: URI }
   deriving (Eq, Ord, Show)
-
-mkIssuer :: ST -> Issuer
-mkIssuer = Issuer . entityNameID . unsafeParseURI
 
 instance FromJSON Issuer where
   parseJSON = withText "Issuer" $ \uri -> case parseURI' uri of
-    Right i  -> pure . Issuer $ entityNameID i
+    Right i  -> pure $ Issuer i
     Left msg -> fail $ "Issuer: " <> show msg
 
 instance ToJSON Issuer where
-  toJSON (Issuer name) = toJSON $ nameIDToText name
-    where
-      nameIDToText :: HasCallStack => NameID -> ST
-      nameIDToText (NameID (NameIDFEntity uri) Nothing Nothing Nothing) = uri
-      nameIDToText bad = error $ "nameIDToText: not implemented: " <> show bad
+  toJSON = toJSON . renderURI . _fromIssuer
 
 
 ----------------------------------------------------------------------
@@ -241,7 +239,7 @@ data BaseID = BaseID
   }
   deriving (Eq, Show)
 
--- | [1/2.2.2], [1/2.2.3], [1/3.4.1.1]
+-- | [1/2.2.2], [1/2.2.3], [1/3.4.1.1], see 'mkNameID' implementation for constraints on this type.
 data NameID = NameID
   { _nameID             :: UnqualifiedNameID
   , _nameIDNameQ        :: Maybe ST
@@ -252,23 +250,43 @@ data NameID = NameID
 
 -- | [1/8.3]
 data UnqualifiedNameID
-  = NameIDFUnspecified ST   -- ^ 'nameIDNameQ', 'nameIDSPNameQ' SHOULD be omitted.
+  = NameIDFUnspecified ST  -- ^ 'nameIDNameQ', 'nameIDSPNameQ' SHOULD be omitted.
   | NameIDFEmail       ST
   | NameIDFX509        ST
   | NameIDFWindows     ST
   | NameIDFKerberos    ST
-  | NameIDFEntity      ST  -- ^ must be 'URI' (but e.g. centrify doesn't know that); @numchars <=
-                           -- 1024@; 'nameIDNameQ', 'nameIDSPNameQ', 'nameIDSPProvidedID' MUST be
-                           -- omitted.
-  | NameIDFPersistent  ST  -- ^ @numchars <= 1024@; pseudonyms; use UUIDv4 where we have the choice.
+  | NameIDFEntity      URI
+  | NameIDFPersistent  ST  -- ^ use UUIDv4 where we have the choice.
   | NameIDFTransient   ST
   deriving (Eq, Ord, Show)
+
+mkNameID :: MonadError String m => UnqualifiedNameID -> Maybe ST -> Maybe ST -> Maybe ST -> m NameID
+mkNameID nid@(NameIDFEntity uri) m1 m2 m3 = do
+  mapM_ throwError $
+    [ "mkNameID: nameIDNameQ, nameIDSPNameQ, nameIDSPProvidedID MUST be omitted for entity NameIDs."
+      <> show [m1, m2, m3]
+    | all isJust [m1, m2, m3]
+    ] <>
+    [ "mkNameID: entity URI too long: "
+      <> show uritxt
+    | uritxt <- [renderURI uri], ST.length uritxt > 1024
+    ]
+  pure $ NameID nid Nothing Nothing Nothing
+mkNameID nid@(NameIDFPersistent txt) m1 m2 m3 = do
+  mapM_ throwError $
+    [ "mkNameID: persistent text too long: "
+      <> show (nid, ST.length txt)
+    | ST.length txt > 1024
+    ]
+  pure $ NameID nid m1 m2 m3
+mkNameID nid m1 m2 m3 = do
+  pure $ NameID nid m1 m2 m3
 
 opaqueNameID :: ST -> NameID
 opaqueNameID raw = NameID (NameIDFUnspecified raw) Nothing Nothing Nothing
 
 entityNameID :: URI -> NameID
-entityNameID uri = NameID (NameIDFEntity (renderURI uri)) Nothing Nothing Nothing
+entityNameID uri = NameID (NameIDFEntity uri) Nothing Nothing Nothing
 
 nameIDFormat :: HasCallStack => UnqualifiedNameID -> String
 nameIDFormat = \case

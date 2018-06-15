@@ -22,7 +22,6 @@ import SAML2.WebSSO.SP
 import SAML2.WebSSO.Types
 import SAML2.WebSSO.XML
 import Text.XML
-import Text.XML.Cursor
 import Text.XML.Util
 import URI.ByteString
 
@@ -44,7 +43,7 @@ newtype SPDesc = SPDesc Document
   deriving (Eq, Show)
 
 instance HasXML SPDesc where
-  parse (node -> NodeElement el) = pure . SPDesc $ Document defPrologue el defMiscellaneous
+  parse [NodeElement el] = pure . SPDesc $ Document defPrologue el defMiscellaneous
   parse bad = die (Proxy @SPDesc) bad
 
 instance HasXMLRoot SPDesc where

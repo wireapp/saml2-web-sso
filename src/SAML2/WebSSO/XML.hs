@@ -16,7 +16,6 @@ import Lens.Micro
 import Prelude hiding ((.), id)
 import SAML2.WebSSO.Types
 import Text.Show.Pretty (ppShow)
-import Text.XML.Cursor
 import Text.XML hiding (renderText)
 import Text.XML.Iso
 import Text.XML.Util
@@ -31,8 +30,8 @@ import qualified SAML2.Metadata as HS
 import qualified SAML2.Profiles as HS
 import qualified SAML2.XML as HS
 import qualified Text.XML
+import qualified Text.XML.HXT.Arrow.Pickle.Xml as HS
 import qualified Text.XML.HXT.DOM.TypeDefs as HS
-
 
 ----------------------------------------------------------------------
 -- HasXML class
@@ -45,12 +44,22 @@ encode = Text.XML.renderText settings . renderToDocument
 decode :: forall m a. (HasXMLRoot a, MonadError String m) => LT -> m a
 decode = either (throwError . show @SomeException) parseFromDocument . parseText def
 
+encodeElem :: forall a. HasXML a => a -> LT
+encodeElem = Text.XML.renderText settings . mkDocument' . render
+  where
+    settings = def { rsNamespaces = nameSpaces (Proxy @a), rsXMLDeclaration = False }
+    mkDocument' [NodeElement el] = mkDocument el
+    mkDocument' bad = error $ "encodeElem: " <> show bad
+
+decodeElem :: forall a m. (HasXML a, MonadError String m) => LT -> m a
+decodeElem = either (throwError . show @SomeException) parseFromDocument . parseText def
+
 
 renderToDocument :: HasXMLRoot a => a -> Document
 renderToDocument = mkDocument . renderRoot
 
 parseFromDocument :: (HasXML a, MonadError String m) => Document -> m a
-parseFromDocument = parse . fromDocument
+parseFromDocument doc = parse [NodeElement $ documentRoot doc]
 
 
 -- FUTUREWORK: perhaps we want to split this up: HasXML (for nameSpaces), and HasXMLParse, HasXMLRender,
@@ -64,14 +73,14 @@ class HasXML a where
   default render :: HasXMLRoot a => a -> [Node]
   render = (:[]) . NodeElement . renderRoot
 
-  parse  :: MonadError String m => Cursor -> m a
+  parse  :: MonadError String m => [Node] -> m a
 
 class HasXML a => HasXMLRoot a where
   renderRoot :: a -> Element
 
 
 instance HasXML Document where
-  parse (node -> NodeElement el) = pure $ Document defPrologue el defMiscellaneous
+  parse [NodeElement el] = pure $ Document defPrologue el defMiscellaneous
   parse bad = die (Proxy @Document) bad
 
 instance HasXMLRoot Document where
@@ -108,29 +117,42 @@ renderTime (Time utctime) =
 -- hack: use hsaml2 parsers and convert from SAMLProtocol instances
 
 wrapParse :: forall (m :: * -> *) them us.
-             (HasCallStack, MonadError String m, HS.SAMLProtocol them, HasXMLRoot us, Typeable us)
-          => (them -> m us) -> Cursor -> m us
-wrapParse imprt cursor = either (die (Proxy @us) . (, cursor)) imprt $ HS.xmlToSAML (renderCursor cursor)
-
-renderCursor :: HasCallStack => Cursor -> LBS
-renderCursor (node -> NodeElement el) = renderLBS def $ Document defPrologue el defMiscellaneous
-renderCursor bad = error $ "internal error: " <> show bad
+             (HasCallStack, MonadError String m, HS.XmlPickler them, HasXML us, Typeable us)
+          => (them -> m us) -> [Node] -> m us
+wrapParse imprt [NodeElement xml] = either (die (Proxy @us) . (, xml)) imprt $
+                                    HS.xmlToSAML (renderLBS def $ Document defPrologue xml defMiscellaneous)
+wrapParse _ badxml = error $ "internal error: " <> show badxml
 
 wrapRender :: forall them us.
+              (HasCallStack, HS.XmlPickler them, HasXML us)
+           => (us -> them) -> us -> [Node]
+wrapRender exprt = parseElement . HS.samlToXML . exprt
+  where
+    parseElement lbs = case parseLBS def lbs of
+      Right (Document _ el _) -> [NodeElement el]
+      Left msg  -> error $ show (Proxy @us, msg)
+
+wrapRenderRoot :: forall them us.
               (HasCallStack, HS.SAMLProtocol them, HasXMLRoot us)
            => (us -> them) -> us -> Element
-wrapRender exprt = parseElement (Proxy @us) . HS.samlToXML . exprt
-
-parseElement :: HasCallStack => Proxy a -> LBS -> Element
-parseElement proxy lbs = case parseLBS def lbs of
-  Right (Document _ el _) -> el
-  Left msg  -> error $ show (proxy, msg)
-
+wrapRenderRoot exprt = parseElement . HS.samlToXML . exprt
+  where
+    parseElement lbs = case parseLBS def lbs of
+      Right (Document _ el _) -> el
+      Left msg  -> error $ show (Proxy @us, msg)
 
 instance HasXML     AuthnRequest     where parse      = wrapParse importAuthnRequest
-instance HasXMLRoot AuthnRequest     where renderRoot = wrapRender exportAuthnRequest
+instance HasXMLRoot AuthnRequest     where renderRoot = wrapRenderRoot exportAuthnRequest
 instance HasXML     AuthnResponse    where parse      = wrapParse importAuthnResponse
-instance HasXMLRoot AuthnResponse    where renderRoot = wrapRender exportAuthnResponse
+instance HasXMLRoot AuthnResponse    where renderRoot = wrapRenderRoot exportAuthnResponse
+
+instance HasXML NameID where
+  parse = wrapParse importNameID
+  render = wrapRender exportNameID
+
+instance HasXML Issuer where
+  parse = wrapParse importIssuer
+  render = wrapRender exportIssuer
 
 
 importEntityDescriptor :: (HasCallStack, MonadError String m) => HS.Descriptor -> m EntityDescriptor
@@ -350,20 +372,22 @@ importBaseIDasNameID (importBaseID -> BaseID bid bidq bidspq) =
   NameID (NameIDFUnspecified bid) bidq bidspq Nothing
 
 importNameID :: (HasCallStack, MonadError String m) => HS.NameID -> m NameID
-importNameID (HS.NameID (HS.BaseID Nothing Nothing uri) (HS.Identified HS.NameIDFormatEntity) Nothing)
-  = pure $ NameID (NameIDFEntity $ cs uri) Nothing Nothing Nothing
-importNameID bad
-  = die (Proxy @NameID) bad
+importNameID bad@(HS.NameID (HS.BaseID _ _ _) (HS.Unidentified _) _)
+  = die (Proxy @NameID) (show bad)
+importNameID (HS.NameID (HS.BaseID m1 m2 nid) (HS.Identified hsNameIDFormat) m3)
+  = either (die (Proxy @NameID)) pure $
+    form hsNameIDFormat (cs nid) >>= \nid' -> mkNameID nid' (cs <$> m1) (cs <$> m2) (cs <$> m3)
   where
-    _form :: MonadError String m => HS.NameIDFormat -> ST -> m UnqualifiedNameID
-    _form HS.NameIDFormatUnspecified = pure . NameIDFUnspecified
-    _form HS.NameIDFormatEmail       = pure . NameIDFEmail
-    _form HS.NameIDFormatX509        = pure . NameIDFX509
-    _form HS.NameIDFormatWindows     = pure . NameIDFWindows
-    _form HS.NameIDFormatKerberos    = pure . NameIDFKerberos
-    _form HS.NameIDFormatEntity      = pure . NameIDFEntity
-    _form HS.NameIDFormatPersistent  = pure . NameIDFPersistent
-    _form _                          = undefined
+    form :: MonadError String m => HS.NameIDFormat -> ST -> m UnqualifiedNameID
+    form HS.NameIDFormatUnspecified = pure . NameIDFUnspecified
+    form HS.NameIDFormatEmail       = pure . NameIDFEmail
+    form HS.NameIDFormatX509        = pure . NameIDFX509
+    form HS.NameIDFormatWindows     = pure . NameIDFWindows
+    form HS.NameIDFormatKerberos    = pure . NameIDFKerberos
+    form HS.NameIDFormatEntity      = fmap NameIDFEntity . parseURI'
+    form HS.NameIDFormatPersistent  = pure . NameIDFPersistent
+    form HS.NameIDFormatTransient   = pure . NameIDFTransient
+    form b@HS.NameIDFormatEncrypted = \_ -> die (Proxy @NameID) (show b)
 
 exportNameID :: NameID -> HS.NameID
 exportNameID name = HS.NameID
@@ -380,7 +404,7 @@ exportNameID name = HS.NameID
     unform (NameIDFX509        n) = (HS.Identified HS.NameIDFormatX509, n)
     unform (NameIDFWindows     n) = (HS.Identified HS.NameIDFormatWindows, n)
     unform (NameIDFKerberos    n) = (HS.Identified HS.NameIDFormatKerberos, n)
-    unform (NameIDFEntity      n) = (HS.Identified HS.NameIDFormatEntity, n)
+    unform (NameIDFEntity      n) = (HS.Identified HS.NameIDFormatEntity, renderURI n)
     unform (NameIDFPersistent  n) = (HS.Identified HS.NameIDFormatPersistent, n)
     unform (NameIDFTransient   n) = (HS.Identified HS.NameIDFormatTransient, n)
 
@@ -413,10 +437,13 @@ exportStatus StatusSuccess = HS.Status (HS.StatusCode HS.StatusSuccess []) Nothi
 exportStatus bad = error $ "not implemented: " <> show bad
 
 importIssuer :: (HasCallStack, MonadError String m) => HS.Issuer -> m Issuer
-importIssuer = fmap Issuer . importNameID . HS.issuer
+importIssuer = fmap Issuer . (nameIDToURI <=< importNameID) . HS.issuer
+  where
+    nameIDToURI (NameID (NameIDFEntity uri) Nothing Nothing Nothing) = pure uri
+    nameIDToURI bad = die (Proxy @Issuer) bad
 
 exportIssuer :: HasCallStack => Issuer -> HS.Issuer
-exportIssuer = HS.Issuer . exportNameID . _fromIssuer
+exportIssuer = HS.Issuer . exportNameID . entityNameID . _fromIssuer
 
 importOptionalIssuer :: (HasCallStack, MonadError String m) => Maybe HS.Issuer -> m (Maybe Issuer)
 importOptionalIssuer = fmapFlipM importIssuer

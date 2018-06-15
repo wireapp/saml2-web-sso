@@ -70,7 +70,7 @@ class (SP m, SPStore m, MonadError ServantErr m) => SPHandler m where
 ----------------------------------------------------------------------
 -- default instance
 
-newtype SimpleSP a = SimpleSP (ReaderT (Config, MVar RequestStore, MVar AssertionStore) Handler a)
+newtype SimpleSP a = SimpleSP (ReaderT (Config_, MVar RequestStore, MVar AssertionStore) Handler a)
   deriving (Functor, Applicative, Monad, MonadError ServantErr)
 
 type RequestStore = Map.Map (ID AuthnRequest) Time
@@ -79,7 +79,7 @@ type AssertionStore = Map.Map (ID Assertion) Time
 -- | If you read the 'Config' initially in 'IO' and then pass it into the monad via 'Reader', you
 -- safe disk load and redundant debug logs.
 instance SPHandler SimpleSP where
-  type NTCTX SimpleSP = Config
+  type NTCTX SimpleSP = Config_
   nt cfg (SimpleSP m) = do
     requests   <- liftIO $ newMVar mempty
     assertions <- liftIO $ newMVar mempty
@@ -106,6 +106,7 @@ instance SPStore SimpleSP where
     SimpleSP $ simpleStoreAssertion store now aid tim
 
 instance HasConfig SimpleSP where
+  type ConfigExtra SimpleSP = ()
   getConfig = (^. _1) <$> SimpleSP ask
 
 -- | insert
@@ -125,7 +126,7 @@ simpleStoreAssertion store now aid time = do
       go' :: Maybe Time -> Writer [()] (Maybe Time)
       go' (Just time') = if time' < now
         then pure $ Just time
-        else tell [()] >> pure (Just time')
+        else tell [()] >> pure (Just (maximum [time, time']))
       go' Nothing = pure $ Just time
 
   liftIO $ modifyMVar store (pure . go)
@@ -163,8 +164,9 @@ createAuthnRequest = do
   _rqID           <- createID
   _rqVersion      <- (^. cfgVersion) <$> getConfig
   _rqIssueInstant <- getNow
-  _rqIssuer       <- Issuer . entityNameID <$> getLandingURI
-  storeRequest _rqID (addTime (30 * 24 * 60 * 60) _rqIssueInstant)
+  _rqIssuer       <- Issuer <$> getLandingURI
+  let lifeExpectancySecs = 8 * 60 * 60  -- TODO: make this yaml-configurable.
+  storeRequest _rqID (addTime lifeExpectancySecs _rqIssueInstant)
   pure AuthnRequest{..}
 
 redirect :: MonadError ServantErr m => URI -> [Header] -> m void
@@ -183,7 +185,7 @@ appendURI path uri = norm uri { uriPath = uriPath uri <> path }
     norm :: URI -> SBS
     norm = normalizeURIRef' httpNormalization
 
-getLandingURI :: (HasCallStack, SP m) => m URI
+getLandingURI :: (HasCallStack, HasConfig m) => m URI
 getLandingURI = (^. cfgSPAppURI) <$> getConfig
 
 
@@ -226,6 +228,7 @@ instance (Functor m, Applicative m, Monad m) => Monad (JudgeT m) where
   (JudgeT x) >>= f = JudgeT (x >>= fromJudgeT . f)
 
 instance (HasConfig m) => HasConfig (JudgeT m) where
+  type ConfigExtra (JudgeT m) = ConfigExtra m
   getConfig = JudgeT . lift . lift $ getConfig
 
 instance SP m => SP (JudgeT m) where
@@ -289,9 +292,6 @@ checkAssertions missuer assertions = do
     [i] -> pure i
     [] -> giveup ["no statement issuer"]
     bad@(_:_:_) -> giveup ["multiple statement issuers not supported", show bad]
-
-  unless (isJust $ issuer ^? fromIssuer . nameID . _NameIDFEntity) $
-    deny ["issuer must be entity: " <> show issuer]
 
   unless (maybe True (issuer ==) missuer) $
     deny ["issuers mismatch: " <> show (missuer, issuer)]
@@ -398,7 +398,7 @@ judgeConditions (Conditions lowlimit uplimit onetimeuse maudiences) = do
 ----------------------------------------------------------------------
 -- helpers
 
-getIdPConfig :: SPHandler m => ST -> m IdPConfig
+getIdPConfig :: SPHandler m => ST -> m (IdPConfig (ConfigExtra m))
 getIdPConfig idpname = maybe crash pure . Map.lookup idpname . mkmap . (^. cfgIdps) =<< getConfig
   where
     crash = throwError err404 { errBody = "unknown IdP: " <> cs (show idpname) }

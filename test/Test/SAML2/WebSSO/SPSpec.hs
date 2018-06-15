@@ -9,12 +9,14 @@ import Lens.Micro
 import SAML2.WebSSO
 import Test.Hspec
 import TestSP
+import URI.ByteString.QQ
 
 import qualified Data.Map as Map
 import qualified Samples
 
 
 instance HasConfig IO where
+  type ConfigExtra IO = ()
   getConfig = configIO
 
 instance SP IO
@@ -108,10 +110,10 @@ specSimpleSP = describe "SimpleSP" $ do
 specJudgeT :: Spec
 specJudgeT = do
   describe "JudgeT" $ do
-    let emptyUserID = UserId (mkIssuer "http://example.com/") (opaqueNameID "me")
+    let emptyUserID = UserId (Issuer [uri|http://example.com/|]) (opaqueNameID "me")
 
     it "no msgs" $ do
-      verdict <- runJudgeT $ pure $ AccessGranted (UserId (mkIssuer "http://example.com/") (opaqueNameID "me"))
+      verdict <- runJudgeT $ pure $ AccessGranted (UserId (Issuer [uri|http://example.com/|]) (opaqueNameID "me"))
       verdict `shouldBe` AccessGranted emptyUserID
 
     it "1 msg" $ do
@@ -188,7 +190,7 @@ specJudgeT = do
     it "status success yields name, nick" $ do
       testCtx2 <- mkTestCtx2
       verdict <- testSP testCtx2 $ judge (resp & rspStatus .~ StatusSuccess)
-      let uid = UserId (mkIssuer "https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/")
+      let uid = UserId (Issuer [uri|https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/|])
                        (opaqueNameID "E3hQDDZoObpyTDplO8Ax8uC8ObcQmREdfps3TMpaI84")
       pending
       -- "invalid InResponseTo field: ID {renderID = \"id05873dd012c44e6db0bd59f5aa2e6a0a\"}"
