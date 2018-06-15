@@ -104,6 +104,10 @@ instance SPStore TestSP where
     now <- getNow
     simpleStoreAssertion store now aid time
 
+instance SPStoreIdP TestSP where
+  storeIdPConfig _ = pure ()
+  getIdPConfig = simpleGetIdPConfig
+
 instance SPHandler TestSP where
   type NTCTX TestSP = Ctx
 

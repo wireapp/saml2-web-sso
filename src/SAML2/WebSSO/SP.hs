@@ -61,8 +61,12 @@ class (SP m) => SPStore m where
   -- return 'False'.
   storeAssertion :: ID Assertion -> Time -> m Bool
 
+class MonadError ServantErr m => SPStoreIdP m where
+  storeIdPConfig :: IdPConfig (ConfigExtra m) -> m ()
+  getIdPConfig   :: ST -> m (IdPConfig (ConfigExtra m))
+
 -- | HTTP handling of the service provider.
-class (SP m, SPStore m, MonadError ServantErr m) => SPHandler m where
+class (SP m, SPStore m, SPStoreIdP m, MonadError ServantErr m) => SPHandler m where
   type NTCTX m :: *
   nt :: forall x. NTCTX m -> m x -> Handler x
 
@@ -108,6 +112,16 @@ instance SPStore SimpleSP where
 instance HasConfig SimpleSP where
   type ConfigExtra SimpleSP = ()
   getConfig = (^. _1) <$> SimpleSP ask
+
+instance SPStoreIdP SimpleSP where
+  storeIdPConfig _ = pure ()
+  getIdPConfig = simpleGetIdPConfig
+
+simpleGetIdPConfig :: (MonadError ServantErr m, HasConfig m) => ST -> m (IdPConfig (ConfigExtra m))
+simpleGetIdPConfig idpname = maybe crash pure . Map.lookup idpname . mkmap . (^. cfgIdps) =<< getConfig
+  where
+    crash = throwError err404 { errBody = "unknown IdP: " <> cs (show idpname) }
+    mkmap = Map.fromList . fmap (\icfg -> (icfg ^. idpPath, icfg))
 
 -- | insert
 simpleStoreRequest :: MonadIO m => MVar RequestStore -> ID AuthnRequest -> Time -> m ()
@@ -393,13 +407,3 @@ judgeConditions (Conditions lowlimit uplimit onetimeuse maudiences) = do
       -> deny [show (renderURI us) <> " is not in the target audience " <>
                show (renderURI <$> toList aus) <> " of this response."]
     _ -> pure ()
-
-
-----------------------------------------------------------------------
--- helpers
-
-getIdPConfig :: SPHandler m => ST -> m (IdPConfig (ConfigExtra m))
-getIdPConfig idpname = maybe crash pure . Map.lookup idpname . mkmap . (^. cfgIdps) =<< getConfig
-  where
-    crash = throwError err404 { errBody = "unknown IdP: " <> cs (show idpname) }
-    mkmap = Map.fromList . fmap (\icfg -> (icfg ^. idpPath, icfg))
