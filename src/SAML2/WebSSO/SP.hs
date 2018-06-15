@@ -5,6 +5,7 @@
 
 module SAML2.WebSSO.SP where
 
+import Control.Arrow ((&&&))
 import Control.Concurrent.MVar
 import Control.Monad.Except
 import Control.Monad.Reader
@@ -62,8 +63,9 @@ class (SP m) => SPStore m where
   storeAssertion :: ID Assertion -> Time -> m Bool
 
 class MonadError ServantErr m => SPStoreIdP m where
-  storeIdPConfig :: IdPConfig (ConfigExtra m) -> m ()
-  getIdPConfig   :: ST -> m (IdPConfig (ConfigExtra m))
+  storeIdPConfig       :: IdPConfig (ConfigExtra m) -> m ()
+  getIdPConfig         :: ST -> m (IdPConfig (ConfigExtra m))
+  getIdPConfigByIssuer :: Issuer -> m (IdPConfig (ConfigExtra m))
 
 -- | HTTP handling of the service provider.
 class (SP m, SPStore m, SPStoreIdP m, MonadError ServantErr m) => SPHandler m where
@@ -115,13 +117,15 @@ instance HasConfig SimpleSP where
 
 instance SPStoreIdP SimpleSP where
   storeIdPConfig _ = pure ()
-  getIdPConfig = simpleGetIdPConfig
+  getIdPConfig = simpleGetIdPConfigBy (^. idpPath)
+  getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpIssuer)
 
-simpleGetIdPConfig :: (MonadError ServantErr m, HasConfig m) => ST -> m (IdPConfig (ConfigExtra m))
-simpleGetIdPConfig idpname = maybe crash pure . Map.lookup idpname . mkmap . (^. cfgIdps) =<< getConfig
+simpleGetIdPConfigBy :: (MonadError ServantErr m, HasConfig m, Show a, Ord a)
+                     => (IdPConfig (ConfigExtra m) -> a) -> a -> m (IdPConfig (ConfigExtra m))
+simpleGetIdPConfigBy mkkey idpname = maybe crash pure . Map.lookup idpname . mkmap . (^. cfgIdps) =<< getConfig
   where
     crash = throwError err404 { errBody = "unknown IdP: " <> cs (show idpname) }
-    mkmap = Map.fromList . fmap (\icfg -> (icfg ^. idpPath, icfg))
+    mkmap = Map.fromList . fmap (mkkey &&& id)
 
 -- | insert
 simpleStoreRequest :: MonadIO m => MVar RequestStore -> ID AuthnRequest -> Time -> m ()

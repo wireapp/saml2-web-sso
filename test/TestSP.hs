@@ -106,7 +106,8 @@ instance SPStore TestSP where
 
 instance SPStoreIdP TestSP where
   storeIdPConfig _ = pure ()
-  getIdPConfig = simpleGetIdPConfig
+  getIdPConfig = simpleGetIdPConfigBy (^. idpPath)
+  getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpIssuer)
 
 instance SPHandler TestSP where
   type NTCTX TestSP = Ctx
