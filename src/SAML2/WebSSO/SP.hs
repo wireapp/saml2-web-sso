@@ -23,9 +23,10 @@ import Servant.Server
 import URI.ByteString
 
 import qualified Data.Map as Map
+import qualified Data.Semigroup
+import qualified Data.Text as ST
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
-import qualified Data.Text as ST
 
 import SAML2.WebSSO.Config
 import SAML2.WebSSO.Types
@@ -363,8 +364,11 @@ data HasBearerConfirmation = HasBearerConfirmation | NoBearerConfirmation
   deriving (Eq, Ord, Bounded, Enum)
 
 instance Monoid HasBearerConfirmation where
-  mappend a b = min a b
+  mappend = (Data.Semigroup.<>)
   mempty = maxBound
+
+instance Data.Semigroup.Semigroup HasBearerConfirmation where
+  (<>) = min
 
 -- | Locally check one 'SubjectConfirmation' and deny if there is a problem.  If this is a
 -- confirmation of method "bearer", return 'HasBearerConfirmation'.
