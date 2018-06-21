@@ -15,6 +15,7 @@ import Data.Monoid
 import Data.List.NonEmpty
 import Data.String.Conversions
 import GHC.Generics
+import Data.UUID as UUID
 import Lens.Micro
 import Lens.Micro.TH
 import SAML2.WebSSO.Config.TH (deriveJSONOptions)
@@ -29,6 +30,7 @@ import URI.ByteString.QQ
 
 import qualified Data.X509 as X509
 import qualified Data.Yaml as Yaml
+import qualified Servant
 
 
 ----------------------------------------------------------------------
@@ -53,10 +55,12 @@ data Config extra = Config
 data LogLevel = SILENT | CRITICAL | ERROR | WARN | INFO | DEBUG
   deriving (Eq, Ord, Show, Enum, Bounded, Generic, FromJSON, ToJSON)
 
+newtype IdPId = IdPId { fromIdPId :: UUID } deriving (Eq, Show, Generic, Ord)
+
 type IdPConfig_ = IdPConfig ()
 
 data IdPConfig extra = IdPConfig
-  { _idpPath            :: ST
+  { _idpPath            :: IdPId
   , _idpMetadata        :: URI
   , _idpIssuer          :: Issuer
   , _idpRequestUri      :: URI
@@ -69,12 +73,27 @@ data IdPConfig extra = IdPConfig
 ----------------------------------------------------------------------
 -- instances
 
+idPIdToST :: IdPId -> ST
+idPIdToST = UUID.toText . fromIdPId
+
+instance Servant.FromHttpApiData IdPId where
+    parseUrlPiece piece = case UUID.fromText piece of
+      Nothing -> Left . cs $ "no valid UUID-piece " ++ show piece
+      Just uid -> return $ IdPId uid
+
 makeLenses ''Config
 makeLenses ''IdPConfig
 
 deriveJSON deriveJSONOptions ''Config
 deriveJSON deriveJSONOptions ''IdPConfig
 deriveJSON deriveJSONOptions ''SPContactPerson
+
+instance FromJSON IdPId where
+  parseJSON value = (>>= maybe unerror (pure . IdPId) . UUID.fromText) . parseJSON $ value
+    where unerror = fail ("could not parse config: " <> (show value))
+
+instance ToJSON IdPId where
+  toJSON = toJSON . UUID.toText . fromIdPId
 
 instance FromJSON URI where
   parseJSON = (>>= either unerror pure . parseURI') . parseJSON

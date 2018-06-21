@@ -17,7 +17,6 @@ import Text.XML.DSig
 import URI.ByteString.QQ
 import Util
 
-
 data Ctx = Ctx
   { _ctxNow            :: Time
   , _ctxConfig         :: Config_
@@ -54,7 +53,7 @@ mkmyidp :: IO IdPConfig_
 mkmyidp = do
   Right cert <- parseKeyInfo <$> readSampleIO "microsoft-idp-keyinfo.xml"
   pure $ IdPConfig
-    "myidp"
+    "eafd1654-754d-11e8-9438-00163e5e6c14"
     [uri|https://login.microsoftonline.com/682febe8-021b-4fde-ac09-e60085f05181/FederationMetadata/2007-06/FederationMetadata.xml|]
     (Issuer [uri|https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/|])
     [uri|http://myidp.io/sso|]
@@ -107,7 +106,6 @@ instance SPStore TestSP where
 instance SPStoreIdP TestSP where
   storeIdPConfig _ = pure ()
   getIdPConfig = simpleGetIdPConfigBy (^. idpPath)
-  getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpIssuer)
 
 instance SPHandler TestSP where
   type NTCTX TestSP = Ctx

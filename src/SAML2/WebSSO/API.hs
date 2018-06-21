@@ -64,7 +64,7 @@ type API = APIMeta'
       :<|> APIAuthResp'
 
 type APIMeta     = Get '[XML] Meta.SPDesc
-type APIAuthReq  = Capture "idp" ST :> Get '[HTML] (FormRedirect AuthnRequest)
+type APIAuthReq  = Capture "idp" IdPId :> Get '[HTML] (FormRedirect AuthnRequest)
 type APIAuthResp = MultipartForm Mem AuthnResponseBody :> PostVoid
 
 -- FUTUREWORK: respond with redirect in case of success, instead of responding with Void and
@@ -261,7 +261,7 @@ meta appName proxyAPI proxyAPIAuthResp = do
   contacts <- (^. cfgContacts) <$> getConfig
   Meta.spMeta <$> Meta.spDesc appName landing resp contacts
 
-authreq :: (SPStoreIdP m, SPHandler m) => ST -> m (FormRedirect AuthnRequest)
+authreq :: (SPStoreIdP m, SPHandler m) => IdPId -> m (FormRedirect AuthnRequest)
 authreq idpname = do
   enterH "authreq"
   uri <- (^. idpRequestUri) <$> getIdPConfig idpname

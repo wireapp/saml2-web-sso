@@ -171,18 +171,23 @@ spec = describe "API" $ do
       get "/meta" `shouldRespondWith` 200 { matchBody = bodyContains "OrganizationName xml:lang=\"EN\">toy-sp" }
 
   describe "authreq" $ do
+    context "invalid uuid" . withapp (Proxy @APIAuthReq') authreq mkTestCtx1 $ do
+      it "responds with 400" $ do
+        get "/authreq/broken-uuid" `shouldRespondWith` 400
+
     context "unknown idp" . withapp (Proxy @APIAuthReq') authreq mkTestCtx1 $ do
       it "responds with 404" $ do
-        get "/authreq/no-such-idp" `shouldRespondWith` 404
+        get "/authreq/6bf0dfb0-754f-11e8-b71d-00163e5e6c14" `shouldRespondWith` 404
 
     context "known idp" . withapp (Proxy @APIAuthReq') authreq mkTestCtx2 $ do
       it "responds with 200" $ do
-        get "/authreq/myidp" `shouldRespondWith` 200
+        get "/authreq/eafd1654-754d-11e8-9438-00163e5e6c14" `shouldRespondWith` 200
 
       it "responds with a body that contains the IdPs response URL" $ do
         myidp <- liftIO mkmyidp
-        get "/authreq/myidp" `shouldRespondWith` 200
+        get "/authreq/eafd1654-754d-11e8-9438-00163e5e6c14" `shouldRespondWith` 200
           { matchBody = bodyContains . cs . renderURI $ myidp ^. idpRequestUri }
+
 
   describe "authresp" $ do
     let mkpostresp = readSampleIO "microsoft-authnresponse-2.xml"
@@ -240,7 +245,7 @@ burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
     describe "authreq" . withapp (Proxy @APIAuthReq') authreq ctx $ do
       it "responds with 200" $ do
         idp <- liftIO getIdP
-        get ("/authreq/" <> cs (idp ^. idpPath))
+        get ("/authreq/" <> cs (idPIdToST (idp ^. idpPath)))
           `shouldRespondWith` 200 { matchBody = bodyContains "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" }
 
     describe "authresp" . withapp (Proxy @APIAuthResp') (authresp simpleOnSuccess) ctx $ do
