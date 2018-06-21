@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module SAML2.WebSSO.XML where
 
 import Control.Category (Category(..))
@@ -17,7 +19,6 @@ import Prelude hiding ((.), id)
 import SAML2.WebSSO.Types
 import Text.Show.Pretty (ppShow)
 import Text.XML hiding (renderText)
-import Text.XML.Iso
 import Text.XML.Util
 import URI.ByteString
 
@@ -32,6 +33,16 @@ import qualified SAML2.XML as HS
 import qualified Text.XML
 import qualified Text.XML.HXT.Arrow.Pickle.Xml as HS
 import qualified Text.XML.HXT.DOM.TypeDefs as HS
+
+
+defNameSpaces :: [(ST, ST)]
+defNameSpaces =
+  [ ("samlp", "urn:oasis:names:tc:SAML:2.0:protocol")
+  , ("samla", "urn:oasis:names:tc:SAML:2.0:assertion")
+  , ("samlm", "urn:oasis:names:tc:SAML:2.0:metadata")
+  , ("ds", "http://www.w3.org/2000/09/xmldsig#")
+  ]
+
 
 ----------------------------------------------------------------------
 -- HasXML class
