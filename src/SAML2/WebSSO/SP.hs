@@ -5,6 +5,7 @@
 
 module SAML2.WebSSO.SP where
 
+import Control.Arrow ((&&&))
 import Control.Concurrent.MVar
 import Control.Monad.Except
 import Control.Monad.Reader
@@ -22,9 +23,10 @@ import Servant.Server
 import URI.ByteString
 
 import qualified Data.Map as Map
+import qualified Data.Semigroup
+import qualified Data.Text as ST
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
-import qualified Data.Text as ST
 
 import SAML2.WebSSO.Config
 import SAML2.WebSSO.Types
@@ -61,8 +63,13 @@ class (SP m) => SPStore m where
   -- return 'False'.
   storeAssertion :: ID Assertion -> Time -> m Bool
 
+class MonadError ServantErr m => SPStoreIdP m where
+  storeIdPConfig       :: IdPConfig (ConfigExtra m) -> m ()
+  getIdPConfig         :: ST -> m (IdPConfig (ConfigExtra m))
+  getIdPConfigByIssuer :: Issuer -> m (IdPConfig (ConfigExtra m))
+
 -- | HTTP handling of the service provider.
-class (SP m, SPStore m, MonadError ServantErr m) => SPHandler m where
+class (SP m, SPStore m, SPStoreIdP m, MonadError ServantErr m) => SPHandler m where
   type NTCTX m :: *
   nt :: forall x. NTCTX m -> m x -> Handler x
 
@@ -108,6 +115,18 @@ instance SPStore SimpleSP where
 instance HasConfig SimpleSP where
   type ConfigExtra SimpleSP = ()
   getConfig = (^. _1) <$> SimpleSP ask
+
+instance SPStoreIdP SimpleSP where
+  storeIdPConfig _ = pure ()
+  getIdPConfig = simpleGetIdPConfigBy (^. idpPath)
+  getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpIssuer)
+
+simpleGetIdPConfigBy :: (MonadError ServantErr m, HasConfig m, Show a, Ord a)
+                     => (IdPConfig (ConfigExtra m) -> a) -> a -> m (IdPConfig (ConfigExtra m))
+simpleGetIdPConfigBy mkkey idpname = maybe crash pure . Map.lookup idpname . mkmap . (^. cfgIdps) =<< getConfig
+  where
+    crash = throwError err404 { errBody = "unknown IdP: " <> cs (show idpname) }
+    mkmap = Map.fromList . fmap (mkkey &&& id)
 
 -- | insert
 simpleStoreRequest :: MonadIO m => MVar RequestStore -> ID AuthnRequest -> Time -> m ()
@@ -345,8 +364,11 @@ data HasBearerConfirmation = HasBearerConfirmation | NoBearerConfirmation
   deriving (Eq, Ord, Bounded, Enum)
 
 instance Monoid HasBearerConfirmation where
-  mappend a b = min a b
+  mappend = (Data.Semigroup.<>)
   mempty = maxBound
+
+instance Data.Semigroup.Semigroup HasBearerConfirmation where
+  (<>) = min
 
 -- | Locally check one 'SubjectConfirmation' and deny if there is a problem.  If this is a
 -- confirmation of method "bearer", return 'HasBearerConfirmation'.
@@ -393,13 +415,3 @@ judgeConditions (Conditions lowlimit uplimit onetimeuse maudiences) = do
       -> deny [show (renderURI us) <> " is not in the target audience " <>
                show (renderURI <$> toList aus) <> " of this response."]
     _ -> pure ()
-
-
-----------------------------------------------------------------------
--- helpers
-
-getIdPConfig :: SPHandler m => ST -> m (IdPConfig (ConfigExtra m))
-getIdPConfig idpname = maybe crash pure . Map.lookup idpname . mkmap . (^. cfgIdps) =<< getConfig
-  where
-    crash = throwError err404 { errBody = "unknown IdP: " <> cs (show idpname) }
-    mkmap = Map.fromList . fmap (\icfg -> (icfg ^. idpPath, icfg))

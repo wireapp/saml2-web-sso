@@ -261,7 +261,7 @@ meta appName proxyAPI proxyAPIAuthResp = do
   contacts <- (^. cfgContacts) <$> getConfig
   Meta.spMeta <$> Meta.spDesc appName landing resp contacts
 
-authreq :: SPHandler m => ST -> m (FormRedirect AuthnRequest)
+authreq :: (SPStoreIdP m, SPHandler m) => ST -> m (FormRedirect AuthnRequest)
 authreq idpname = do
   enterH "authreq"
   uri <- (^. idpRequestUri) <$> getIdPConfig idpname

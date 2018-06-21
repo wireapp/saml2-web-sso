@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module SAML2.WebSSO.XML where
 
 import Control.Category (Category(..))
@@ -17,7 +19,6 @@ import Prelude hiding ((.), id)
 import SAML2.WebSSO.Types
 import Text.Show.Pretty (ppShow)
 import Text.XML hiding (renderText)
-import Text.XML.Iso
 import Text.XML.Util
 import URI.ByteString
 
@@ -32,6 +33,16 @@ import qualified SAML2.XML as HS
 import qualified Text.XML
 import qualified Text.XML.HXT.Arrow.Pickle.Xml as HS
 import qualified Text.XML.HXT.DOM.TypeDefs as HS
+
+
+defNameSpaces :: [(ST, ST)]
+defNameSpaces =
+  [ ("samlp", "urn:oasis:names:tc:SAML:2.0:protocol")
+  , ("samla", "urn:oasis:names:tc:SAML:2.0:assertion")
+  , ("samlm", "urn:oasis:names:tc:SAML:2.0:metadata")
+  , ("ds", "http://www.w3.org/2000/09/xmldsig#")
+  ]
+
 
 ----------------------------------------------------------------------
 -- HasXML class
@@ -169,7 +180,9 @@ importAuthnRequest req = do
   _rqVersion      <- importVersion $ HS.protocolVersion proto
   _rqIssueInstant <- importTime $ HS.protocolIssueInstant proto
   _rqIssuer       <- importRequiredIssuer $ HS.protocolIssuer proto
-  Nothing         <- fmapFlipM importURI $ HS.protocolDestination proto
+  fmapFlipM importURI (HS.protocolDestination proto) >>= \case
+    Nothing -> pure ()
+    Just dest -> die (Proxy @AuthnRequest) ("protocol destination not allowed: " <> show dest)
 
   -- TODO: make sure everything in HS.AuthnRequest that might change the interpreation of the data
   -- we know is 'Nothing'.  also do this on all other 'import*' functions.  (or should we only do
@@ -246,8 +259,9 @@ importAssertion (HS.NotEncrypted ass) = do
     subj  <- importSubject $ HS.assertionSubject ass
     when (null $ HS.assertionStatement ass) $
       die (Proxy @Assertion) ("no statements" :: String)
-    stmt:stmts <- importStatement `mapM` HS.assertionStatement ass
-    pure $ SubjectAndStatements subj (stmt :| stmts)
+    importStatement `mapM` HS.assertionStatement ass >>= \case
+      stmt:stmts -> pure $ SubjectAndStatements subj (stmt :| stmts)
+      [] -> die (Proxy @Assertion) ("no statements" :: String)
 
   unless (null $ HS.assertionAdvice ass) $
     die (Proxy @Assertion) (HS.assertionAdvice ass)
