@@ -4,16 +4,16 @@
 
 module TestSP where
 
+import Data.String.Conversions
+import Data.Yaml
 import Control.Concurrent.MVar
 import Control.Exception (throwIO, ErrorCall(..))
 import Control.Monad.Except
 import Control.Monad.State
-import Data.Monoid
 import Lens.Micro
 import Lens.Micro.TH
 import SAML2.WebSSO
 import Servant.Server
-import Text.XML.DSig
 import URI.ByteString.QQ
 import Util
 
@@ -51,14 +51,7 @@ mkTestCtx2 = do
 
 mkmyidp :: IO IdPConfig_
 mkmyidp = do
-  Right cert <- parseKeyInfo <$> readSampleIO "microsoft-idp-keyinfo.xml"
-  pure $ IdPConfig
-    "eafd1654-754d-11e8-9438-00163e5e6c14"
-    [uri|https://login.microsoftonline.com/682febe8-021b-4fde-ac09-e60085f05181/FederationMetadata/2007-06/FederationMetadata.xml|]
-    (Issuer [uri|https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/|])
-    [uri|http://myidp.io/sso|]
-    cert
-    ()
+  either error id . decodeEither . cs <$> readSampleIO "microsoft-idp-config.yaml"
 
 mkTestCtx3 :: IO Ctx
 mkTestCtx3 = mkTestCtx2
