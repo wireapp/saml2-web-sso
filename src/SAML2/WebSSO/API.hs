@@ -91,32 +91,34 @@ api appName onsuccess = meta appName (Proxy @API) (Proxy @APIAuthResp')
 
 -- | An 'AuthnResponseBody' contains a 'AuthnResponse', but you need to give it a trust base forn
 -- signature verification first, and you may get an error when you're looking at it.
-newtype AuthnResponseBody = AuthnResponseBody ((Issuer -> Either String RSA.PublicKey) -> Either ServantErr AuthnResponse)
+newtype AuthnResponseBody = AuthnResponseBody { fromAuthnResponseBody :: forall m. SPStoreIdP m => m AuthnResponse }
 
-parseAuthnResponseBody :: MonadError ServantErr m => LBS -> (Issuer -> Either String RSA.PublicKey) -> m AuthnResponse
-parseAuthnResponseBody base64 = \lookupPublicKey -> do
+parseAuthnResponseBody :: forall m. SPStoreIdP m => LBS -> m AuthnResponse
+parseAuthnResponseBody base64 = do
   xmltxt <-
     either (const $ throwError err400 { errBody = "bad base64 encoding in SAMLResponse" }) pure $
     EL.decode base64
   resp <-
     either (\ex -> throwError err400 { errBody = cs $ show ex }) pure $
     decode (cs xmltxt)
-  () <-
-    either (\ex -> throwError err400 { errBody = "invalid signature: " <> cs ex }) pure $
-    simpleVerifyAuthnResponse (resp ^. rspIssuer) lookupPublicKey xmltxt
+  simpleVerifyAuthnResponse (resp ^. rspIssuer) xmltxt
   pure resp
 
 
 -- | Pull assertions sub-forest and pass all trees in it to 'verify' individually.  The 'LBS'
--- argument must be a valid 'AuthnResponse'.  All assertions need to be signed by the same issuer
--- with the same key.
-simpleVerifyAuthnResponse :: forall m. MonadError String m
-  => Maybe Issuer -> (Issuer -> Either String RSA.PublicKey) -> LBS -> m ()
-simpleVerifyAuthnResponse Nothing _ _ = throwError "missing issuer in response."
-simpleVerifyAuthnResponse (Just issuer) getkey raw = case getkey issuer of
-  Left errmsg -> throwError errmsg
-  Right key -> do
-    doc :: Cursor <- fromDocument <$> either (throwError . show) pure (parseLBS def raw)
+-- argument must be a valid 'AuthnResponse'.  All assertions need to be signed by the issuer
+-- given in the arguments using the same key.
+simpleVerifyAuthnResponse :: forall m. SPStoreIdP m => Maybe Issuer -> LBS -> m ()
+simpleVerifyAuthnResponse Nothing _ = throwError err400 { errBody = "missing issuer in response." }
+simpleVerifyAuthnResponse (Just issuer) raw = do
+    creds <- (^. idpPublicKey) <$> getIdPConfigByIssuer issuer
+    key :: RSA.PublicKey <- case keyInfoToCreds creds of
+        Right (SignCreds SignDigestSha256 (SignKeyRSA k)) -> pure k
+        Left msg -> throwError err500 { errBody = "IdP pubkey corrupted in SP config: " <> cs (show msg) }
+
+    doc :: Cursor <- either (\msg -> throwError err400 { errBody = "could not parse document: " <> cs (show msg) })
+                            (pure . fromDocument)
+                            (parseLBS def raw)
 
     let elemOnly (NodeElement el) = Just el
         elemOnly _ = Nothing
@@ -125,16 +127,16 @@ simpleVerifyAuthnResponse (Just issuer) getkey raw = case getkey issuer of
         assertions = catMaybes $ elemOnly . node <$>
                      (doc $/ element "{urn:oasis:names:tc:SAML:2.0:assertion}Assertion")
     when (null assertions) $
-      throwError $ "no assertions: " <> show raw
+      throwError err400 { errBody = "no assertions: " <> cs (show raw) }
 
     let assertionID :: Element -> m String
         assertionID el@(Element _ attrs _)
-          = maybe (throwError $ "assertion without ID: " <> show el) (pure . cs)
+          = maybe (throwError err400 { errBody = "assertion without ID: " <> cs (show el) }) (pure . cs)
           $ Map.lookup "ID" attrs
     nodeids :: [String]
       <- assertionID `mapM` assertions
 
-    verify key raw `mapM_` nodeids
+    either (\msg -> throwError err400 { errBody = cs msg }) pure $ (verify key raw `mapM_` nodeids)
 
 
 ----------------------------------------------------------------------
@@ -175,10 +177,13 @@ instance  Accept HTML where
 
 
 instance FromMultipart Mem AuthnResponseBody where
-  fromMultipart resp = Just . AuthnResponseBody $ \lkup -> do
-    base64 <- maybe (throwError err400 { errBody = "no SAMLResponse in the body" }) pure $
-              lookupInput "SAMLResponse" resp
-    parseAuthnResponseBody (cs base64) lkup
+  fromMultipart resp = Just (AuthnResponseBody eval)
+    where
+      eval :: forall m. SPStoreIdP m => m AuthnResponse
+      eval = do
+        base64 <- maybe (throwError err400 { errBody = "no SAMLResponse in the body" }) pure $
+                  lookupInput "SAMLResponse" resp
+        parseAuthnResponseBody (cs base64)
 
 
 -- | [2/3.5.4]
@@ -276,40 +281,13 @@ authreq idpname = do
   logger DEBUG $ "authreq req: " <> show req
   leaveH $ FormRedirect uri req
 
--- | Get config and pass the missing idp credentials to the response constructor.
-resolveBody :: SPHandler m => AuthnResponseBody -> m AuthnResponse
-resolveBody (AuthnResponseBody mkbody) = do
-  either throwError pure . mkbody =<< mkLookupPubKey
-
-mkLookupPubKey :: forall m. SPHandler m => m (Issuer -> Either String RSA.PublicKey)  -- TODO: this
-                                                                                      -- won't work!
-                                                                                      -- we need to
-                                                                                      -- use the
-                                                                                      -- SPStoreIdP
-                                                                                      -- interface
-                                                                                      -- for lookup,
-                                                                                      -- not the
-                                                                                      -- config
-                                                                                      -- file!
-mkLookupPubKey = do
-  idps :: [IdPConfig (ConfigExtra m)]
-    <- (^. cfgIdps) <$> getConfig
-  pubkeys :: [(Issuer, RSA.PublicKey)]
-    <- forM idps $ \idp -> do
-      creds <- either crash pure $ keyInfoToCreds (idp ^. idpPublicKey)
-      case creds of
-        SignCreds SignDigestSha256 (SignKeyRSA pubkey) -> pure (idp ^. idpIssuer, pubkey)
-  pure $ \issuer ->
-    let errmsg = "unknown issuer: " <> show issuer <> "; known issuers: " <> show ((^. idpIssuer) <$> idps)
-    in maybe (Left errmsg) Right . Map.lookup issuer $ Map.fromList pubkeys
-
 simpleOnSuccess :: SPHandler m => UserId -> m Void
 simpleOnSuccess uid = getLandingURI >>= (`redirect` [cookieToHeader . togglecookie . Just . cs . show $ uid])
 
 authresp :: SPHandler m => (UserId -> m Void) -> AuthnResponseBody -> m Void
 authresp onsuccess body = do
   enterH "authresp: entering"
-  resp <- resolveBody body
+  resp <- fromAuthnResponseBody body
   logger DEBUG $ "authresp: " <> ppShow resp
   verdict <- judge resp
   logger DEBUG $ "authresp: " <> show verdict

@@ -4,18 +4,22 @@
 
 module TestSP where
 
-import Data.String.Conversions
-import Data.Yaml
 import Control.Concurrent.MVar
 import Control.Exception (throwIO, ErrorCall(..))
 import Control.Monad.Except
+import Control.Monad.Reader
 import Control.Monad.State
+import Data.String.Conversions
+import Data.Yaml
 import Lens.Micro
 import Lens.Micro.TH
 import SAML2.WebSSO
 import Servant.Server
 import URI.ByteString.QQ
 import Util
+
+
+----------------------------------------------------------------------
 
 data Ctx = Ctx
   { _ctxNow            :: Time
@@ -109,3 +113,18 @@ instance SPHandler TestSP where
 
 testSP :: Ctx -> TestSP a -> IO a
 testSP ctx (TestSP m) = either (throwIO . ErrorCall . show) pure =<< runHandler (m `evalStateT` ctx)
+
+
+----------------------------------------------------------------------
+
+newtype TestSPStoreIdP a = TestSPStoreIdP { runTestSPStoreIdP :: ExceptT ServantErr (Reader (Maybe IdPConfig_)) a }
+  deriving (Functor, Applicative, Monad, MonadReader (Maybe IdPConfig_), MonadError ServantErr)
+
+instance HasConfig TestSPStoreIdP where
+  type ConfigExtra TestSPStoreIdP = ()
+  getConfig = error "n/a"
+
+instance SPStoreIdP TestSPStoreIdP where
+  storeIdPConfig = error "n/a"
+  getIdPConfig = error "n/a"
+  getIdPConfigByIssuer _ = maybe (throwError err404) pure =<< ask
