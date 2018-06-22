@@ -102,7 +102,7 @@ instance SPStore TestSP where
 
 instance SPStoreIdP TestSP where
   storeIdPConfig _ = pure ()
-  getIdPConfig = simpleGetIdPConfigBy (^. idpPath)
+  getIdPConfig = simpleGetIdPConfigBy (^. idpId)
   getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpIssuer)
 
 instance SPHandler TestSP where

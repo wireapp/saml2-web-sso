@@ -245,7 +245,7 @@ burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
     describe "authreq" . withapp (Proxy @APIAuthReq') authreq ctx $ do
       it "responds with 200" $ do
         idp <- liftIO getIdP
-        get ("/authreq/" <> cs (idPIdToST (idp ^. idpPath)))
+        get ("/authreq/" <> cs (idPIdToST (idp ^. idpId)))
           `shouldRespondWith` 200 { matchBody = bodyContains "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" }
 
     describe "authresp" . withapp (Proxy @APIAuthResp') (authresp simpleOnSuccess) ctx $ do

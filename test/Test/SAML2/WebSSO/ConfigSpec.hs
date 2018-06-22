@@ -36,7 +36,7 @@ spec = describe "Config" $ do
           , _cfgContacts = fallbackContact :| []
           , _cfgIdps =
             [ IdPConfig
-              { _idpPath       = "eafd1654-754d-11e8-9438-00163e5e6c14"
+              { _idpId         = "eafd1654-754d-11e8-9438-00163e5e6c14"
               , _idpMetadata   = [uri|https://login.microsoftonline.com/682febe8-021b-4fde-ac09-e60085f05181/FederationMetadata/2007-06/FederationMetadata.xml|]
               , _idpIssuer     = Issuer [uri|https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/|]
               , _idpRequestUri = [uri|https://login.microsoftonline.com/682febe8-021b-4fde-ac09-e60085f05181/saml2|]

@@ -2,7 +2,7 @@
 # https://developer.okta.com/standards/SAML/setting_up_a_saml_application_in_okta
 # http://saml.oktadev.com/
 
-    path: 30dbd156-754e-11e8-bb6f-00163e5e6c14  # http://saml.oktadev.com/
+    id: 30dbd156-754e-11e8-bb6f-00163e5e6c14  # http://saml.oktadev.com/
     metadata: https://dev-607648.oktapreview.com/app/exkf6ajzdiFPFScpu0h7/sso/saml/metadata
     issuer: http://www.okta.com/exkf6ajzdiFPFScpu0h7
             # or: https://dev-607648.oktapreview.com  # "org url"; On the home screen of the developer dashboard, in the upper right.

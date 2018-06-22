@@ -118,7 +118,7 @@ instance HasConfig SimpleSP where
 
 instance SPStoreIdP SimpleSP where
   storeIdPConfig _ = pure ()
-  getIdPConfig = simpleGetIdPConfigBy (^. idpPath)
+  getIdPConfig = simpleGetIdPConfigBy (^. idpId)
   getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpIssuer)
 
 simpleGetIdPConfigBy :: (MonadError ServantErr m, HasConfig m, Show a, Ord a)

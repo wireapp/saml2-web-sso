@@ -60,7 +60,7 @@ newtype IdPId = IdPId { fromIdPId :: UUID } deriving (Eq, Show, Generic, Ord)
 type IdPConfig_ = IdPConfig ()
 
 data IdPConfig extra = IdPConfig
-  { _idpPath            :: IdPId  -- TODO: rename to 'idpId'
+  { _idpId              :: IdPId
   , _idpMetadata        :: URI
   , _idpIssuer          :: Issuer
   , _idpRequestUri      :: URI
