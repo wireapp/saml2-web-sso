@@ -336,7 +336,7 @@ checkAssertions missuer assertions = do
     deny ["no AuthnStatement in assertions"]
 
   checkStatement `mapM_` statements
-  pure . AccessGranted $ UserId issuer subject
+  pure . AccessGranted $ UserRef issuer subject
 
 checkStatement :: (SP m, MonadJudge m) => Statement -> m ()
 checkStatement = \case

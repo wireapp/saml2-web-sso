@@ -30,12 +30,11 @@ data AccessVerdict =
     { _avReasons :: [ST]
     }
   | AccessGranted
-    { _avUserId :: UserId
+    { _avUserId :: UserRef
     }
   deriving (Eq, Show)
 
--- TODO: find better name?  UserRef?  UserSamlName?  ...?
-data UserId = UserId { _uidTenant :: Issuer, _uidSubject :: NameID }
+data UserRef = UserRef { _uidTenant :: Issuer, _uidSubject :: NameID }
   deriving (Eq, Show)
 
 -- | More correctly, an 'Issuer' is a 'NameID', but we only support 'URI'.
@@ -463,7 +462,7 @@ makeLenses ''SubjectConfirmation
 makeLenses ''SubjectConfirmationData
 makeLenses ''Time
 makeLenses ''UnqualifiedNameID
-makeLenses ''UserId
+makeLenses ''UserRef
 makeLenses ''Version
 
 makePrisms ''UnqualifiedNameID

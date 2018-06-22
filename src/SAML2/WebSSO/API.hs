@@ -80,7 +80,7 @@ type APIMeta'     = "meta" :> APIMeta
 type APIAuthReq'  = "authreq" :> APIAuthReq
 type APIAuthResp' = "authresp" :> APIAuthResp
 
-api :: SPHandler m => ST -> (UserId -> m Void) -> ServerT API m
+api :: SPHandler m => ST -> (UserRef -> m Void) -> ServerT API m
 api appName onsuccess = meta appName (Proxy @API) (Proxy @APIAuthResp')
                    :<|> authreq
                    :<|> authresp onsuccess
@@ -281,10 +281,10 @@ authreq idpname = do
   logger DEBUG $ "authreq req: " <> show req
   leaveH $ FormRedirect uri req
 
-simpleOnSuccess :: SPHandler m => UserId -> m Void
+simpleOnSuccess :: SPHandler m => UserRef -> m Void
 simpleOnSuccess uid = getLandingURI >>= (`redirect` [cookieToHeader . togglecookie . Just . cs . show $ uid])
 
-authresp :: SPHandler m => (UserId -> m Void) -> AuthnResponseBody -> m Void
+authresp :: SPHandler m => (UserRef -> m Void) -> AuthnResponseBody -> m Void
 authresp onsuccess body = do
   enterH "authresp: entering"
   resp <- fromAuthnResponseBody body

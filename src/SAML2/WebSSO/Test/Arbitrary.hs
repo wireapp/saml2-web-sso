@@ -81,8 +81,8 @@ genSPContactPerson = SPContactPerson
   <*> genNiceWord
 
 
-instance Arbitrary UserId where
-  arbitrary = UserId <$> arbitrary <*> arbitrary
+instance Arbitrary UserRef where
+  arbitrary = UserRef <$> arbitrary <*> arbitrary
 
 
 genEntityDescriptor :: Gen EntityDescriptor
