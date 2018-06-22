@@ -67,6 +67,12 @@ type APIMeta     = Get '[XML] Meta.SPDesc
 type APIAuthReq  = Capture "idp" IdPId :> Get '[HTML] (FormRedirect AuthnRequest)
 type APIAuthResp = MultipartForm Mem AuthnResponseBody :> PostVoid
 
+-- NB: 'APIAuthResp' cannot easily be enhanced with a @Capture "idp" IdPId@ path segment like
+-- 'APIAuthReq'.  The reason is a design flag in the standard: the meta information end-point must
+-- provide the response end-point URL to any client, and it would not be clear which IdP to include
+-- there.  So instead we need to accept responses from any IdP on the same URI, and rely on the
+-- information from the response body only to recover our internal spar IdP handle.
+
 -- FUTUREWORK: respond with redirect in case of success, instead of responding with Void and
 -- handling all cases with exceptions: https://github.com/haskell-servant/servant/issues/117
 
@@ -275,7 +281,16 @@ resolveBody :: SPHandler m => AuthnResponseBody -> m AuthnResponse
 resolveBody (AuthnResponseBody mkbody) = do
   either throwError pure . mkbody =<< mkLookupPubKey
 
-mkLookupPubKey :: forall m. SPHandler m => m (Issuer -> Either String RSA.PublicKey)
+mkLookupPubKey :: forall m. SPHandler m => m (Issuer -> Either String RSA.PublicKey)  -- TODO: this
+                                                                                      -- won't work!
+                                                                                      -- we need to
+                                                                                      -- use the
+                                                                                      -- SPStoreIdP
+                                                                                      -- interface
+                                                                                      -- for lookup,
+                                                                                      -- not the
+                                                                                      -- config
+                                                                                      -- file!
 mkLookupPubKey = do
   idps :: [IdPConfig (ConfigExtra m)]
     <- (^. cfgIdps) <$> getConfig
@@ -303,6 +318,9 @@ authresp onsuccess body = do
       -> logger INFO (show reasons) >> reject (cs $ ST.intercalate ", " reasons)
     AccessGranted uid
       -> onsuccess uid
+
+
+-- TODO: it's weird that we have IdPs in the config.  remove that entirely?
 
 
 ----------------------------------------------------------------------

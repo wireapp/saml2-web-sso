@@ -66,6 +66,7 @@ class (SP m) => SPStore m where
 class MonadError ServantErr m => SPStoreIdP m where
   storeIdPConfig       :: IdPConfig (ConfigExtra m) -> m ()
   getIdPConfig         :: IdPId -> m (IdPConfig (ConfigExtra m))
+  getIdPConfigByIssuer :: Issuer -> m (IdPConfig (ConfigExtra m))
 
 -- | HTTP handling of the service provider.
 class (SP m, SPStore m, SPStoreIdP m, MonadError ServantErr m) => SPHandler m where
@@ -118,6 +119,7 @@ instance HasConfig SimpleSP where
 instance SPStoreIdP SimpleSP where
   storeIdPConfig _ = pure ()
   getIdPConfig = simpleGetIdPConfigBy (^. idpPath)
+  getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpIssuer)
 
 simpleGetIdPConfigBy :: (MonadError ServantErr m, HasConfig m, Show a, Ord a)
                      => (IdPConfig (ConfigExtra m) -> a) -> a -> m (IdPConfig (ConfigExtra m))
