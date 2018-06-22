@@ -16,6 +16,7 @@ import Data.List.NonEmpty
 import Data.Maybe
 import Data.Proxy
 import Data.String.Conversions
+import GHC.Generics (Generic)
 import GHC.Stack
 import Lens.Micro
 import SAML2.WebSSO.SP
@@ -40,7 +41,7 @@ import qualified SAML2.XML.Signature.Types as HX
 
 -- | 'HS.Descriptor', but without exposing the use of hsaml2.
 newtype SPDesc = SPDesc Document
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 instance HasXML SPDesc where
   parse [NodeElement el] = pure . SPDesc $ Document defPrologue el defMiscellaneous

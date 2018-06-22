@@ -26,6 +26,7 @@ import Data.List
 import Data.Maybe (catMaybes)
 import Data.Proxy
 import Data.String.Conversions
+import GHC.Generics
 import GHC.Stack
 import Lens.Micro
 import Network.HTTP.Media ((//))
@@ -188,7 +189,7 @@ instance FromMultipart Mem AuthnResponseBody where
 
 -- | [2/3.5.4]
 data FormRedirect xml = FormRedirect URI xml
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 class HasXML xml => HasFormRedirect xml where
   formRedirectFieldName :: xml -> ST
