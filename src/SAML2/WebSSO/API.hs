@@ -60,10 +60,6 @@ import qualified SAML2.WebSSO.XML.Meta as Meta
 ----------------------------------------------------------------------
 -- saml web-sso api
 
-type API = APIMeta'
-      :<|> APIAuthReq'
-      :<|> APIAuthResp'
-
 type APIMeta     = Get '[XML] Meta.SPDesc
 type APIAuthReq  = Capture "idp" IdPId :> Get '[HTML] (FormRedirect AuthnRequest)
 type APIAuthResp = MultipartForm Mem AuthnResponseBody :> PostVoid
@@ -80,6 +76,10 @@ type APIAuthResp = MultipartForm Mem AuthnResponseBody :> PostVoid
 type APIMeta'     = "meta" :> APIMeta
 type APIAuthReq'  = "authreq" :> APIAuthReq
 type APIAuthResp' = "authresp" :> APIAuthResp
+
+type API = APIMeta'
+      :<|> APIAuthReq'
+      :<|> APIAuthResp'
 
 api :: SPHandler m => ST -> (UserRef -> m Void) -> ServerT API m
 api appName onsuccess = meta appName (Proxy @API) (Proxy @APIAuthResp')
@@ -297,9 +297,6 @@ authresp onsuccess body = do
       -> logger Info (show reasons) >> reject (cs $ ST.intercalate ", " reasons)
     AccessGranted uid
       -> onsuccess uid
-
-
--- TODO: it's weird that we have IdPs in the config.  remove that entirely?
 
 
 ----------------------------------------------------------------------
