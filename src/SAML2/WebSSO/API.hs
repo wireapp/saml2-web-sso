@@ -277,9 +277,9 @@ authreq :: (SPStoreIdP m, SPHandler m) => IdPId -> m (FormRedirect AuthnRequest)
 authreq idpname = do
   enterH "authreq"
   uri <- (^. idpRequestUri) <$> getIdPConfig idpname
-  logger DEBUG $ "authreq uri: " <> cs (renderURI uri)
+  logger Debug $ "authreq uri: " <> cs (renderURI uri)
   req <- createAuthnRequest
-  logger DEBUG $ "authreq req: " <> show req
+  logger Debug $ "authreq req: " <> show req
   leaveH $ FormRedirect uri req
 
 simpleOnSuccess :: SPHandler m => UserRef -> m Void
@@ -289,12 +289,12 @@ authresp :: SPHandler m => (UserRef -> m Void) -> AuthnResponseBody -> m Void
 authresp onsuccess body = do
   enterH "authresp: entering"
   resp <- fromAuthnResponseBody body
-  logger DEBUG $ "authresp: " <> ppShow resp
+  logger Debug $ "authresp: " <> ppShow resp
   verdict <- judge resp
-  logger DEBUG $ "authresp: " <> show verdict
+  logger Debug $ "authresp: " <> show verdict
   case verdict of
     AccessDenied reasons
-      -> logger INFO (show reasons) >> reject (cs $ ST.intercalate ", " reasons)
+      -> logger Info (show reasons) >> reject (cs $ ST.intercalate ", " reasons)
     AccessGranted uid
       -> onsuccess uid
 
@@ -307,16 +307,16 @@ authresp onsuccess body = do
 
 crash :: (SP m, MonadError ServantErr m) => String -> m a
 crash msg = do
-  logger CRITICAL msg
+  logger Fatal msg
   throwError err500 { errBody = "internal error: consult server logs." }
 
 enterH :: SP m => String -> m ()
 enterH msg =
-  logger DEBUG $ "entering handler: " <> msg
+  logger Debug $ "entering handler: " <> msg
 
 leaveH :: (Show a, SP m) => a -> m a
 leaveH x = do
-  logger DEBUG $ "leaving handler: " <> show x
+  logger Debug $ "leaving handler: " <> show x
   pure x
 
 

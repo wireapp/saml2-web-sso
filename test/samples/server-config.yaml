@@ -1,5 +1,5 @@
 version:     SAML2.0
-log_level:   DEBUG
+log_level:   Debug
 
 sp_host:     me.wire.com
 sp_port:     443

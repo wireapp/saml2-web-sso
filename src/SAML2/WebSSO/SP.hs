@@ -38,8 +38,8 @@ import Text.XML.Util
 
 -- | Application logic of the service provider.
 class (HasConfig m, Monad m) => SP m where
-  logger :: LogLevel -> String -> m ()
-  default logger :: MonadIO m => LogLevel -> String -> m ()
+  logger :: Level -> String -> m ()
+  default logger :: MonadIO m => Level -> String -> m ()
   logger = loggerConfIO
 
   createUUID :: m UUID
@@ -154,12 +154,12 @@ simpleStoreAssertion store now aid time = do
 ----------------------------------------------------------------------
 -- combinators
 
-loggerConfIO :: (HasConfig m, MonadIO m) => LogLevel -> String -> m ()
+loggerConfIO :: (HasConfig m, MonadIO m) => Level -> String -> m ()
 loggerConfIO level msg = do
   cfgsays <- (^. cfgLogLevel) <$> getConfig
   loggerIO cfgsays level msg
 
-loggerIO :: MonadIO m => LogLevel -> LogLevel -> String -> m ()
+loggerIO :: MonadIO m => Level -> Level -> String -> m ()
 loggerIO cfgsays level msg = if level <= cfgsays
   then liftIO $ putStrLn msg
   else pure ()

@@ -40,7 +40,7 @@ type Config_ = Config ()
 
 data Config extra = Config
   { _cfgVersion           :: Version
-  , _cfgLogLevel          :: LogLevel
+  , _cfgLogLevel          :: Level
   , _cfgSPHost            :: String
   , _cfgSPPort            :: Int
   , _cfgSPAppURI          :: URI
@@ -50,9 +50,8 @@ data Config extra = Config
   }
   deriving (Eq, Show, Generic)
 
--- | FUTUREWORK: remove this in favor of tinylog's type.  more compatible with people who are using
--- that.
-data LogLevel = SILENT | CRITICAL | ERROR | WARN | INFO | DEBUG
+-- | this looks exactly like tinylog's type, but we redefine it here to avoid the dependency.
+data Level = Trace | Debug | Info | Warn | Error | Fatal
   deriving (Eq, Ord, Show, Enum, Bounded, Generic, FromJSON, ToJSON)
 
 newtype IdPId = IdPId { fromIdPId :: UUID } deriving (Eq, Show, Generic, Ord)
@@ -146,7 +145,7 @@ instance ToJSON X509.SignedCertificate where
 fallbackConfig :: Config extra
 fallbackConfig = Config
   { _cfgVersion           = Version_2_0
-  , _cfgLogLevel          = DEBUG
+  , _cfgLogLevel          = Debug
   , _cfgSPHost            = "localhost"
   , _cfgSPPort            = 8081
   , _cfgSPAppURI          = [uri|https://me.wire.com/sp|]
@@ -180,7 +179,7 @@ readConfig filepath =
   =<< Yaml.decodeFileEither filepath
   where
     info :: Config extra -> IO ()
-    info cfg = when (cfg ^. cfgLogLevel >= INFO) $
+    info cfg = when (cfg ^. cfgLogLevel >= Info) $
       hPutStrLn stderr . cs . Yaml.encode $ cfg
 
     warn :: Yaml.ParseException -> IO ()

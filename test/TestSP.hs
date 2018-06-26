@@ -36,7 +36,7 @@ makeLenses ''Ctx
 mkTestCtx1 :: IO Ctx
 mkTestCtx1 = do
   let _ctxNow         = timeNow
-      _ctxConfig      = fallbackConfig & cfgLogLevel .~ SILENT
+      _ctxConfig      = fallbackConfig & cfgLogLevel .~ Fatal
                                        & cfgSPAppURI .~ [uri|https://zb2.zerobuzz.net:60443/|]
                                        & cfgSPSsoURI .~ [uri|https://zb2.zerobuzz.net:60443/|]
   _ctxAssertionStore <- newMVar mempty
@@ -45,7 +45,7 @@ mkTestCtx1 = do
 
 -- | Use this to see more output on a per-test basis.
 verbose :: Ctx -> Ctx
-verbose = ctxConfig . cfgLogLevel .~ DEBUG
+verbose = ctxConfig . cfgLogLevel .~ Debug
 
 mkTestCtx2 :: IO Ctx
 mkTestCtx2 = do
