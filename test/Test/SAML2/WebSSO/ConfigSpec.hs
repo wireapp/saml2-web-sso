@@ -4,13 +4,14 @@
 
 module Test.SAML2.WebSSO.ConfigSpec (spec) where
 
-import SAML2.WebSSO.Test.Arbitrary
+import Control.Lens
 import Data.Aeson
 import Data.Aeson.Types
 import Data.List.NonEmpty
 import Data.String.Conversions
 import Hedgehog
 import SAML2.WebSSO
+import SAML2.WebSSO.Test.Arbitrary
 import Test.Hspec
 import Text.XML.DSig
 import URI.ByteString.QQ
@@ -23,8 +24,7 @@ spec = describe "Config" $ do
   hedgehog . checkParallel . Group "roundtrip" $
     [("...", property $ forAll (genConfig (pure ())) >>= \v -> tripping v toJSON (parseEither parseJSON))]
 
-  it "sample config" $ do
-    want <- readSampleIO "server-config.yaml"
+  describe "sample config" $ do
     let have :: Config_
         have = Config
           { _cfgVersion  = Version_2_0
@@ -45,4 +45,15 @@ spec = describe "Config" $ do
               }
             ]
           }
-    Yaml.decodeEither (cs want) `shouldBe` Right have
+
+    it "standard" $ do
+      want <- readSampleIO "server-config.yaml"
+      Yaml.decodeEither (cs want) `shouldBe` Right have
+
+    it "empty idp list" $ do
+      want <- readSampleIO "server-config-no-idps-1.yaml"
+      Yaml.decodeEither (cs want) `shouldBe` Right (have & cfgIdps .~ [] :: Config_)
+
+    it "no idp list at all" $ do
+      want <- readSampleIO "server-config-no-idps-2.yaml"
+      Yaml.decodeEither (cs want) `shouldBe` Right (have & cfgIdps .~ [] :: Config_)

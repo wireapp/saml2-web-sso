@@ -1,0 +1,14 @@
+version:     SAML2.0
+log_level:   Debug
+
+sp_host:     me.wire.com
+sp_port:     443
+sp_app_uri:  https://me.wire.com/sp
+sp_sso_uri:  https://me.wire.com/sso
+
+contacts:
+  - company: evil corp.
+    given_name: Dr.
+    surname: Girlfriend
+    email: email:president@evil.corp
+    phone: '+314159265'

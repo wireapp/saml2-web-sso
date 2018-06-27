@@ -11,6 +11,7 @@ module SAML2.WebSSO.Config where
 import Control.Monad (when)
 import Data.Aeson
 import Data.Aeson.TH
+import Data.Maybe (fromMaybe)
 import Data.Monoid
 import Data.List.NonEmpty
 import Data.String.Conversions
@@ -84,7 +85,7 @@ makeLenses ''Config
 makeLenses ''IdPConfig
 
 instance ToJSON a => ToJSON (Config a) where
-  toJSON Config {..} = object
+  toJSON Config {..} = object $
     [ "version"    .= _cfgVersion
     , "log_level"  .= _cfgLogLevel
     , "sp_host"    .= _cfgSPHost
@@ -92,8 +93,8 @@ instance ToJSON a => ToJSON (Config a) where
     , "sp_app_uri" .= _cfgSPAppURI
     , "sp_sso_uri" .= _cfgSPSsoURI
     , "contacts"   .= _cfgContacts
-    , "idps"       .= _cfgIdps
-    ]
+    ] <>
+    [ "idps" .= _cfgIdps | not $ Prelude.null _cfgIdps ]
 
 instance FromJSON a => FromJSON (Config a) where
   parseJSON = withObject "Config" $ \obj -> do
@@ -104,7 +105,7 @@ instance FromJSON a => FromJSON (Config a) where
     _cfgSPAppURI          <- obj .: "sp_app_uri"
     _cfgSPSsoURI          <- obj .: "sp_sso_uri"
     _cfgContacts          <- obj .: "contacts"
-    _cfgIdps              <- obj .: "idps"
+    _cfgIdps              <- fromMaybe [] <$> obj .:? "idps"
     pure Config {..}
 
 
