@@ -50,6 +50,7 @@ dependencies:
   - asn1-types
   - base64-bytestring
   - binary
+  - bytestring
   - containers
   - cookie
   - cryptonite

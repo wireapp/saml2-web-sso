@@ -30,14 +30,15 @@ import GHC.Generics
 import GHC.Stack
 import Lens.Micro
 import Network.HTTP.Media ((//))
+import Network.HTTP.Types
 import Network.Wai hiding (Response)
 import Network.Wai.Internal as Wai
 import SAML2.WebSSO.Config
 import SAML2.WebSSO.SP
 import SAML2.WebSSO.Types
 import SAML2.WebSSO.XML
-import Servant.API.ContentTypes
-import Servant.API hiding (URI(..))
+import Servant.API.ContentTypes as Servant
+import Servant.API as Servant hiding (URI(..))
 import Servant.Multipart
 import Servant.Server
 import Text.Hamlet.XML
@@ -49,6 +50,7 @@ import Text.XML.Util
 import URI.ByteString
 import Web.Cookie
 
+import qualified Data.ByteString.Builder as SBSBuilder
 import qualified Crypto.PubKey.RSA as RSA
 import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
@@ -60,18 +62,17 @@ import qualified SAML2.WebSSO.XML.Meta as Meta
 ----------------------------------------------------------------------
 -- saml web-sso api
 
+type OnSuccess m = UserRef -> m (SetCookie, URI)
+
 type APIMeta     = Get '[XML] Meta.SPDesc
 type APIAuthReq  = Capture "idp" IdPId :> Get '[HTML] (FormRedirect AuthnRequest)
-type APIAuthResp = MultipartForm Mem AuthnResponseBody :> PostVoid
+type APIAuthResp = MultipartForm Mem AuthnResponseBody :> PostRedir '[HTML] (WithCookie ST)
 
 -- NB: 'APIAuthResp' cannot easily be enhanced with a @Capture "idp" IdPId@ path segment like
 -- 'APIAuthReq'.  The reason is a design flag in the standard: the meta information end-point must
 -- provide the response end-point URL to any client, and it would not be clear which IdP to include
 -- there.  So instead we need to accept responses from any IdP on the same URI, and rely on the
 -- information from the response body only to recover our internal spar IdP handle.
-
--- FUTUREWORK: respond with redirect in case of success, instead of responding with Void and
--- handling all cases with exceptions: https://github.com/haskell-servant/servant/issues/117
 
 type APIMeta'     = "meta" :> APIMeta
 type APIAuthReq'  = "authreq" :> APIAuthReq
@@ -81,7 +82,7 @@ type API = APIMeta'
       :<|> APIAuthReq'
       :<|> APIAuthResp'
 
-api :: SPHandler m => ST -> (UserRef -> m Void) -> ServerT API m
+api :: SPHandler m => ST -> OnSuccess m -> ServerT API m
 api appName onsuccess = meta appName (Proxy @API) (Proxy @APIAuthResp')
                    :<|> authreq
                    :<|> authresp onsuccess
@@ -143,8 +144,10 @@ simpleVerifyAuthnResponse (Just issuer) raw = do
 ----------------------------------------------------------------------
 -- servant, wai plumbing
 
-type GetVoid  = Get  '[HTML, JSON, XML] Void
-type PostVoid = Post '[HTML, JSON, XML] Void
+-- TODO: move this section to module "SAML2.WebSSO.API.ServantPlumbing"?
+
+type GetRedir = Verb 'GET 307
+type PostRedir = Verb 'POST 307
 
 
 data XML
@@ -159,23 +162,18 @@ instance {-# OVERLAPPABLE #-} HasXMLRoot a => MimeUnrender XML a where
   mimeUnrender Proxy = fmapL show . decode . cs
 
 
-data Void
-
-instance MimeRender HTML Void where
-  mimeRender Proxy = error "absurd"
-
-instance {-# OVERLAPS #-} MimeRender JSON Void where
-  mimeRender Proxy = error "absurd"
-
-instance {-# OVERLAPS #-} MimeRender XML Void where
-  mimeRender Proxy = error "absurd"
-
-
 data HTML
 
 instance  Accept HTML where
   contentType Proxy = "text" // "html"
 
+instance MimeRender HTML ST where
+  mimeRender Proxy msg = mkHtml
+    [xml|
+      <body>
+        <p>
+          #{msg}
+    |]
 
 instance FromMultipart Mem AuthnResponseBody where
   fromMultipart resp = Just (AuthnResponseBody eval)
@@ -220,6 +218,12 @@ mkHtml nodes = renderLBS def doc
     doctyp   = Doctype "html" (Just $ PublicID "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd")
     root     = Element "html" rootattr nodes
     rootattr = Map.fromList [("xmlns", "http://www.w3.org/1999/xhtml"), ("xml:lang", "en")]
+
+
+type WithCookie = Headers '[Servant.Header "Set-Cookie" SetCookie]
+
+instance ToHttpApiData SetCookie where
+  toUrlPiece = cs . SBSBuilder.toLazyByteString . renderSetCookie
 
 
 -- | [3.5.5.1] Caching
@@ -282,10 +286,7 @@ authreq idpname = do
   logger Debug $ "authreq req: " <> show req
   leaveH $ FormRedirect uri req
 
-simpleOnSuccess :: SPHandler m => UserRef -> m Void
-simpleOnSuccess uid = getLandingURI >>= (`redirect` [cookieToHeader . togglecookie . Just . cs . show $ uid])
-
-authresp :: SPHandler m => (UserRef -> m Void) -> AuthnResponseBody -> m Void
+authresp :: SPHandler m => OnSuccess m -> AuthnResponseBody -> m (WithCookie ST)
 authresp onsuccess body = do
   enterH "authresp: entering"
   resp <- fromAuthnResponseBody body
@@ -296,7 +297,11 @@ authresp onsuccess body = do
     AccessDenied reasons
       -> logger Info (show reasons) >> reject (cs $ ST.intercalate ", " reasons)
     AccessGranted uid
-      -> onsuccess uid
+      -> onsuccess uid <&> \(setcookie, uri)
+                             -> addHeader setcookie ("SSO successful, redirecting to " <> renderURI uri)
+
+simpleOnSuccess :: SPHandler m => OnSuccess m
+simpleOnSuccess uid = (togglecookie . Just . cs . show $ uid,) <$> getLandingURI
 
 
 ----------------------------------------------------------------------
