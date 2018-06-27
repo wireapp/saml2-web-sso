@@ -160,7 +160,7 @@ loggerConfIO level msg = do
   loggerIO cfgsays level msg
 
 loggerIO :: MonadIO m => Level -> Level -> String -> m ()
-loggerIO cfgsays level msg = if level <= cfgsays
+loggerIO cfgsays level msg = if level >= cfgsays
   then liftIO $ putStrLn msg
   else pure ()
 
