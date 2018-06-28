@@ -46,7 +46,7 @@ data Config extra = Config
   , _cfgSPPort            :: Int
   , _cfgSPAppURI          :: URI
   , _cfgSPSsoURI          :: URI
-  , _cfgContacts          :: NonEmpty SPContactPerson
+  , _cfgContacts          :: NonEmpty ContactPerson
   , _cfgIdps              :: [IdPConfig extra]
   }
   deriving (Eq, Show, Generic)
@@ -110,7 +110,8 @@ instance FromJSON a => FromJSON (Config a) where
 
 
 deriveJSON deriveJSONOptions ''IdPConfig
-deriveJSON deriveJSONOptions ''SPContactPerson
+deriveJSON deriveJSONOptions ''ContactPerson
+deriveJSON deriveJSONOptions ''ContactType
 
 instance FromJSON IdPId where
   parseJSON value = (>>= maybe unerror (pure . IdPId) . UUID.fromText) . parseJSON $ value
@@ -155,13 +156,14 @@ fallbackConfig = Config
   , _cfgIdps              = mempty
   }
 
-fallbackContact :: SPContactPerson
-fallbackContact = SPContactPerson
-  { _spcntCompany   = "evil corp."
-  , _spcntGivenName = "Dr."
-  , _spcntSurname   = "Girlfriend"
-  , _spcntEmail     = [uri|email:president@evil.corp|]
-  , _spcntPhone     = "+314159265"
+fallbackContact :: ContactPerson
+fallbackContact = ContactPerson
+  { _cntType      = ContactSupport
+  , _cntCompany   = Just "evil corp."
+  , _cntGivenName = Just "Dr."
+  , _cntSurname   = Just "Girlfriend"
+  , _cntEmail     = Just [uri|email:president@evil.corp|]
+  , _cntPhone     = Just "+314159265"
   }
 
 

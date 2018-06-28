@@ -7,9 +7,5 @@ sp_app_uri:  https://me.wire.com/sp
 sp_sso_uri:  https://me.wire.com/sso
 
 contacts:
-  - type: ContactSupport
-    company: evil corp.
-    given_name: Dr.
-    surname: Girlfriend
+  - type: ContactAdministrative
     email: email:president@evil.corp
-    phone: '+314159265'

@@ -76,13 +76,14 @@ genConfig genextra = do
   _cfgExtraInfo  <- Gen.maybe genextra
   pure Config{..}
 
-genSPContactPerson :: Gen SPContactPerson
-genSPContactPerson = SPContactPerson
-  <$> genNiceWord
-  <*> genNiceWord
-  <*> genNiceWord
-  <*> genURI
-  <*> genNiceWord
+genSPContactPerson :: Gen ContactPerson
+genSPContactPerson = ContactPerson
+  <$> Gen.enumBounded
+  <*> Gen.maybe genNiceWord
+  <*> Gen.maybe genNiceWord
+  <*> Gen.maybe genNiceWord
+  <*> Gen.maybe genURI
+  <*> Gen.maybe genNiceWord
 
 
 instance Arbitrary UserRef where

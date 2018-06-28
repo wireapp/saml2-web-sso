@@ -64,19 +64,28 @@ data SPDescPre = SPDescPre
   , _spdOrgDisplayName :: ST
   , _spdOrgURL         :: URI
   , _spdResponseURL    :: URI
-  , _spdContacts       :: NonEmpty SPContactPerson
+  , _spdContacts       :: NonEmpty ContactPerson
   }
   deriving (Eq, Show, Generic)
 
-data SPContactPerson = SPContactPerson
-  { _spcntCompany   :: ST
-  , _spcntGivenName :: ST
-  , _spcntSurname   :: ST
-  , _spcntEmail     :: URI
-  , _spcntPhone     :: ST
+-- | [4/2.3.2.2].  Zero or more persons are required in metainfo document [4/2.4.1].
+data ContactPerson = ContactPerson
+  { _cntType      :: ContactType
+  , _cntCompany   :: Maybe ST
+  , _cntGivenName :: Maybe ST
+  , _cntSurname   :: Maybe ST
+  , _cntEmail     :: Maybe URI
+  , _cntPhone     :: Maybe ST
   }
   deriving (Eq, Show, Generic)
 
+data ContactType
+  = ContactTechnical
+  | ContactSupport
+  | ContactAdministrative
+  | ContactBilling
+  | ContactOther
+  deriving (Eq, Enum, Bounded, Show, Generic)
 
 -- | [4/2.3.2]
 data EntityDescriptor = EntityDescriptor
@@ -452,7 +461,7 @@ makeLenses ''RequestedAuthnContext
 makeLenses ''Response
 makeLenses ''Role
 makeLenses ''RoleDescriptor
-makeLenses ''SPContactPerson
+makeLenses ''ContactPerson
 makeLenses ''SPDescPre
 makeLenses ''SPSSODescriptor
 makeLenses ''Statement
