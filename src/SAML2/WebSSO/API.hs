@@ -26,6 +26,7 @@ import Data.List
 import Data.Maybe (catMaybes)
 import Data.Proxy
 import Data.String.Conversions
+import Data.Time
 import GHC.Generics
 import GHC.Stack
 import Lens.Micro
@@ -84,7 +85,7 @@ type API = APIMeta'
 
 api :: SPHandler m => ST -> OnSuccess m -> ServerT API m
 api appName onsuccess = meta appName (Proxy @API) (Proxy @APIAuthResp')
-                   :<|> authreq
+                   :<|> authreq'
                    :<|> authresp onsuccess
 
 
@@ -277,14 +278,17 @@ meta appName proxyAPI proxyAPIAuthResp = do
   contacts <- (^. cfgContacts) <$> getConfig
   Meta.spMeta <$> Meta.spDesc appName landing resp contacts
 
-authreq :: (SPStoreIdP m, SPHandler m) => IdPId -> m (FormRedirect AuthnRequest)
-authreq idpname = do
+authreq :: (SPStoreIdP m, SPHandler m) => NominalDiffTime -> IdPId -> m (FormRedirect AuthnRequest)
+authreq lifeExpectancySecs idpname = do
   enterH "authreq"
   uri <- (^. idpRequestUri) <$> getIdPConfig idpname
   logger Debug $ "authreq uri: " <> cs (renderURI uri)
-  req <- createAuthnRequest
+  req <- createAuthnRequest lifeExpectancySecs
   logger Debug $ "authreq req: " <> show req
   leaveH $ FormRedirect uri req
+
+authreq' :: (SPStoreIdP m, SPHandler m) => IdPId -> m (FormRedirect AuthnRequest)
+authreq' = authreq (8 * 60 * 60)
 
 authresp :: SPHandler m => OnSuccess m -> AuthnResponseBody -> m (WithCookie ST)
 authresp onsuccess body = do

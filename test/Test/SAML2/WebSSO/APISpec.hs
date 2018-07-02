@@ -171,15 +171,15 @@ spec = describe "API" $ do
       get "/meta" `shouldRespondWith` 200 { matchBody = bodyContains "OrganizationName xml:lang=\"EN\">toy-sp" }
 
   describe "authreq" $ do
-    context "invalid uuid" . withapp (Proxy @APIAuthReq') authreq mkTestCtx1 $ do
+    context "invalid uuid" . withapp (Proxy @APIAuthReq') authreq' mkTestCtx1 $ do
       it "responds with 400" $ do
         get "/authreq/broken-uuid" `shouldRespondWith` 400
 
-    context "unknown idp" . withapp (Proxy @APIAuthReq') authreq mkTestCtx1 $ do
+    context "unknown idp" . withapp (Proxy @APIAuthReq') authreq' mkTestCtx1 $ do
       it "responds with 404" $ do
         get "/authreq/6bf0dfb0-754f-11e8-b71d-00163e5e6c14" `shouldRespondWith` 404
 
-    context "known idp" . withapp (Proxy @APIAuthReq') authreq mkTestCtx2 $ do
+    context "known idp" . withapp (Proxy @APIAuthReq') authreq' mkTestCtx2 $ do
       it "responds with 200" $ do
         get "/authreq/eafd1654-754d-11e8-9438-00163e5e6c14" `shouldRespondWith` 200
 
@@ -242,7 +242,7 @@ burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
       getIdP = either (throwIO . ErrorCall . show) pure =<< (Yaml.decodeEither . cs <$> readSampleIO cfgPath)
 
   describe ("smoke tests: " <> show cfgPath) $ do
-    describe "authreq" . withapp (Proxy @APIAuthReq') authreq ctx $ do
+    describe "authreq" . withapp (Proxy @APIAuthReq') authreq' ctx $ do
       it "responds with 200" $ do
         idp <- liftIO getIdP
         get ("/authreq/" <> cs (idPIdToST (idp ^. idpId)))

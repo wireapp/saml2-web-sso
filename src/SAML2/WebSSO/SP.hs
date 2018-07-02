@@ -178,13 +178,12 @@ createID = ID . fixMSAD . UUID.toText <$> createUUID
     fixMSAD :: ST -> ST
     fixMSAD = cs . ("id" <>) . filter (/= '-') . cs
 
-createAuthnRequest :: (SP m, SPStore m) => m AuthnRequest
-createAuthnRequest = do
+createAuthnRequest :: (SP m, SPStore m) => NominalDiffTime -> m AuthnRequest
+createAuthnRequest lifeExpectancySecs = do
   _rqID           <- createID
   _rqVersion      <- (^. cfgVersion) <$> getConfig
   _rqIssueInstant <- getNow
   _rqIssuer       <- Issuer <$> getLandingURI
-  let lifeExpectancySecs = 8 * 60 * 60  -- TODO: make this yaml-configurable.
   storeRequest _rqID (addTime lifeExpectancySecs _rqIssueInstant)
   pure AuthnRequest{..}
 
