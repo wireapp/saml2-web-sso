@@ -67,7 +67,7 @@ type OnSuccess m = UserRef -> m (SetCookie, URI)
 
 type APIMeta     = Get '[XML] Meta.SPDesc
 type APIAuthReq  = Capture "idp" IdPId :> Get '[HTML] (FormRedirect AuthnRequest)
-type APIAuthResp = MultipartForm Mem AuthnResponseBody :> PostRedir '[HTML] (WithCookie ST)
+type APIAuthResp = MultipartForm Mem AuthnResponseBody :> PostRedir '[HTML] (WithCookieAndLocation ST)
 
 -- NB: 'APIAuthResp' cannot easily be enhanced with a @Capture "idp" IdPId@ path segment like
 -- 'APIAuthReq'.  The reason is a design flag in the standard: the meta information end-point must
@@ -221,10 +221,13 @@ mkHtml nodes = renderLBS def doc
     rootattr = Map.fromList [("xmlns", "http://www.w3.org/1999/xhtml"), ("xml:lang", "en")]
 
 
-type WithCookie = Headers '[Servant.Header "Set-Cookie" SetCookie]
+type WithCookieAndLocation = Headers '[Servant.Header "Set-Cookie" SetCookie, Servant.Header "Location" URI]
 
 instance ToHttpApiData SetCookie where
   toUrlPiece = cs . SBSBuilder.toLazyByteString . renderSetCookie
+
+instance ToHttpApiData URI where
+  toUrlPiece = renderURI
 
 
 -- | [3.5.5.1] Caching
@@ -290,7 +293,7 @@ authreq lifeExpectancySecs idpname = do
 authreq' :: (SPStoreIdP m, SPHandler m) => IdPId -> m (FormRedirect AuthnRequest)
 authreq' = authreq (8 * 60 * 60)
 
-authresp :: SPHandler m => OnSuccess m -> AuthnResponseBody -> m (WithCookie ST)
+authresp :: SPHandler m => OnSuccess m -> AuthnResponseBody -> m (WithCookieAndLocation ST)
 authresp onsuccess body = do
   enterH "authresp: entering"
   resp <- fromAuthnResponseBody body
@@ -302,7 +305,7 @@ authresp onsuccess body = do
       -> logger Info (show reasons) >> reject (cs $ ST.intercalate ", " reasons)
     AccessGranted uid
       -> onsuccess uid <&> \(setcookie, uri)
-                             -> addHeader setcookie ("SSO successful, redirecting to " <> renderURI uri)
+                             -> addHeader setcookie $ addHeader uri ("SSO successful, redirecting to " <> renderURI uri)
 
 simpleOnSuccess :: SPHandler m => OnSuccess m
 simpleOnSuccess uid = (togglecookie . Just . cs . show $ uid,) <$> getLandingURI

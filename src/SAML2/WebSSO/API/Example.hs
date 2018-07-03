@@ -39,8 +39,8 @@ app' Proxy ctx = do
 
 type SPAPI =
        Header "Cookie" SetCookie :> Get '[HTML] LoginStatus
-  :<|> "logout" :> "local" :> GetRedir '[HTML] (WithCookie ST)
-  :<|> "logout" :> "single" :> GetRedir '[HTML] (WithCookie ST)
+  :<|> "logout" :> "local" :> GetRedir '[HTML] (WithCookieAndLocation ST)
+  :<|> "logout" :> "single" :> GetRedir '[HTML] (WithCookieAndLocation ST)
 
 type APPAPI =
        "sp"  :> SPAPI
@@ -59,11 +59,13 @@ loginStatus cookie = do
   pure $ maybe (NotLoggedIn loginPath) (LoggedInAs logoutPath . cs . setCookieValue) cookie
 
 -- | only logout on this SP.
-localLogout :: SPHandler m => m (WithCookie ST)
-localLogout = addHeader (togglecookie Nothing) . renderURI <$> getPath SpPathHome
+localLogout :: SPHandler m => m (WithCookieAndLocation ST)
+localLogout = do
+  uri <- getPath SpPathHome
+  pure . addHeader (togglecookie Nothing) . addHeader uri $ "Logged out locally, redirecting to " <> renderURI uri
 
 -- | as in [3/4.4]
-singleLogout :: (HasCallStack, SP m) => m (WithCookie ST)
+singleLogout :: (HasCallStack, SP m) => m (WithCookieAndLocation ST)
 singleLogout = error "not implemented."
 
 data LoginStatus = NotLoggedIn ST | LoggedInAs ST ST
