@@ -77,20 +77,21 @@ class (SP m, SPStore m, SPStoreIdP m, MonadError ServantErr m) => SPHandler m wh
 ----------------------------------------------------------------------
 -- default instance
 
-newtype SimpleSP a = SimpleSP (ReaderT (Config_, MVar RequestStore, MVar AssertionStore) Handler a)
+newtype SimpleSP a = SimpleSP (ReaderT SimpleSPCtx Handler a)
   deriving (Functor, Applicative, Monad, MonadError ServantErr)
 
+type SimpleSPCtx = (Config_, MVar RequestStore, MVar AssertionStore)
 type RequestStore = Map.Map (ID AuthnRequest) Time
 type AssertionStore = Map.Map (ID Assertion) Time
 
 -- | If you read the 'Config' initially in 'IO' and then pass it into the monad via 'Reader', you
 -- safe disk load and redundant debug logs.
 instance SPHandler SimpleSP where
-  type NTCTX SimpleSP = Config_
-  nt cfg (SimpleSP m) = do
-    requests   <- liftIO $ newMVar mempty
-    assertions <- liftIO $ newMVar mempty
-    m `runReaderT` (cfg, requests, assertions)
+  type NTCTX SimpleSP = SimpleSPCtx
+  nt ctx (SimpleSP m) = m `runReaderT` ctx
+
+mkSimpleSPCtx :: Config_ -> IO SimpleSPCtx
+mkSimpleSPCtx cfg = (,,) cfg <$> newMVar mempty <*> newMVar mempty
 
 instance SP SimpleSP where
   logger level msg = getConfig >>= \cfg -> SimpleSP (loggerIO (cfg ^. cfgLogLevel) level msg)

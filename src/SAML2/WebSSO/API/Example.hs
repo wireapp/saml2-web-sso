@@ -26,7 +26,7 @@ import Web.Cookie
 
 -- | The most straight-forward 'Application' that can be constructed from 'api', 'API'.
 app :: IO Application
-app = app' (Proxy @SimpleSP) =<< configIO
+app = app' (Proxy @SimpleSP) =<< mkSimpleSPCtx =<< configIO
 
 app' :: forall m.
         ( Enter (ServerT APPAPI m) m Handler (Server APPAPI)
