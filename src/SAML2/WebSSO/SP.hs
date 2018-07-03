@@ -128,7 +128,6 @@ simpleGetIdPConfigBy mkkey idpname = maybe crash pure . Map.lookup idpname . mkm
     crash = throwError err404 { errBody = "unknown IdP: " <> cs (show idpname) }
     mkmap = Map.fromList . fmap (mkkey &&& id)
 
--- | insert
 simpleStoreRequest :: MonadIO m => MVar RequestStore -> ID AuthnRequest -> Time -> m ()
 simpleStoreRequest store req keepAroundUntil =
   liftIO $ modifyMVar_ store (pure . Map.insert req keepAroundUntil)
