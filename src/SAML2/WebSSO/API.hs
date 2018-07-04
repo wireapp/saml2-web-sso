@@ -148,7 +148,7 @@ simpleVerifyAuthnResponse (Just issuer) raw = do
 -- TODO: move this section to module "SAML2.WebSSO.API.ServantPlumbing"?
 
 type GetRedir = Verb 'GET 307
-type PostRedir = Verb 'POST 307
+type PostRedir = Verb 'POST 303
 
 
 data XML
