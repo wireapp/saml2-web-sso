@@ -4,13 +4,14 @@
 
 module Test.SAML2.WebSSO.ConfigSpec (spec) where
 
-import SAML2.WebSSO.Test.Arbitrary
+import Control.Lens
 import Data.Aeson
 import Data.Aeson.Types
 import Data.List.NonEmpty
 import Data.String.Conversions
 import Hedgehog
 import SAML2.WebSSO
+import SAML2.WebSSO.Test.Arbitrary
 import Test.Hspec
 import Text.XML.DSig
 import URI.ByteString.QQ
@@ -18,18 +19,16 @@ import Util
 
 import qualified Data.Yaml as Yaml
 
-
 spec :: Spec
 spec = describe "Config" $ do
   hedgehog . checkParallel . Group "roundtrip" $
     [("...", property $ forAll (genConfig (pure ())) >>= \v -> tripping v toJSON (parseEither parseJSON))]
 
-  it "sample config" $ do
-    want <- readSampleIO "server-config.yaml"
+  describe "sample config" $ do
     let have :: Config_
         have = Config
           { _cfgVersion  = Version_2_0
-          , _cfgLogLevel = DEBUG
+          , _cfgLogLevel = Debug
           , _cfgSPHost   = "me.wire.com"
           , _cfgSPPort   = 443
           , _cfgSPAppURI = [uri|https://me.wire.com/sp|]
@@ -37,7 +36,7 @@ spec = describe "Config" $ do
           , _cfgContacts = fallbackContact :| []
           , _cfgIdps =
             [ IdPConfig
-              { _idpPath       = "azure-test"
+              { _idpId         = "eafd1654-754d-11e8-9438-00163e5e6c14"
               , _idpMetadata   = [uri|https://login.microsoftonline.com/682febe8-021b-4fde-ac09-e60085f05181/FederationMetadata/2007-06/FederationMetadata.xml|]
               , _idpIssuer     = Issuer [uri|https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/|]
               , _idpRequestUri = [uri|https://login.microsoftonline.com/682febe8-021b-4fde-ac09-e60085f05181/saml2|]
@@ -46,4 +45,22 @@ spec = describe "Config" $ do
               }
             ]
           }
-    Yaml.decodeEither (cs want) `shouldBe` Right have
+
+    it "standard" $ do
+      want <- readSampleIO "server-config.yaml"
+      Yaml.decodeEither (cs want) `shouldBe` Right have
+
+    it "empty idp list" $ do
+      want <- readSampleIO "server-config-no-idps-1.yaml"
+      Yaml.decodeEither (cs want) `shouldBe` Right (have & cfgIdps .~ [] :: Config_)
+
+    it "no idp list at all" $ do
+      want <- readSampleIO "server-config-no-idps-2.yaml"
+      Yaml.decodeEither (cs want) `shouldBe` Right (have & cfgIdps .~ [] :: Config_)
+
+    it "minimal contacts" $ do
+      want <- readSampleIO "server-config-minimal-contact-details.yaml"
+      let pers = ContactPerson ContactAdministrative Nothing Nothing Nothing (Just [uri|email:president@evil.corp|]) Nothing
+          have' = have & cfgIdps .~ ([] :: [IdPConfig_])
+                       & cfgContacts .~ (pers :| [])
+      Yaml.decodeEither (cs want) `shouldBe` Right have'

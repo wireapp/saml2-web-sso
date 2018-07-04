@@ -50,6 +50,7 @@ dependencies:
   - asn1-types
   - base64-bytestring
   - binary
+  - bytestring
   - containers
   - cookie
   - cryptonite
@@ -65,7 +66,6 @@ dependencies:
   - servant
   - servant-multipart
   - servant-server
-  - stack-prism
   - string-conversions
   - text
   - time

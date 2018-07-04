@@ -7,16 +7,19 @@ module TestSP where
 import Control.Concurrent.MVar
 import Control.Exception (throwIO, ErrorCall(..))
 import Control.Monad.Except
+import Control.Monad.Reader
 import Control.Monad.State
-import Data.Monoid
+import Data.String.Conversions
+import Data.Yaml
 import Lens.Micro
 import Lens.Micro.TH
 import SAML2.WebSSO
 import Servant.Server
-import Text.XML.DSig
 import URI.ByteString.QQ
 import Util
 
+
+----------------------------------------------------------------------
 
 data Ctx = Ctx
   { _ctxNow            :: Time
@@ -33,7 +36,7 @@ makeLenses ''Ctx
 mkTestCtx1 :: IO Ctx
 mkTestCtx1 = do
   let _ctxNow         = timeNow
-      _ctxConfig      = fallbackConfig & cfgLogLevel .~ SILENT
+      _ctxConfig      = fallbackConfig & cfgLogLevel .~ Fatal
                                        & cfgSPAppURI .~ [uri|https://zb2.zerobuzz.net:60443/|]
                                        & cfgSPSsoURI .~ [uri|https://zb2.zerobuzz.net:60443/|]
   _ctxAssertionStore <- newMVar mempty
@@ -42,7 +45,7 @@ mkTestCtx1 = do
 
 -- | Use this to see more output on a per-test basis.
 verbose :: Ctx -> Ctx
-verbose = ctxConfig . cfgLogLevel .~ DEBUG
+verbose = ctxConfig . cfgLogLevel .~ Debug
 
 mkTestCtx2 :: IO Ctx
 mkTestCtx2 = do
@@ -52,14 +55,7 @@ mkTestCtx2 = do
 
 mkmyidp :: IO IdPConfig_
 mkmyidp = do
-  Right cert <- parseKeyInfo <$> readSampleIO "microsoft-idp-keyinfo.xml"
-  pure $ IdPConfig
-    "myidp"
-    [uri|https://login.microsoftonline.com/682febe8-021b-4fde-ac09-e60085f05181/FederationMetadata/2007-06/FederationMetadata.xml|]
-    (Issuer [uri|https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/|])
-    [uri|http://myidp.io/sso|]
-    cert
-    ()
+  either error id . decodeEither . cs <$> readSampleIO "microsoft-idp-config.yaml"
 
 mkTestCtx3 :: IO Ctx
 mkTestCtx3 = mkTestCtx2
@@ -106,7 +102,7 @@ instance SPStore TestSP where
 
 instance SPStoreIdP TestSP where
   storeIdPConfig _ = pure ()
-  getIdPConfig = simpleGetIdPConfigBy (^. idpPath)
+  getIdPConfig = simpleGetIdPConfigBy (^. idpId)
   getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpIssuer)
 
 instance SPHandler TestSP where
@@ -117,3 +113,18 @@ instance SPHandler TestSP where
 
 testSP :: Ctx -> TestSP a -> IO a
 testSP ctx (TestSP m) = either (throwIO . ErrorCall . show) pure =<< runHandler (m `evalStateT` ctx)
+
+
+----------------------------------------------------------------------
+
+newtype TestSPStoreIdP a = TestSPStoreIdP { runTestSPStoreIdP :: ExceptT ServantErr (Reader (Maybe IdPConfig_)) a }
+  deriving (Functor, Applicative, Monad, MonadReader (Maybe IdPConfig_), MonadError ServantErr)
+
+instance HasConfig TestSPStoreIdP where
+  type ConfigExtra TestSPStoreIdP = ()
+  getConfig = error "n/a"
+
+instance SPStoreIdP TestSPStoreIdP where
+  storeIdPConfig = error "n/a"
+  getIdPConfig = error "n/a"
+  getIdPConfigByIssuer _ = maybe (throwError err404) pure =<< ask

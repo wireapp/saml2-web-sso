@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{-# OPTIONS_GHC -Wno-unused-binds #-}
+{-# OPTIONS_GHC -Wno-unused-binds -Wno-orphans #-}
 
 module Util where
 
@@ -20,9 +20,13 @@ import System.Process (system)
 import Test.Hspec
 import Text.Show.Pretty
 import Text.XML
+import Data.String
+import Data.UUID as UUID
 
 import qualified Data.Text.Lazy.IO as LT
 
+instance IsString IdPId where
+    fromString piece = maybe (error $ "no valid UUID" <> piece) (IdPId) . UUID.fromString $ piece
 
 render' :: Document -> LT
 render' = renderText $ def

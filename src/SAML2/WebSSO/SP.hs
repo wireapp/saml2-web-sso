@@ -38,8 +38,8 @@ import Text.XML.Util
 
 -- | Application logic of the service provider.
 class (HasConfig m, Monad m) => SP m where
-  logger :: LogLevel -> String -> m ()
-  default logger :: MonadIO m => LogLevel -> String -> m ()
+  logger :: Level -> String -> m ()
+  default logger :: MonadIO m => Level -> String -> m ()
   logger = loggerConfIO
 
   createUUID :: m UUID
@@ -65,7 +65,7 @@ class (SP m) => SPStore m where
 
 class MonadError ServantErr m => SPStoreIdP m where
   storeIdPConfig       :: IdPConfig (ConfigExtra m) -> m ()
-  getIdPConfig         :: ST -> m (IdPConfig (ConfigExtra m))
+  getIdPConfig         :: IdPId -> m (IdPConfig (ConfigExtra m))
   getIdPConfigByIssuer :: Issuer -> m (IdPConfig (ConfigExtra m))
 
 -- | HTTP handling of the service provider.
@@ -77,20 +77,21 @@ class (SP m, SPStore m, SPStoreIdP m, MonadError ServantErr m) => SPHandler m wh
 ----------------------------------------------------------------------
 -- default instance
 
-newtype SimpleSP a = SimpleSP (ReaderT (Config_, MVar RequestStore, MVar AssertionStore) Handler a)
+newtype SimpleSP a = SimpleSP (ReaderT SimpleSPCtx Handler a)
   deriving (Functor, Applicative, Monad, MonadError ServantErr)
 
+type SimpleSPCtx = (Config_, MVar RequestStore, MVar AssertionStore)
 type RequestStore = Map.Map (ID AuthnRequest) Time
 type AssertionStore = Map.Map (ID Assertion) Time
 
 -- | If you read the 'Config' initially in 'IO' and then pass it into the monad via 'Reader', you
 -- safe disk load and redundant debug logs.
 instance SPHandler SimpleSP where
-  type NTCTX SimpleSP = Config_
-  nt cfg (SimpleSP m) = do
-    requests   <- liftIO $ newMVar mempty
-    assertions <- liftIO $ newMVar mempty
-    m `runReaderT` (cfg, requests, assertions)
+  type NTCTX SimpleSP = SimpleSPCtx
+  nt ctx (SimpleSP m) = m `runReaderT` ctx
+
+mkSimpleSPCtx :: Config_ -> IO SimpleSPCtx
+mkSimpleSPCtx cfg = (,,) cfg <$> newMVar mempty <*> newMVar mempty
 
 instance SP SimpleSP where
   logger level msg = getConfig >>= \cfg -> SimpleSP (loggerIO (cfg ^. cfgLogLevel) level msg)
@@ -118,7 +119,7 @@ instance HasConfig SimpleSP where
 
 instance SPStoreIdP SimpleSP where
   storeIdPConfig _ = pure ()
-  getIdPConfig = simpleGetIdPConfigBy (^. idpPath)
+  getIdPConfig = simpleGetIdPConfigBy (^. idpId)
   getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpIssuer)
 
 simpleGetIdPConfigBy :: (MonadError ServantErr m, HasConfig m, Show a, Ord a)
@@ -128,7 +129,6 @@ simpleGetIdPConfigBy mkkey idpname = maybe crash pure . Map.lookup idpname . mkm
     crash = throwError err404 { errBody = "unknown IdP: " <> cs (show idpname) }
     mkmap = Map.fromList . fmap (mkkey &&& id)
 
--- | insert
 simpleStoreRequest :: MonadIO m => MVar RequestStore -> ID AuthnRequest -> Time -> m ()
 simpleStoreRequest store req keepAroundUntil =
   liftIO $ modifyMVar_ store (pure . Map.insert req keepAroundUntil)
@@ -154,13 +154,13 @@ simpleStoreAssertion store now aid time = do
 ----------------------------------------------------------------------
 -- combinators
 
-loggerConfIO :: (HasConfig m, MonadIO m) => LogLevel -> String -> m ()
+loggerConfIO :: (HasConfig m, MonadIO m) => Level -> String -> m ()
 loggerConfIO level msg = do
   cfgsays <- (^. cfgLogLevel) <$> getConfig
   loggerIO cfgsays level msg
 
-loggerIO :: MonadIO m => LogLevel -> LogLevel -> String -> m ()
-loggerIO cfgsays level msg = if level <= cfgsays
+loggerIO :: MonadIO m => Level -> Level -> String -> m ()
+loggerIO cfgsays level msg = if level >= cfgsays
   then liftIO $ putStrLn msg
   else pure ()
 
@@ -178,13 +178,12 @@ createID = ID . fixMSAD . UUID.toText <$> createUUID
     fixMSAD :: ST -> ST
     fixMSAD = cs . ("id" <>) . filter (/= '-') . cs
 
-createAuthnRequest :: (SP m, SPStore m) => m AuthnRequest
-createAuthnRequest = do
+createAuthnRequest :: (SP m, SPStore m) => NominalDiffTime -> m AuthnRequest
+createAuthnRequest lifeExpectancySecs = do
   _rqID           <- createID
   _rqVersion      <- (^. cfgVersion) <$> getConfig
   _rqIssueInstant <- getNow
   _rqIssuer       <- Issuer <$> getLandingURI
-  let lifeExpectancySecs = 8 * 60 * 60  -- TODO: make this yaml-configurable.
   storeRequest _rqID (addTime lifeExpectancySecs _rqIssueInstant)
   pure AuthnRequest{..}
 
@@ -336,7 +335,7 @@ checkAssertions missuer assertions = do
     deny ["no AuthnStatement in assertions"]
 
   checkStatement `mapM_` statements
-  pure . AccessGranted $ UserId issuer subject
+  pure . AccessGranted $ UserRef issuer subject
 
 checkStatement :: (SP m, MonadJudge m) => Statement -> m ()
 checkStatement = \case

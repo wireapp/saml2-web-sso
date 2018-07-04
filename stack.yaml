@@ -7,10 +7,6 @@ packages:
     commit: 8a91c880740232dbd52ff73efb99ea179c2338c7
   extra-dep: true
 - location:
-    git: https://github.com/wireapp/stack-prism
-    commit: 631978447e3a1d658613f606ce7a679d7cce2294
-  extra-dep: true
-- location:
     git: https://github.com/wireapp/hspec-wai
     commit: ca10d13deab929f1cc3a569abea2e7fbe35fdbe3  # https://github.com/hspec/hspec-wai/pull/49
   extra-dep: true

@@ -11,10 +11,12 @@ module SAML2.WebSSO.Config where
 import Control.Monad (when)
 import Data.Aeson
 import Data.Aeson.TH
+import Data.Maybe (fromMaybe)
 import Data.Monoid
 import Data.List.NonEmpty
 import Data.String.Conversions
 import GHC.Generics
+import Data.UUID as UUID
 import Lens.Micro
 import Lens.Micro.TH
 import SAML2.WebSSO.Config.TH (deriveJSONOptions)
@@ -29,6 +31,7 @@ import URI.ByteString.QQ
 
 import qualified Data.X509 as X509
 import qualified Data.Yaml as Yaml
+import qualified Servant
 
 
 ----------------------------------------------------------------------
@@ -38,25 +41,26 @@ type Config_ = Config ()
 
 data Config extra = Config
   { _cfgVersion           :: Version
-  , _cfgLogLevel          :: LogLevel
+  , _cfgLogLevel          :: Level
   , _cfgSPHost            :: String
   , _cfgSPPort            :: Int
   , _cfgSPAppURI          :: URI
   , _cfgSPSsoURI          :: URI
-  , _cfgContacts          :: NonEmpty SPContactPerson
+  , _cfgContacts          :: NonEmpty ContactPerson
   , _cfgIdps              :: [IdPConfig extra]
   }
   deriving (Eq, Show, Generic)
 
--- | FUTUREWORK: remove this in favor of tinylog's type.  more compatible with people who are using
--- that.
-data LogLevel = SILENT | CRITICAL | ERROR | WARN | INFO | DEBUG
+-- | this looks exactly like tinylog's type, but we redefine it here to avoid the dependency.
+data Level = Trace | Debug | Info | Warn | Error | Fatal
   deriving (Eq, Ord, Show, Enum, Bounded, Generic, FromJSON, ToJSON)
+
+newtype IdPId = IdPId { fromIdPId :: UUID } deriving (Eq, Show, Generic, Ord)
 
 type IdPConfig_ = IdPConfig ()
 
 data IdPConfig extra = IdPConfig
-  { _idpPath            :: ST
+  { _idpId              :: IdPId
   , _idpMetadata        :: URI
   , _idpIssuer          :: Issuer
   , _idpRequestUri      :: URI
@@ -69,12 +73,52 @@ data IdPConfig extra = IdPConfig
 ----------------------------------------------------------------------
 -- instances
 
+idPIdToST :: IdPId -> ST
+idPIdToST = UUID.toText . fromIdPId
+
+instance Servant.FromHttpApiData IdPId where
+    parseUrlPiece piece = case UUID.fromText piece of
+      Nothing -> Left . cs $ "no valid UUID-piece " ++ show piece
+      Just uid -> return $ IdPId uid
+
 makeLenses ''Config
 makeLenses ''IdPConfig
 
-deriveJSON deriveJSONOptions ''Config
+instance ToJSON a => ToJSON (Config a) where
+  toJSON Config {..} = object $
+    [ "version"    .= _cfgVersion
+    , "log_level"  .= _cfgLogLevel
+    , "sp_host"    .= _cfgSPHost
+    , "sp_port"    .= _cfgSPPort
+    , "sp_app_uri" .= _cfgSPAppURI
+    , "sp_sso_uri" .= _cfgSPSsoURI
+    , "contacts"   .= _cfgContacts
+    ] <>
+    [ "idps" .= _cfgIdps | not $ Prelude.null _cfgIdps ]
+
+instance FromJSON a => FromJSON (Config a) where
+  parseJSON = withObject "Config" $ \obj -> do
+    _cfgVersion           <- obj .: "version"
+    _cfgLogLevel          <- obj .: "log_level"
+    _cfgSPHost            <- obj .: "sp_host"
+    _cfgSPPort            <- obj .: "sp_port"
+    _cfgSPAppURI          <- obj .: "sp_app_uri"
+    _cfgSPSsoURI          <- obj .: "sp_sso_uri"
+    _cfgContacts          <- obj .: "contacts"
+    _cfgIdps              <- fromMaybe [] <$> obj .:? "idps"
+    pure Config {..}
+
+
 deriveJSON deriveJSONOptions ''IdPConfig
-deriveJSON deriveJSONOptions ''SPContactPerson
+deriveJSON deriveJSONOptions ''ContactPerson
+deriveJSON deriveJSONOptions ''ContactType
+
+instance FromJSON IdPId where
+  parseJSON value = (>>= maybe unerror (pure . IdPId) . UUID.fromText) . parseJSON $ value
+    where unerror = fail ("could not parse config: " <> (show value))
+
+instance ToJSON IdPId where
+  toJSON = toJSON . UUID.toText . fromIdPId
 
 instance FromJSON URI where
   parseJSON = (>>= either unerror pure . parseURI') . parseJSON
@@ -103,7 +147,7 @@ instance ToJSON X509.SignedCertificate where
 fallbackConfig :: Config extra
 fallbackConfig = Config
   { _cfgVersion           = Version_2_0
-  , _cfgLogLevel          = DEBUG
+  , _cfgLogLevel          = Debug
   , _cfgSPHost            = "localhost"
   , _cfgSPPort            = 8081
   , _cfgSPAppURI          = [uri|https://me.wire.com/sp|]
@@ -112,13 +156,14 @@ fallbackConfig = Config
   , _cfgIdps              = mempty
   }
 
-fallbackContact :: SPContactPerson
-fallbackContact = SPContactPerson
-  { _spcntCompany   = "evil corp."
-  , _spcntGivenName = "Dr."
-  , _spcntSurname   = "Girlfriend"
-  , _spcntEmail     = [uri|email:president@evil.corp|]
-  , _spcntPhone     = "+314159265"
+fallbackContact :: ContactPerson
+fallbackContact = ContactPerson
+  { _cntType      = ContactSupport
+  , _cntCompany   = Just "evil corp."
+  , _cntGivenName = Just "Dr."
+  , _cntSurname   = Just "Girlfriend"
+  , _cntEmail     = Just [uri|email:president@evil.corp|]
+  , _cntPhone     = Just "+314159265"
   }
 
 
@@ -137,7 +182,7 @@ readConfig filepath =
   =<< Yaml.decodeFileEither filepath
   where
     info :: Config extra -> IO ()
-    info cfg = when (cfg ^. cfgLogLevel >= INFO) $
+    info cfg = when (cfg ^. cfgLogLevel >= Info) $
       hPutStrLn stderr . cs . Yaml.encode $ cfg
 
     warn :: Yaml.ParseException -> IO ()

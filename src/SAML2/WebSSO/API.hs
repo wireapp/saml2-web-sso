@@ -26,17 +26,20 @@ import Data.List
 import Data.Maybe (catMaybes)
 import Data.Proxy
 import Data.String.Conversions
+import Data.Time
+import GHC.Generics
 import GHC.Stack
 import Lens.Micro
 import Network.HTTP.Media ((//))
+import Network.HTTP.Types
 import Network.Wai hiding (Response)
 import Network.Wai.Internal as Wai
 import SAML2.WebSSO.Config
 import SAML2.WebSSO.SP
 import SAML2.WebSSO.Types
 import SAML2.WebSSO.XML
-import Servant.API.ContentTypes
-import Servant.API hiding (URI(..))
+import Servant.API.ContentTypes as Servant
+import Servant.API as Servant hiding (URI(..))
 import Servant.Multipart
 import Servant.Server
 import Text.Hamlet.XML
@@ -48,6 +51,7 @@ import Text.XML.Util
 import URI.ByteString
 import Web.Cookie
 
+import qualified Data.ByteString.Builder as SBSBuilder
 import qualified Crypto.PubKey.RSA as RSA
 import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
@@ -59,24 +63,29 @@ import qualified SAML2.WebSSO.XML.Meta as Meta
 ----------------------------------------------------------------------
 -- saml web-sso api
 
-type API = APIMeta'
-      :<|> APIAuthReq'
-      :<|> APIAuthResp'
+type OnSuccess m = UserRef -> m (SetCookie, URI)
 
 type APIMeta     = Get '[XML] Meta.SPDesc
-type APIAuthReq  = Capture "idp" ST :> Get '[HTML] (FormRedirect AuthnRequest)
-type APIAuthResp = MultipartForm Mem AuthnResponseBody :> PostVoid
+type APIAuthReq  = Capture "idp" IdPId :> Get '[HTML] (FormRedirect AuthnRequest)
+type APIAuthResp = MultipartForm Mem AuthnResponseBody :> PostRedir '[HTML] (WithCookieAndLocation ST)
 
--- FUTUREWORK: respond with redirect in case of success, instead of responding with Void and
--- handling all cases with exceptions: https://github.com/haskell-servant/servant/issues/117
+-- NB: 'APIAuthResp' cannot easily be enhanced with a @Capture "idp" IdPId@ path segment like
+-- 'APIAuthReq'.  The reason is a design flag in the standard: the meta information end-point must
+-- provide the response end-point URL to any client, and it would not be clear which IdP to include
+-- there.  So instead we need to accept responses from any IdP on the same URI, and rely on the
+-- information from the response body only to recover our internal spar IdP handle.
 
 type APIMeta'     = "meta" :> APIMeta
 type APIAuthReq'  = "authreq" :> APIAuthReq
 type APIAuthResp' = "authresp" :> APIAuthResp
 
-api :: SPHandler m => ST -> (UserId -> m Void) -> ServerT API m
+type API = APIMeta'
+      :<|> APIAuthReq'
+      :<|> APIAuthResp'
+
+api :: SPHandler m => ST -> OnSuccess m -> ServerT API m
 api appName onsuccess = meta appName (Proxy @API) (Proxy @APIAuthResp')
-                   :<|> authreq
+                   :<|> authreq'
                    :<|> authresp onsuccess
 
 
@@ -85,32 +94,34 @@ api appName onsuccess = meta appName (Proxy @API) (Proxy @APIAuthResp')
 
 -- | An 'AuthnResponseBody' contains a 'AuthnResponse', but you need to give it a trust base forn
 -- signature verification first, and you may get an error when you're looking at it.
-newtype AuthnResponseBody = AuthnResponseBody ((Issuer -> Either String RSA.PublicKey) -> Either ServantErr AuthnResponse)
+newtype AuthnResponseBody = AuthnResponseBody { fromAuthnResponseBody :: forall m. SPStoreIdP m => m AuthnResponse }
 
-parseAuthnResponseBody :: MonadError ServantErr m => LBS -> (Issuer -> Either String RSA.PublicKey) -> m AuthnResponse
-parseAuthnResponseBody base64 = \lookupPublicKey -> do
+parseAuthnResponseBody :: forall m. SPStoreIdP m => LBS -> m AuthnResponse
+parseAuthnResponseBody base64 = do
   xmltxt <-
     either (const $ throwError err400 { errBody = "bad base64 encoding in SAMLResponse" }) pure $
     EL.decode base64
   resp <-
     either (\ex -> throwError err400 { errBody = cs $ show ex }) pure $
     decode (cs xmltxt)
-  () <-
-    either (\ex -> throwError err400 { errBody = "invalid signature: " <> cs ex }) pure $
-    simpleVerifyAuthnResponse (resp ^. rspIssuer) lookupPublicKey xmltxt
+  simpleVerifyAuthnResponse (resp ^. rspIssuer) xmltxt
   pure resp
 
 
 -- | Pull assertions sub-forest and pass all trees in it to 'verify' individually.  The 'LBS'
--- argument must be a valid 'AuthnResponse'.  All assertions need to be signed by the same issuer
--- with the same key.
-simpleVerifyAuthnResponse :: forall m. MonadError String m
-  => Maybe Issuer -> (Issuer -> Either String RSA.PublicKey) -> LBS -> m ()
-simpleVerifyAuthnResponse Nothing _ _ = throwError "missing issuer in response."
-simpleVerifyAuthnResponse (Just issuer) getkey raw = case getkey issuer of
-  Left errmsg -> throwError errmsg
-  Right key -> do
-    doc :: Cursor <- fromDocument <$> either (throwError . show) pure (parseLBS def raw)
+-- argument must be a valid 'AuthnResponse'.  All assertions need to be signed by the issuer
+-- given in the arguments using the same key.
+simpleVerifyAuthnResponse :: forall m. SPStoreIdP m => Maybe Issuer -> LBS -> m ()
+simpleVerifyAuthnResponse Nothing _ = throwError err400 { errBody = "missing issuer in response." }
+simpleVerifyAuthnResponse (Just issuer) raw = do
+    creds <- (^. idpPublicKey) <$> getIdPConfigByIssuer issuer
+    key :: RSA.PublicKey <- case keyInfoToCreds creds of
+        Right (SignCreds SignDigestSha256 (SignKeyRSA k)) -> pure k
+        Left msg -> throwError err500 { errBody = "IdP pubkey corrupted in SP config: " <> cs (show msg) }
+
+    doc :: Cursor <- either (\msg -> throwError err400 { errBody = "could not parse document: " <> cs (show msg) })
+                            (pure . fromDocument)
+                            (parseLBS def raw)
 
     let elemOnly (NodeElement el) = Just el
         elemOnly _ = Nothing
@@ -119,23 +130,25 @@ simpleVerifyAuthnResponse (Just issuer) getkey raw = case getkey issuer of
         assertions = catMaybes $ elemOnly . node <$>
                      (doc $/ element "{urn:oasis:names:tc:SAML:2.0:assertion}Assertion")
     when (null assertions) $
-      throwError $ "no assertions: " <> show raw
+      throwError err400 { errBody = "no assertions: " <> cs (show raw) }
 
     let assertionID :: Element -> m String
         assertionID el@(Element _ attrs _)
-          = maybe (throwError $ "assertion without ID: " <> show el) (pure . cs)
+          = maybe (throwError err400 { errBody = "assertion without ID: " <> cs (show el) }) (pure . cs)
           $ Map.lookup "ID" attrs
     nodeids :: [String]
       <- assertionID `mapM` assertions
 
-    verify key raw `mapM_` nodeids
+    either (\msg -> throwError err400 { errBody = cs msg }) pure $ (verify key raw `mapM_` nodeids)
 
 
 ----------------------------------------------------------------------
 -- servant, wai plumbing
 
-type GetVoid  = Get  '[HTML, JSON, XML] Void
-type PostVoid = Post '[HTML, JSON, XML] Void
+-- TODO: move this section to module "SAML2.WebSSO.API.ServantPlumbing"?
+
+type GetRedir = Verb 'GET 307
+type PostRedir = Verb 'POST 303
 
 
 data XML
@@ -150,34 +163,32 @@ instance {-# OVERLAPPABLE #-} HasXMLRoot a => MimeUnrender XML a where
   mimeUnrender Proxy = fmapL show . decode . cs
 
 
-data Void
-
-instance MimeRender HTML Void where
-  mimeRender Proxy = error "absurd"
-
-instance {-# OVERLAPS #-} MimeRender JSON Void where
-  mimeRender Proxy = error "absurd"
-
-instance {-# OVERLAPS #-} MimeRender XML Void where
-  mimeRender Proxy = error "absurd"
-
-
 data HTML
 
 instance  Accept HTML where
   contentType Proxy = "text" // "html"
 
+instance MimeRender HTML ST where
+  mimeRender Proxy msg = mkHtml
+    [xml|
+      <body>
+        <p>
+          #{msg}
+    |]
 
 instance FromMultipart Mem AuthnResponseBody where
-  fromMultipart resp = Just . AuthnResponseBody $ \lkup -> do
-    base64 <- maybe (throwError err400 { errBody = "no SAMLResponse in the body" }) pure $
-              lookupInput "SAMLResponse" resp
-    parseAuthnResponseBody (cs base64) lkup
+  fromMultipart resp = Just (AuthnResponseBody eval)
+    where
+      eval :: forall m. SPStoreIdP m => m AuthnResponse
+      eval = do
+        base64 <- maybe (throwError err400 { errBody = "no SAMLResponse in the body" }) pure $
+                  lookupInput "SAMLResponse" resp
+        parseAuthnResponseBody (cs base64)
 
 
 -- | [2/3.5.4]
 data FormRedirect xml = FormRedirect URI xml
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 class HasXML xml => HasFormRedirect xml where
   formRedirectFieldName :: xml -> ST
@@ -208,6 +219,15 @@ mkHtml nodes = renderLBS def doc
     doctyp   = Doctype "html" (Just $ PublicID "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd")
     root     = Element "html" rootattr nodes
     rootattr = Map.fromList [("xmlns", "http://www.w3.org/1999/xhtml"), ("xml:lang", "en")]
+
+
+type WithCookieAndLocation = Headers '[Servant.Header "Set-Cookie" SetCookie, Servant.Header "Location" URI]
+
+instance ToHttpApiData SetCookie where
+  toUrlPiece = cs . SBSBuilder.toLazyByteString . renderSetCookie
+
+instance ToHttpApiData URI where
+  toUrlPiece = renderURI
 
 
 -- | [3.5.5.1] Caching
@@ -261,48 +281,34 @@ meta appName proxyAPI proxyAPIAuthResp = do
   contacts <- (^. cfgContacts) <$> getConfig
   Meta.spMeta <$> Meta.spDesc appName landing resp contacts
 
-authreq :: (SPStoreIdP m, SPHandler m) => ST -> m (FormRedirect AuthnRequest)
-authreq idpname = do
+authreq :: (SPStoreIdP m, SPHandler m) => NominalDiffTime -> IdPId -> m (FormRedirect AuthnRequest)
+authreq lifeExpectancySecs idpname = do
   enterH "authreq"
   uri <- (^. idpRequestUri) <$> getIdPConfig idpname
-  logger DEBUG $ "authreq uri: " <> cs (renderURI uri)
-  req <- createAuthnRequest
-  logger DEBUG $ "authreq req: " <> show req
+  logger Debug $ "authreq uri: " <> cs (renderURI uri)
+  req <- createAuthnRequest lifeExpectancySecs
+  logger Debug $ "authreq req: " <> show req
   leaveH $ FormRedirect uri req
 
--- | Get config and pass the missing idp credentials to the response constructor.
-resolveBody :: SPHandler m => AuthnResponseBody -> m AuthnResponse
-resolveBody (AuthnResponseBody mkbody) = do
-  either throwError pure . mkbody =<< mkLookupPubKey
+authreq' :: (SPStoreIdP m, SPHandler m) => IdPId -> m (FormRedirect AuthnRequest)
+authreq' = authreq (8 * 60 * 60)
 
-mkLookupPubKey :: forall m. SPHandler m => m (Issuer -> Either String RSA.PublicKey)
-mkLookupPubKey = do
-  idps :: [IdPConfig (ConfigExtra m)]
-    <- (^. cfgIdps) <$> getConfig
-  pubkeys :: [(Issuer, RSA.PublicKey)]
-    <- forM idps $ \idp -> do
-      creds <- either crash pure $ keyInfoToCreds (idp ^. idpPublicKey)
-      case creds of
-        SignCreds SignDigestSha256 (SignKeyRSA pubkey) -> pure (idp ^. idpIssuer, pubkey)
-  pure $ \issuer ->
-    let errmsg = "unknown issuer: " <> show issuer <> "; known issuers: " <> show ((^. idpIssuer) <$> idps)
-    in maybe (Left errmsg) Right . Map.lookup issuer $ Map.fromList pubkeys
-
-simpleOnSuccess :: SPHandler m => UserId -> m Void
-simpleOnSuccess uid = getLandingURI >>= (`redirect` [cookieToHeader . togglecookie . Just . cs . show $ uid])
-
-authresp :: SPHandler m => (UserId -> m Void) -> AuthnResponseBody -> m Void
+authresp :: SPHandler m => OnSuccess m -> AuthnResponseBody -> m (WithCookieAndLocation ST)
 authresp onsuccess body = do
   enterH "authresp: entering"
-  resp <- resolveBody body
-  logger DEBUG $ "authresp: " <> ppShow resp
+  resp <- fromAuthnResponseBody body
+  logger Debug $ "authresp: " <> ppShow resp
   verdict <- judge resp
-  logger DEBUG $ "authresp: " <> show verdict
+  logger Debug $ "authresp: " <> show verdict
   case verdict of
     AccessDenied reasons
-      -> logger INFO (show reasons) >> reject (cs $ ST.intercalate ", " reasons)
+      -> logger Info (show reasons) >> reject (cs $ ST.intercalate ", " reasons)
     AccessGranted uid
-      -> onsuccess uid
+      -> onsuccess uid <&> \(setcookie, uri)
+                             -> addHeader setcookie $ addHeader uri ("SSO successful, redirecting to " <> renderURI uri)
+
+simpleOnSuccess :: SPHandler m => OnSuccess m
+simpleOnSuccess uid = (togglecookie . Just . userRefToST $ uid,) <$> getLandingURI
 
 
 ----------------------------------------------------------------------
@@ -310,16 +316,16 @@ authresp onsuccess body = do
 
 crash :: (SP m, MonadError ServantErr m) => String -> m a
 crash msg = do
-  logger CRITICAL msg
+  logger Fatal msg
   throwError err500 { errBody = "internal error: consult server logs." }
 
 enterH :: SP m => String -> m ()
 enterH msg =
-  logger DEBUG $ "entering handler: " <> msg
+  logger Debug $ "entering handler: " <> msg
 
 leaveH :: (Show a, SP m) => a -> m a
 leaveH x = do
-  logger DEBUG $ "leaving handler: " <> show x
+  logger Debug $ "leaving handler: " <> show x
   pure x
 
 

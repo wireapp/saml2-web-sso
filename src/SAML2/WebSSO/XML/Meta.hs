@@ -1,5 +1,5 @@
 module SAML2.WebSSO.XML.Meta
-  ( SPDescPre(..), SPContactPerson(..), SPDesc(..)
+  ( SPDescPre(..), ContactPerson(..), SPDesc(..)
   , spdID
   , spdValidUntil
   , spdCacheDuration
@@ -16,6 +16,7 @@ import Data.List.NonEmpty
 import Data.Maybe
 import Data.Proxy
 import Data.String.Conversions
+import GHC.Generics (Generic)
 import GHC.Stack
 import Lens.Micro
 import SAML2.WebSSO.SP
@@ -40,7 +41,7 @@ import qualified SAML2.XML.Signature.Types as HX
 
 -- | 'HS.Descriptor', but without exposing the use of hsaml2.
 newtype SPDesc = SPDesc Document
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 instance HasXML SPDesc where
   parse [NodeElement el] = pure . SPDesc $ Document defPrologue el defMiscellaneous
@@ -50,10 +51,10 @@ instance HasXMLRoot SPDesc where
   renderRoot (SPDesc (Document _ el _)) = el
 
 
-spDesc :: SP m => ST -> URI -> URI -> NonEmpty SPContactPerson -> m SPDescPre
+spDesc :: SP m => ST -> URI -> URI -> NonEmpty ContactPerson -> m SPDescPre
 spDesc nick org resp contact = createUUID >>= \uuid -> spDesc' uuid nick org resp contact
 
-spDesc' :: SP m => UUID.UUID -> ST -> URI -> URI -> NonEmpty SPContactPerson -> m SPDescPre
+spDesc' :: SP m => UUID.UUID -> ST -> URI -> URI -> NonEmpty ContactPerson -> m SPDescPre
 spDesc' uuid nick org resp contact = do
   let _spdID             = uuid
       _spdCacheDuration  = months 1
@@ -97,14 +98,14 @@ spMeta' spdesc = HS.SPSSODescriptor
         }
       , HS.roleDescriptorContactPerson = toList (spdesc ^. spdContacts) <&> \contact ->
           HS.ContactPerson
-            { HS.contactType = HS.ContactTypeSupport
+            { HS.contactType = castContactType $ contact ^. cntType
             , HS.contactAttrs = []
             , HS.contactExtensions = HS.Extensions []
-            , HS.contactCompany = Just . cs $ contact ^. spcntCompany
-            , HS.contactGivenName = Just . cs $ contact ^. spcntGivenName
-            , HS.contactSurName = Just . cs $ contact ^. spcntSurname
-            , HS.contactEmailAddress = [castURL $ contact ^. spcntEmail] :: [HX.AnyURI]
-            , HS.contactTelephoneNumber = [cs $ contact ^. spcntPhone]
+            , HS.contactCompany = cs <$> contact ^. cntCompany
+            , HS.contactGivenName = cs <$> contact ^. cntGivenName
+            , HS.contactSurName = cs <$> contact ^. cntSurname
+            , HS.contactEmailAddress = maybeToList $ castURL <$> contact ^. cntEmail :: [HX.AnyURI]
+            , HS.contactTelephoneNumber = maybeToList $ cs <$> contact ^. cntPhone
             }
       }
     , HS.descriptorSSO = HS.SSODescriptor
@@ -134,3 +135,11 @@ spMeta' spdesc = HS.SPSSODescriptor
 
 castURL :: URI -> HX.URI
 castURL = fromJust . OldURI.parseURI . cs . renderURI
+
+castContactType :: ContactType -> HS.ContactType
+castContactType = \case
+  ContactTechnical      -> HS.ContactTypeTechnical
+  ContactSupport        -> HS.ContactTypeSupport
+  ContactAdministrative -> HS.ContactTypeAdministrative
+  ContactBilling        -> HS.ContactTypeBilling
+  ContactOther          -> HS.ContactTypeOther

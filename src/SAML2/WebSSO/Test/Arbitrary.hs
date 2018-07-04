@@ -5,6 +5,7 @@
 module SAML2.WebSSO.Test.Arbitrary where
 
 import Data.List.NonEmpty
+import Data.Maybe (catMaybes)
 import Data.String.Conversions
 import Hedgehog
 import SAML2.WebSSO
@@ -15,10 +16,13 @@ import URI.ByteString.QQ
 
 import qualified Data.Map as Map
 import qualified Data.Text as ST
+import qualified Data.UUID as UUID
+import qualified Data.X509 as X509
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Gen.QuickCheck as THQ
 import qualified Hedgehog.Range as Range
 import qualified Test.QuickCheck.Hedgehog as TQH
+import qualified Text.XML.DSig as DSig
 
 
 genVersion :: Gen Version
@@ -72,17 +76,18 @@ genConfig genextra = do
   _cfgExtraInfo  <- Gen.maybe genextra
   pure Config{..}
 
-genSPContactPerson :: Gen SPContactPerson
-genSPContactPerson = SPContactPerson
-  <$> genNiceWord
-  <*> genNiceWord
-  <*> genNiceWord
-  <*> genURI
-  <*> genNiceWord
+genSPContactPerson :: Gen ContactPerson
+genSPContactPerson = ContactPerson
+  <$> Gen.enumBounded
+  <*> Gen.maybe genNiceWord
+  <*> Gen.maybe genNiceWord
+  <*> Gen.maybe genNiceWord
+  <*> Gen.maybe genURI
+  <*> Gen.maybe genNiceWord
 
 
-instance Arbitrary UserId where
-  arbitrary = UserId <$> arbitrary <*> arbitrary
+instance Arbitrary UserRef where
+  arbitrary = UserRef <$> arbitrary <*> arbitrary
 
 
 genEntityDescriptor :: Gen EntityDescriptor
@@ -307,6 +312,35 @@ genXMLAttr = (,) <$> genXMLName <*> genNiceWord
 genXMLInstruction :: Gen Instruction
 genXMLInstruction = Instruction <$> genNiceWord <*> genNiceWord
 
+genUUID :: Gen UUID.UUID
+genUUID = Gen.element someUUIDs
+  where
+    someUUIDs :: [UUID.UUID]
+    someUUIDs = catMaybes $ UUID.fromText <$>
+      [ "b83919ba-792c-11e8-87a6-5be4268de632"
+      , "b8fd2ad0-792c-11e8-9e90-8fed1fff12b4"
+      , "b924b6cc-792c-11e8-992c-4754ae6de3a2"
+      , "b9479610-792c-11e8-adf7-03c8d9d56542"
+      , "d20556a6-792c-11e8-8a98-47e39b3c575f"
+      ]
+
+genIdPId :: Gen IdPId
+genIdPId = IdPId <$> genUUID
+
+genSignedCertificate :: Gen X509.SignedCertificate
+genSignedCertificate = either (error . show) pure $ DSig.parseKeyInfo
+  "<KeyInfo xmlns=\"http://www.w3.org/2000/09/xmldsig#\"><X509Data><X509Certificate>MIIDBTCCAe2gAwIBAgIQev76BWqjWZxChmKkGqoAfDANBgkqhkiG9w0BAQsFADAtMSswKQYDVQQDEyJhY2NvdW50cy5hY2Nlc3Njb250cm9sLndpbmRvd3MubmV0MB4XDTE4MDIxODAwMDAwMFoXDTIwMDIxOTAwMDAwMFowLTErMCkGA1UEAxMiYWNjb3VudHMuYWNjZXNzY29udHJvbC53aW5kb3dzLm5ldDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMgmGiRfLh6Fdi99XI2VA3XKHStWNRLEy5Aw/gxFxchnh2kPdk/bejFOs2swcx7yUWqxujjCNRsLBcWfaKUlTnrkY7i9x9noZlMrijgJy/Lk+HH5HX24PQCDf+twjnHHxZ9G6/8VLM2e5ZBeZm+t7M3vhuumEHG3UwloLF6cUeuPdW+exnOB1U1fHBIFOG8ns4SSIoq6zw5rdt0CSI6+l7b1DEjVvPLtJF+zyjlJ1Qp7NgBvAwdiPiRMU4l8IRVbuSVKoKYJoyJ4L3eXsjczoBSTJ6VjV2mygz96DC70MY3avccFrk7tCEC6ZlMRBfY1XPLyldT7tsR3EuzjecSa1M8CAwEAAaMhMB8wHQYDVR0OBBYEFIks1srixjpSLXeiR8zES5cTY6fBMA0GCSqGSIb3DQEBCwUAA4IBAQCKthfK4C31DMuDyQZVS3F7+4Evld3hjiwqu2uGDK+qFZas/D/eDunxsFpiwqC01RIMFFN8yvmMjHphLHiBHWxcBTS+tm7AhmAvWMdxO5lzJLS+UWAyPF5ICROe8Mu9iNJiO5JlCo0Wpui9RbB1C81Xhax1gWHK245ESL6k7YWvyMYWrGqr1NuQcNS0B/AIT1Nsj1WY7efMJQOmnMHkPUTWryVZlthijYyd7P2Gz6rY5a81DAFqhDNJl2pGIAE6HWtSzeUEh3jCsHEkoglKfm4VrGJEuXcALmfCMbdfTvtu4rlsaP2hQad+MG/KJFlenoTK34EMHeBPDCpqNDz8UVNk</X509Certificate></X509Data></KeyInfo>"
+
+genIdPConfig :: Gen a -> Gen (IdPConfig a)
+genIdPConfig genExtra = do
+  _idpId         <- genIdPId
+  _idpMetadata   <- genURI
+  _idpIssuer     <- genIssuer
+  _idpRequestUri <- genURI
+  _idpPublicKey  <- genSignedCertificate
+  _idpExtraInfo  <- genExtra
+  pure IdPConfig {..}
+
 
 -- TODO: the following should be TH-generated entirely (take all declarations matching '^gen' and
 -- turn the resp. types into Arbitrary instances).
@@ -376,3 +410,15 @@ instance Arbitrary URI where
 
 instance Arbitrary Version where
   arbitrary = TQH.hedgehog genVersion
+
+instance Arbitrary UUID.UUID where
+  arbitrary = TQH.hedgehog genUUID
+
+instance Arbitrary IdPId where
+  arbitrary = TQH.hedgehog genIdPId
+
+instance Arbitrary X509.SignedCertificate where
+  arbitrary = TQH.hedgehog genSignedCertificate
+
+instance Arbitrary a => Arbitrary (IdPConfig a) where
+  arbitrary = TQH.hedgehog (genIdPConfig (THQ.quickcheck arbitrary))

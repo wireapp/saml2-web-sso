@@ -1,4 +1,5 @@
 {-# LANGUAGE StrictData          #-}
+{-# LANGUAGE OverloadedStrings   #-}
 
 module SAML2.WebSSO.Types where
 
@@ -11,6 +12,7 @@ import Data.Monoid
 import Data.String.Conversions (ST)
 import Data.Time (UTCTime(..), NominalDiffTime, formatTime, defaultTimeLocale, addUTCTime)
 import Data.UUID as UUID
+import GHC.Generics (Generic)
 import GHC.Stack
 import Lens.Micro
 import Lens.Micro.TH
@@ -30,17 +32,16 @@ data AccessVerdict =
     { _avReasons :: [ST]
     }
   | AccessGranted
-    { _avUserId :: UserId
+    { _avUserId :: UserRef
     }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
--- TODO: find better name?  UserRef?  UserSamlName?  ...?
-data UserId = UserId { _uidTenant :: Issuer, _uidSubject :: NameID }
-  deriving (Eq, Show)
+data UserRef = UserRef { _uidTenant :: Issuer, _uidSubject :: NameID }
+  deriving (Eq, Show, Generic)
 
 -- | More correctly, an 'Issuer' is a 'NameID', but we only support 'URI'.
 newtype Issuer = Issuer { _fromIssuer :: URI }
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic)
 
 instance FromJSON Issuer where
   parseJSON = withText "Issuer" $ \uri -> case parseURI' uri of
@@ -64,19 +65,28 @@ data SPDescPre = SPDescPre
   , _spdOrgDisplayName :: ST
   , _spdOrgURL         :: URI
   , _spdResponseURL    :: URI
-  , _spdContacts       :: NonEmpty SPContactPerson
+  , _spdContacts       :: NonEmpty ContactPerson
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
-data SPContactPerson = SPContactPerson
-  { _spcntCompany   :: ST
-  , _spcntGivenName :: ST
-  , _spcntSurname   :: ST
-  , _spcntEmail     :: URI
-  , _spcntPhone     :: ST
+-- | [4/2.3.2.2].  Zero or more persons are required in metainfo document [4/2.4.1].
+data ContactPerson = ContactPerson
+  { _cntType      :: ContactType
+  , _cntCompany   :: Maybe ST
+  , _cntGivenName :: Maybe ST
+  , _cntSurname   :: Maybe ST
+  , _cntEmail     :: Maybe URI
+  , _cntPhone     :: Maybe ST
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
+data ContactType
+  = ContactTechnical
+  | ContactSupport
+  | ContactAdministrative
+  | ContactBilling
+  | ContactOther
+  deriving (Eq, Enum, Bounded, Show, Generic)
 
 -- | [4/2.3.2]
 data EntityDescriptor = EntityDescriptor
@@ -87,18 +97,18 @@ data EntityDescriptor = EntityDescriptor
   , _edExtensions    :: [EntityDescriptionExtension]
   , _edRoles         :: [Role]
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 data EntityDescriptionExtension =
     EntityDescriptionDigestMethod URI
   | EntityDescriptionSigningMethod URI
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 data Role =
     RoleRoleDescriptor RoleDescriptor
   | RoleIDPSSODescriptor IDPSSODescriptor
   | RoleSPSSODescriptor SPSSODescriptor
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 
 -- | [4/2.4.1]
@@ -110,7 +120,7 @@ data RoleDescriptor = RoleDescriptor
   , _rssoErrorURL                   :: Maybe URI
   , _rssoKeyDescriptors             :: [KeyDescriptor]
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 -- | [4/2.4.1.1]
 data KeyDescriptor = KeyDescriptor
@@ -118,15 +128,15 @@ data KeyDescriptor = KeyDescriptor
   , _kdKeyInfo           :: ()  -- xml:dsig key (not implemented)
   , _kdEncryptionMethods :: ()  -- xenc method (not implemented)
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 data KeyDescriptorUse = KeyDescriptorEncryption | KeyDescriptorSigning
-  deriving (Eq, Show, Enum, Bounded)
+  deriving (Eq, Show, Enum, Bounded, Generic)
 
 
 -- | [4/2.4.4]
 data SPSSODescriptor = SPSSODescriptor
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 
 -- | [4/2.4.3]
@@ -137,7 +147,7 @@ data IDPSSODescriptor = IDPSSODescriptor
   , _idAssertionIDRequestService :: [EndPointAllowRespLoc]
   , _idAttributeProfile          :: [URI]
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 -- | [4/2.2.2].  Both binding and location should be type 'URI' according to standard, but Microsoft
 -- Active Directory has unparseable URIs for locations.
@@ -146,7 +156,7 @@ data EndPoint rl = EndPoint
   , _epLocation         :: URI
   , _epResponseLocation :: rl
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 type EndPointNoRespLoc = EndPoint ()
 type EndPointAllowRespLoc = EndPoint (Maybe URI)
@@ -172,23 +182,23 @@ data AuthnRequest = AuthnRequest
     -- extended xml type (attribute requests, ...)
     -- ...
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 -- | [1/3.2.2.1]
 data Comparison = Exact | Minimum | Maximum | Better
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 data RequestedAuthnContext = RequestedAuthnContext
   { _rqacAuthnContexts :: [ST] -- ^ either classRef or declRef
   , _rqacComparison    :: Comparison
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic)
 
 -- | [1/3.4.1.1]
 data NameIdPolicy = NameIdPolicy
   { _nidFormat          :: Maybe ST
   , _nidSpNameQualifier :: Maybe ST
   , _nidAllowCreate     :: Maybe Bool
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic)
 
 -- | [1/3.4]
 type AuthnResponse = Response [Assertion]
@@ -204,7 +214,7 @@ data Response payload = Response
   , _rspStatus       :: Status
   , _rspPayload      :: payload
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 
 ----------------------------------------------------------------------
@@ -212,7 +222,7 @@ data Response payload = Response
 
 -- | [1/1.3.3] (we mostly introduce this type to override the unparseable default 'Show' instance.)
 newtype Time = Time { fromTime :: UTCTime }
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Generic)
 
 timeFormat :: String
 timeFormat = "%Y-%m-%dT%H:%M:%S%QZ"
@@ -221,7 +231,7 @@ instance Show Time where
   showsPrec _ (Time t) = showString . show $ formatTime defaultTimeLocale timeFormat t
 
 data Duration = Duration  -- TODO: https://www.w3.org/TR/xmlschema-2/#duration
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 addTime :: NominalDiffTime -> Time -> Time  -- TODO: use 'Duration' instaed of 'NominalDiffTime'
 addTime n (Time t) = Time $ addUTCTime n t
@@ -229,7 +239,7 @@ addTime n (Time t) = Time $ addUTCTime n t
 -- | IDs must be globally unique between all communication parties and adversaries with a negligible
 -- failure probability.  We should probably just use UUIDv4, but we may not have any choice.  [1/1.3.4]
 newtype ID m = ID { renderID :: ST }
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic)
 
 -- | [1/2.2.1]
 data BaseID = BaseID
@@ -237,7 +247,7 @@ data BaseID = BaseID
   , _baseIDNameQ   :: Maybe ST
   , _baseIDSPNameQ :: Maybe ST
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 -- | [1/2.2.2], [1/2.2.3], [1/3.4.1.1], see 'mkNameID' implementation for constraints on this type.
 data NameID = NameID
@@ -246,7 +256,7 @@ data NameID = NameID
   , _nameIDSPNameQ      :: Maybe ST
   , _nameIDSPProvidedID :: Maybe ST
   }
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic)
 
 -- | [1/8.3]
 data UnqualifiedNameID
@@ -258,7 +268,7 @@ data UnqualifiedNameID
   | NameIDFEntity      URI
   | NameIDFPersistent  ST  -- ^ use UUIDv4 where we have the choice.
   | NameIDFTransient   ST
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic)
 
 mkNameID :: MonadError String m => UnqualifiedNameID -> Maybe ST -> Maybe ST -> Maybe ST -> m NameID
 mkNameID nid@(NameIDFEntity uri) m1 m2 m3 = do
@@ -300,13 +310,13 @@ nameIDFormat = \case
   NameIDFTransient _   -> "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"
 
 data Version = Version_2_0
-  deriving (Eq, Show, Bounded, Enum)
+  deriving (Eq, Show, Bounded, Enum, Generic)
 
 -- | [1/3.2.2.1;3.2.2.2]
 data Status =
     StatusSuccess
   | StatusFailure ST
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 
 ----------------------------------------------------------------------
@@ -323,7 +333,7 @@ data Assertion
     , _assConditions    :: Maybe Conditions
     , _assContents      :: SubjectAndStatements
     }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 -- | Conditions that must hold for an 'Assertion' to be actually asserted by the IdP.  [1/2.5]
 data Conditions
@@ -333,7 +343,7 @@ data Conditions
     , _condOneTimeUse          :: Bool   -- ^ [1/2.5.1.5]
     , _condAudienceRestriction :: Maybe (NonEmpty URI)  -- ^ 'Nothing' means do not restrict.
     }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 -- | [1/2.3.3], [3/4.1.4.2]
 data SubjectAndStatements
@@ -341,7 +351,7 @@ data SubjectAndStatements
     { _sasSubject    :: Subject
     , _sasStatements :: NonEmpty Statement
     }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 -- | Information about the client and/or user attempting to authenticate / authorize against the SP.
 -- [1/2.4]
@@ -349,14 +359,14 @@ data Subject = Subject
   { _subjectID            :: NameID  -- ^ every 'BaseID' is also a 'NameID'; encryption is not supported.
   , _subjectConfirmations :: [SubjectConfirmation]
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 -- | Information about the kind of proof of identity the 'Subject' provided to the IdP.  [1/2.4]
 data SubjectConfirmation = SubjectConfirmation
   { _scMethod :: SubjectConfirmationMethod
   , _scData   :: [SubjectConfirmationData]
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 -- | [3/4.1.4.2]
 --
@@ -364,7 +374,7 @@ data SubjectConfirmation = SubjectConfirmation
 -- and we are not required to base our access policy on it.
 data SubjectConfirmationMethod
   = SubjectConfirmationMethodBearer  -- ^ @"urn:oasis:names:tc:SAML:2.0:cm:bearer"@
-  deriving (Eq, Show, Enum, Bounded)
+  deriving (Eq, Show, Enum, Bounded, Generic)
 
 -- | See 'SubjectConfirmation'.  [1/2.4.1.2], [3/4.1.4.2]
 data SubjectConfirmationData = SubjectConfirmationData
@@ -374,10 +384,10 @@ data SubjectConfirmationData = SubjectConfirmationData
   , _scdInResponseTo :: Maybe (ID AuthnRequest)
   , _scdAddress      :: Maybe IP  -- ^ it's ok to ignore this
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 newtype IP = IP ST
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 -- | The core content of the 'Assertion'.  [1/2.7]
 data Statement
@@ -390,7 +400,7 @@ data Statement
   | AttributeStatement  -- [1/2.7.3]
     { _attrstAttrs :: NonEmpty Attribute
     }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 
 -- | [1/2.7.2.1]
@@ -398,7 +408,7 @@ data Locality = Locality
   { _localityAddress :: Maybe ST
   , _localityDNSName :: Maybe ST
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 
 -- | [1/2.7.3.1]
@@ -409,11 +419,11 @@ data Attribute =
     , _stattrFriendlyName :: Maybe ST
     , _stattrValues       :: [AttributeValue]
     }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 -- | [1/2.7.3.1.1] could be @ST@, or @Num n => n@, or something else.
 newtype AttributeValue = AttributeValueUntyped ST
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
 
 ----------------------------------------------------------------------
@@ -452,7 +462,7 @@ makeLenses ''RequestedAuthnContext
 makeLenses ''Response
 makeLenses ''Role
 makeLenses ''RoleDescriptor
-makeLenses ''SPContactPerson
+makeLenses ''ContactPerson
 makeLenses ''SPDescPre
 makeLenses ''SPSSODescriptor
 makeLenses ''Statement
@@ -463,7 +473,7 @@ makeLenses ''SubjectConfirmation
 makeLenses ''SubjectConfirmationData
 makeLenses ''Time
 makeLenses ''UnqualifiedNameID
-makeLenses ''UserId
+makeLenses ''UserRef
 makeLenses ''Version
 
 makePrisms ''UnqualifiedNameID

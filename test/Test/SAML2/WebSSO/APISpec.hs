@@ -6,6 +6,8 @@ module Test.SAML2.WebSSO.APISpec (spec) where
 
 import Control.Concurrent.MVar (newMVar)
 import Control.Exception (throwIO, ErrorCall(ErrorCall))
+import Control.Monad.Reader
+import Control.Monad.Except
 import Data.Either
 import Data.EitherR
 import Data.String.Conversions
@@ -19,15 +21,12 @@ import Test.Hspec.Wai
 import Test.Hspec.Wai.Matcher
 import TestSP
 import Text.XML as XML
-import Text.XML.DSig
 import Text.XML.Util
 import URI.ByteString.QQ
 import Util
 
-import qualified Crypto.PubKey.RSA as RSA
 import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
-import qualified Data.X509 as X509
 import qualified Data.Yaml as Yaml
 
 
@@ -133,18 +132,19 @@ spec = describe "API" $ do
                   else "microsoft-authnresponse-2-badsig.xml"
 
             resp :: LBS <- cs <$> readSampleIO respfile
-            Right (cert :: X509.SignedCertificate) <- parseKeyInfo <$> readSampleIO "microsoft-idp-keyinfo.xml"
-            let Right (SignCreds _ (SignKeyRSA (key :: RSA.PublicKey))) = keyInfoToCreds cert
+            Right (cfg :: IdPConfig_) <- Yaml.decodeEither . cs <$> readSampleIO "microsoft-idp-config.yaml"
 
-            let foundkey :: Issuer -> Either String RSA.PublicKey
-                foundkey _ = if knownkey then Right key else Left "foundkey failed"
+            let rungo :: TestSPStoreIdP a -> Either ServantErr a
+                rungo (TestSPStoreIdP action) = runExceptT action `runReader` mcfg
+                  where
+                    mcfg = if knownkey then Just cfg else Nothing
 
-                go :: Either String ()
-                go = simpleVerifyAuthnResponse (Just $ Issuer [uri|http://some_issuer/|]) foundkey resp
+                go :: TestSPStoreIdP ()
+                go = simpleVerifyAuthnResponse (Just $ Issuer [uri|http://some_issuer/|]) resp
 
             if expectOutcome
-              then go `shouldBe` Right ()
-              else go `shouldSatisfy` isLeft
+              then rungo go `shouldBe` Right ()
+              else rungo go `shouldSatisfy` isLeft
 
     context "good signature" $ do
       context "known key"    $ check True True True
@@ -171,28 +171,33 @@ spec = describe "API" $ do
       get "/meta" `shouldRespondWith` 200 { matchBody = bodyContains "OrganizationName xml:lang=\"EN\">toy-sp" }
 
   describe "authreq" $ do
-    context "unknown idp" . withapp (Proxy @APIAuthReq') authreq mkTestCtx1 $ do
-      it "responds with 404" $ do
-        get "/authreq/no-such-idp" `shouldRespondWith` 404
+    context "invalid uuid" . withapp (Proxy @APIAuthReq') authreq' mkTestCtx1 $ do
+      it "responds with 400" $ do
+        get "/authreq/broken-uuid" `shouldRespondWith` 400
 
-    context "known idp" . withapp (Proxy @APIAuthReq') authreq mkTestCtx2 $ do
+    context "unknown idp" . withapp (Proxy @APIAuthReq') authreq' mkTestCtx1 $ do
+      it "responds with 404" $ do
+        get "/authreq/6bf0dfb0-754f-11e8-b71d-00163e5e6c14" `shouldRespondWith` 404
+
+    context "known idp" . withapp (Proxy @APIAuthReq') authreq' mkTestCtx2 $ do
       it "responds with 200" $ do
-        get "/authreq/myidp" `shouldRespondWith` 200
+        get "/authreq/eafd1654-754d-11e8-9438-00163e5e6c14" `shouldRespondWith` 200
 
       it "responds with a body that contains the IdPs response URL" $ do
         myidp <- liftIO mkmyidp
-        get "/authreq/myidp" `shouldRespondWith` 200
+        get "/authreq/eafd1654-754d-11e8-9438-00163e5e6c14" `shouldRespondWith` 200
           { matchBody = bodyContains . cs . renderURI $ myidp ^. idpRequestUri }
+
 
   describe "authresp" $ do
     let mkpostresp = readSampleIO "microsoft-authnresponse-2.xml"
           <&> \sample -> postHtmlForm "/authresp" [("SAMLResponse", cs . EL.encode . cs $ sample)]
 
     context "unknown idp" . withapp (Proxy @APIAuthResp') (authresp simpleOnSuccess) mkTestCtx1 $ do
-      let errmsg = "invalid signature: unknown issuer: Issuer"
-      it "responds with 400" $ do
+      let errmsg = "unknown IdP: Issuer"
+      it "responds with 404" $ do
         postresp <- liftIO mkpostresp
-        postresp `shouldRespondWith` 400 { matchBody = bodyContains errmsg }
+        postresp `shouldRespondWith` 404 { matchBody = bodyContains errmsg }
 
     context "known idp, bad timestamp" . withapp (Proxy @APIAuthResp') (authresp simpleOnSuccess) mkTestCtx2 $ do
       it "responds with 402" $ do
@@ -207,9 +212,9 @@ spec = describe "API" $ do
             <&> ctxConfig . cfgSPAppURI .~ [uri|https://zb2.zerobuzz.net:60443/authresp|]
             <&> ctxRequestStore .~ reqstore
     context "known idp, good timestamp" . withapp (Proxy @APIAuthResp') (authresp simpleOnSuccess) mkTestCtx3' $ do
-      it "responds with 302" $ do
+      it "responds with 303" $ do
         postresp <- liftIO mkpostresp
-        postresp `shouldRespondWith` 302 { matchBody = bodyEquals "" }
+        postresp `shouldRespondWith` 303 { matchBody = bodyContains "<body><p>SSO successful, redirecting to https://zb2.zerobuzz.net:60443/authresp" }
 
 
   describe "idp smoke tests" $ do
@@ -237,16 +242,16 @@ burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
       getIdP = either (throwIO . ErrorCall . show) pure =<< (Yaml.decodeEither . cs <$> readSampleIO cfgPath)
 
   describe ("smoke tests: " <> show cfgPath) $ do
-    describe "authreq" . withapp (Proxy @APIAuthReq') authreq ctx $ do
+    describe "authreq" . withapp (Proxy @APIAuthReq') authreq' ctx $ do
       it "responds with 200" $ do
         idp <- liftIO getIdP
-        get ("/authreq/" <> cs (idp ^. idpPath))
+        get ("/authreq/" <> cs (idPIdToST (idp ^. idpId)))
           `shouldRespondWith` 200 { matchBody = bodyContains "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" }
 
     describe "authresp" . withapp (Proxy @APIAuthResp') (authresp simpleOnSuccess) ctx $ do
-      it "responds with 302" $ do
+      it "responds with 303" $ do
         sample <- liftIO $ cs <$> readSampleIO respXmlPath
         let postresp = postHtmlForm "/authresp" body
             body = [("SAMLResponse", sample)]
         postresp
-          `shouldRespondWith` 302 { matchBody = bodyEquals "" }
+          `shouldRespondWith` 303
