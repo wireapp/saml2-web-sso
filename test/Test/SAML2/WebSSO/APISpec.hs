@@ -212,9 +212,9 @@ spec = describe "API" $ do
             <&> ctxConfig . cfgSPAppURI .~ [uri|https://zb2.zerobuzz.net:60443/authresp|]
             <&> ctxRequestStore .~ reqstore
     context "known idp, good timestamp" . withapp (Proxy @APIAuthResp') (authresp simpleOnSuccess) mkTestCtx3' $ do
-      it "responds with 307" $ do
+      it "responds with 303" $ do
         postresp <- liftIO mkpostresp
-        postresp `shouldRespondWith` 307 { matchBody = bodyContains "<body><p>SSO successful, redirecting to https://zb2.zerobuzz.net:60443/authresp" }
+        postresp `shouldRespondWith` 303 { matchBody = bodyContains "<body><p>SSO successful, redirecting to https://zb2.zerobuzz.net:60443/authresp" }
 
 
   describe "idp smoke tests" $ do
@@ -249,9 +249,9 @@ burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
           `shouldRespondWith` 200 { matchBody = bodyContains "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" }
 
     describe "authresp" . withapp (Proxy @APIAuthResp') (authresp simpleOnSuccess) ctx $ do
-      it "responds with 307" $ do
+      it "responds with 303" $ do
         sample <- liftIO $ cs <$> readSampleIO respXmlPath
         let postresp = postHtmlForm "/authresp" body
             body = [("SAMLResponse", sample)]
         postresp
-          `shouldRespondWith` 307
+          `shouldRespondWith` 303
