@@ -1,4 +1,5 @@
 {-# LANGUAGE StrictData          #-}
+{-# LANGUAGE OverloadedStrings   #-}
 
 module SAML2.WebSSO.Types where
 

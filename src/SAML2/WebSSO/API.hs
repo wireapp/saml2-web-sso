@@ -308,7 +308,7 @@ authresp onsuccess body = do
                              -> addHeader setcookie $ addHeader uri ("SSO successful, redirecting to " <> renderURI uri)
 
 simpleOnSuccess :: SPHandler m => OnSuccess m
-simpleOnSuccess uid = (togglecookie . Just . cs . show $ uid,) <$> getLandingURI
+simpleOnSuccess uid = (togglecookie . Just . userRefToST $ uid,) <$> getLandingURI
 
 
 ----------------------------------------------------------------------

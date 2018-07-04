@@ -165,6 +165,14 @@ instance HasXML Issuer where
   parse = wrapParse importIssuer
   render = wrapRender exportIssuer
 
+nameIDToST :: NameID -> ST
+nameIDToST (NameID (NameIDFUnspecified txt) Nothing Nothing Nothing) = txt
+nameIDToST (NameID (NameIDFEmail txt) Nothing Nothing Nothing) = txt
+nameIDToST other = cs $ encodeElem other
+
+userRefToST :: UserRef -> ST
+userRefToST (UserRef (Issuer tenant) subject) = "{" <> renderURI tenant <> "}" <> nameIDToST subject
+
 
 importEntityDescriptor :: (HasCallStack, MonadError String m) => HS.Descriptor -> m EntityDescriptor
 importEntityDescriptor = error . ppShow
