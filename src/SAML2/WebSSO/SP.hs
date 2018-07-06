@@ -10,6 +10,7 @@ import Control.Concurrent.MVar
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.Writer
+import Data.EitherR (fmapL)
 import Data.Foldable (toList)
 import Data.List
 import Data.Maybe
@@ -18,7 +19,6 @@ import Data.Time
 import Data.UUID (UUID)
 import GHC.Stack
 import Lens.Micro
-import Network.HTTP.Types.Header
 import Servant.Server
 import URI.ByteString
 
@@ -29,6 +29,7 @@ import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
 
 import SAML2.WebSSO.Config
+import SAML2.WebSSO.Error
 import SAML2.WebSSO.Types
 import Text.XML.Util
 
@@ -63,13 +64,13 @@ class (SP m) => SPStore m where
   -- return 'False'.
   storeAssertion :: ID Assertion -> Time -> m Bool
 
-class MonadError ServantErr m => SPStoreIdP m where
+class (MonadError err m) => SPStoreIdP err m where
   storeIdPConfig       :: IdPConfig (ConfigExtra m) -> m ()
   getIdPConfig         :: IdPId -> m (IdPConfig (ConfigExtra m))
   getIdPConfigByIssuer :: Issuer -> m (IdPConfig (ConfigExtra m))
 
 -- | HTTP handling of the service provider.
-class (SP m, SPStore m, SPStoreIdP m, MonadError ServantErr m) => SPHandler m where
+class (SP m, SPStore m, SPStoreIdP err m, MonadError err m) => SPHandler err m where
   type NTCTX m :: *
   nt :: forall x. NTCTX m -> m x -> Handler x
 
@@ -77,8 +78,8 @@ class (SP m, SPStore m, SPStoreIdP m, MonadError ServantErr m) => SPHandler m wh
 ----------------------------------------------------------------------
 -- default instance
 
-newtype SimpleSP a = SimpleSP (ReaderT SimpleSPCtx Handler a)
-  deriving (Functor, Applicative, Monad, MonadError ServantErr)
+newtype SimpleSP a = SimpleSP (ReaderT SimpleSPCtx (ExceptT SimpleError IO) a)
+  deriving (Functor, Applicative, Monad, MonadError SimpleError)
 
 type SimpleSPCtx = (Config_, MVar RequestStore, MVar AssertionStore)
 type RequestStore = Map.Map (ID AuthnRequest) Time
@@ -86,9 +87,9 @@ type AssertionStore = Map.Map (ID Assertion) Time
 
 -- | If you read the 'Config' initially in 'IO' and then pass it into the monad via 'Reader', you
 -- safe disk load and redundant debug logs.
-instance SPHandler SimpleSP where
+instance SPHandler SimpleError SimpleSP where
   type NTCTX SimpleSP = SimpleSPCtx
-  nt ctx (SimpleSP m) = m `runReaderT` ctx
+  nt ctx (SimpleSP m) = Handler . ExceptT . fmap (fmapL toServantErr) . runExceptT $ m `runReaderT` ctx
 
 mkSimpleSPCtx :: Config_ -> IO SimpleSPCtx
 mkSimpleSPCtx cfg = (,,) cfg <$> newMVar mempty <*> newMVar mempty
@@ -117,16 +118,16 @@ instance HasConfig SimpleSP where
   type ConfigExtra SimpleSP = ()
   getConfig = (^. _1) <$> SimpleSP ask
 
-instance SPStoreIdP SimpleSP where
+instance SPStoreIdP SimpleError SimpleSP where
   storeIdPConfig _ = pure ()
   getIdPConfig = simpleGetIdPConfigBy (^. idpId)
   getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpIssuer)
 
-simpleGetIdPConfigBy :: (MonadError ServantErr m, HasConfig m, Show a, Ord a)
+simpleGetIdPConfigBy :: (MonadError (Error err) m, HasConfig m, Show a, Ord a)
                      => (IdPConfig (ConfigExtra m) -> a) -> a -> m (IdPConfig (ConfigExtra m))
 simpleGetIdPConfigBy mkkey idpname = maybe crash pure . Map.lookup idpname . mkmap . (^. cfgIdps) =<< getConfig
   where
-    crash = throwError err404 { errBody = "unknown IdP: " <> cs (show idpname) }
+    crash = throwError (UnknownIdP . cs . show $ idpname)
     mkmap = Map.fromList . fmap (mkkey &&& id)
 
 simpleStoreRequest :: MonadIO m => MVar RequestStore -> ID AuthnRequest -> Time -> m ()
@@ -186,12 +187,6 @@ createAuthnRequest lifeExpectancySecs = do
   _rqIssuer       <- Issuer <$> getLandingURI
   storeRequest _rqID (addTime lifeExpectancySecs _rqIssueInstant)
   pure AuthnRequest{..}
-
-redirect :: MonadError ServantErr m => URI -> [Header] -> m void
-redirect uri extra = throwError err302 { errHeaders = ("Location", cs $ renderURI uri) : extra }
-
-reject :: MonadError ServantErr m => LBS -> m void
-reject msg = throwError err403 { errBody = msg }
 
 
 ----------------------------------------------------------------------

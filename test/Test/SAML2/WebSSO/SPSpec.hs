@@ -151,12 +151,12 @@ specJudgeT = do
 
     it "violate condition not-before" $ do
       testCtx2 <- mkTestCtx2
-      verdict <- testSP (testCtx2 & ctxNow .~ timeLongAgo) $ judge resp
+      verdict <- ioFromTestSP (testCtx2 & ctxNow .~ timeLongAgo) $ judge resp
       isDenied verdict
 
     it "violate condition not-on-or-after" $ do
       testCtx2 <- mkTestCtx2
-      verdict <- testSP (testCtx2 & ctxNow .~ timeIn20minutes) $ judge resp
+      verdict <- ioFromTestSP (testCtx2 & ctxNow .~ timeIn20minutes) $ judge resp
       isDenied verdict
 
     it "satisfy all conditions" $ do
@@ -167,17 +167,17 @@ specJudgeT = do
       -- "bearer-confirmed assertions must be audience-restricted.",
       -- "AuthnStatement IssueInstance in the future: \"2018-03-27T06:23:57.851Z\""]}
 
-      isGranted =<< testSP testCtx3 (judge resp)
-      isGranted =<< testSP (testCtx3 & ctxNow .~ timeIn10minutes) (judge resp)
+      isGranted =<< ioFromTestSP testCtx3 (judge resp)
+      isGranted =<< ioFromTestSP (testCtx3 & ctxNow .~ timeIn10minutes) (judge resp)
 
     it "status failure" $ do
       testCtx2 <- mkTestCtx2
-      verdict <- testSP testCtx2 $ judge (resp & rspStatus .~ StatusFailure "donno")
+      verdict <- ioFromTestSP testCtx2 $ judge (resp & rspStatus .~ StatusFailure "donno")
       isDenied verdict
 
     it "status success" $ do
       testCtx2 <- mkTestCtx2
-      verdict <- testSP testCtx2 $ judge (resp & rspStatus .~ StatusSuccess)
+      verdict <- ioFromTestSP testCtx2 $ judge (resp & rspStatus .~ StatusSuccess)
       pending
       -- "invalid InResponseTo field: ID {renderID = \"id05873dd012c44e6db0bd59f5aa2e6a0a\"}"
       -- "Issuerinstant in the future: \"2018-03-11T17:13:13Z\""
@@ -189,7 +189,7 @@ specJudgeT = do
 
     it "status success yields name, nick" $ do
       testCtx2 <- mkTestCtx2
-      verdict <- testSP testCtx2 $ judge (resp & rspStatus .~ StatusSuccess)
+      verdict <- ioFromTestSP testCtx2 $ judge (resp & rspStatus .~ StatusSuccess)
       let uid = UserRef (Issuer [uri|https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/|])
                        (opaqueNameID "E3hQDDZoObpyTDplO8Ax8uC8ObcQmREdfps3TMpaI84")
       pending

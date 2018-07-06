@@ -28,13 +28,13 @@ import Web.Cookie
 app :: IO Application
 app = app' (Proxy @SimpleSP) =<< mkSimpleSPCtx =<< configIO
 
-app' :: forall m.
+app' :: forall (m :: * -> *).
         ( Enter (ServerT APPAPI m) m Handler (Server APPAPI)
-        , SP m, SPHandler m
+        , SP m, SPHandler SimpleError m
         ) => Proxy m -> NTCTX m -> IO Application
 app' Proxy ctx = do
   let served :: Application
-      served = serve (Proxy @APPAPI) (enter (NT (nt @m ctx)) appapi :: Server APPAPI)
+      served = serve (Proxy @APPAPI) (enter (NT (nt @SimpleError @m ctx)) appapi :: Server APPAPI)
   pure . setHttpCachePolicy $ served
 
 type SPAPI =
@@ -46,10 +46,10 @@ type APPAPI =
        "sp"  :> SPAPI
   :<|> "sso" :> API
 
-spapi :: SPHandler m => ServerT SPAPI m
+spapi :: SPHandler SimpleError m => ServerT SPAPI m
 spapi = loginStatus :<|> localLogout :<|> singleLogout
 
-appapi :: SPHandler m => ServerT APPAPI m
+appapi :: SPHandler SimpleError m => ServerT APPAPI m
 appapi = spapi :<|> api "toy-sp" simpleOnSuccess
 
 loginStatus :: SP m => Maybe SetCookie -> m LoginStatus
@@ -63,7 +63,7 @@ mkLoginOption :: SP m => IdPConfig a -> m (ST, ST)
 mkLoginOption icfg = (renderURI $ icfg ^. idpIssuer . fromIssuer,) <$> getPath' (SsoPathAuthnReq (icfg ^. idpId))
 
 -- | only logout on this SP.
-localLogout :: SPHandler m => m (WithCookieAndLocation ST)
+localLogout :: SPHandler SimpleError m => m (WithCookieAndLocation ST)
 localLogout = do
   uri <- getPath SpPathHome
   pure . addHeader (togglecookie Nothing) . addHeader uri $ "Logged out locally, redirecting to " <> renderURI uri

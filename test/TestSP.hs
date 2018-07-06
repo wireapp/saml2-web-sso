@@ -9,6 +9,7 @@ import Control.Exception (throwIO, ErrorCall(..))
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
+import Data.EitherR
 import Data.String.Conversions
 import Data.Yaml
 import Lens.Micro
@@ -75,8 +76,8 @@ timeIn20minutes :: Time
 timeIn20minutes = unsafeReadTime "2018-03-11T17:33:00Z"
 
 
-newtype TestSP a = TestSP { runTestSP :: StateT Ctx Handler a }
-  deriving (Functor, Applicative, Monad, MonadIO, MonadState Ctx, MonadError ServantErr)
+newtype TestSP a = TestSP { runTestSP :: StateT Ctx (ExceptT SimpleError IO) a }
+  deriving (Functor, Applicative, Monad, MonadIO, MonadState Ctx, MonadError SimpleError)
 
 instance HasConfig TestSP where
   type ConfigExtra TestSP = ()
@@ -100,31 +101,34 @@ instance SPStore TestSP where
     now <- getNow
     simpleStoreAssertion store now aid time
 
-instance SPStoreIdP TestSP where
+instance SPStoreIdP SimpleError TestSP where
   storeIdPConfig _ = pure ()
   getIdPConfig = simpleGetIdPConfigBy (^. idpId)
   getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpIssuer)
 
-instance SPHandler TestSP where
+instance SPHandler SimpleError TestSP where
   type NTCTX TestSP = Ctx
 
   nt :: forall x. Ctx -> TestSP x -> Handler x
-  nt ctx (TestSP m) = m `evalStateT` ctx
+  nt = handlerFromTestSP
 
-testSP :: Ctx -> TestSP a -> IO a
-testSP ctx (TestSP m) = either (throwIO . ErrorCall . show) pure =<< runHandler (m `evalStateT` ctx)
+handlerFromTestSP :: Ctx -> TestSP a -> Handler a
+handlerFromTestSP ctx (TestSP m) = Handler . ExceptT . fmap (fmapL toServantErr) . runExceptT $ m `evalStateT` ctx
+
+ioFromTestSP :: Ctx -> TestSP a -> IO a
+ioFromTestSP ctx m = either (throwIO . ErrorCall . show) pure =<< (runExceptT . runHandler' $ handlerFromTestSP ctx m)
 
 
 ----------------------------------------------------------------------
 
-newtype TestSPStoreIdP a = TestSPStoreIdP { runTestSPStoreIdP :: ExceptT ServantErr (Reader (Maybe IdPConfig_)) a }
-  deriving (Functor, Applicative, Monad, MonadReader (Maybe IdPConfig_), MonadError ServantErr)
+newtype TestSPStoreIdP a = TestSPStoreIdP { runTestSPStoreIdP :: ExceptT SimpleError (Reader (Maybe IdPConfig_)) a }
+  deriving (Functor, Applicative, Monad, MonadReader (Maybe IdPConfig_), MonadError SimpleError)
 
 instance HasConfig TestSPStoreIdP where
   type ConfigExtra TestSPStoreIdP = ()
   getConfig = error "n/a"
 
-instance SPStoreIdP TestSPStoreIdP where
+instance SPStoreIdP SimpleError TestSPStoreIdP where
   storeIdPConfig = error "n/a"
   getIdPConfig = error "n/a"
-  getIdPConfigByIssuer _ = maybe (throwError err404) pure =<< ask
+  getIdPConfigByIssuer _ = maybe (throwError $ UnknownIdP "<n/a>") pure =<< ask

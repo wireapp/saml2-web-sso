@@ -54,7 +54,7 @@ withapp :: forall (api :: *).
   ( Enter (ServerT api TestSP) TestSP Handler (Server api)
   , HasServer api '[]
   ) => Proxy api -> ServerT api TestSP -> IO Ctx -> SpecWith Application -> Spec
-withapp proxy handler mkctx = with (mkctx <&> \ctx -> serve proxy (enter (NT (nt @TestSP ctx)) handler :: Server api))
+withapp proxy handler mkctx = with (mkctx <&> \ctx -> serve proxy (enter (NT (nt @SimpleError @TestSP ctx)) handler :: Server api))
 
 
 spec :: Spec
@@ -135,7 +135,7 @@ spec = describe "API" $ do
             Right (cfg :: IdPConfig_) <- Yaml.decodeEither . cs <$> readSampleIO "microsoft-idp-config.yaml"
 
             let rungo :: TestSPStoreIdP a -> Either ServantErr a
-                rungo (TestSPStoreIdP action) = runExceptT action `runReader` mcfg
+                rungo (TestSPStoreIdP action) = fmapL toServantErr $ runExceptT action `runReader` mcfg
                   where
                     mcfg = if knownkey then Just cfg else Nothing
 
@@ -194,7 +194,7 @@ spec = describe "API" $ do
           <&> \sample -> postHtmlForm "/authresp" [("SAMLResponse", cs . EL.encode . cs $ sample)]
 
     context "unknown idp" . withapp (Proxy @APIAuthResp') (authresp simpleOnSuccess) mkTestCtx1 $ do
-      let errmsg = "unknown IdP: Issuer"
+      let errmsg = "Unknown IdP: Issuer"
       it "responds with 404" $ do
         postresp <- liftIO mkpostresp
         postresp `shouldRespondWith` 404 { matchBody = bodyContains errmsg }

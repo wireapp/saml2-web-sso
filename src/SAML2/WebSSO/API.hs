@@ -35,6 +35,7 @@ import Network.HTTP.Types
 import Network.Wai hiding (Response)
 import Network.Wai.Internal as Wai
 import SAML2.WebSSO.Config
+import SAML2.WebSSO.Error as SamlErr
 import SAML2.WebSSO.SP
 import SAML2.WebSSO.Types
 import SAML2.WebSSO.XML
@@ -83,7 +84,7 @@ type API = APIMeta'
       :<|> APIAuthReq'
       :<|> APIAuthResp'
 
-api :: SPHandler m => ST -> OnSuccess m -> ServerT API m
+api :: SPHandler (Error err) m => ST -> OnSuccess m -> ServerT API m
 api appName onsuccess = meta appName (Proxy @API) (Proxy @APIAuthResp')
                    :<|> authreq'
                    :<|> authresp onsuccess
@@ -94,15 +95,16 @@ api appName onsuccess = meta appName (Proxy @API) (Proxy @APIAuthResp')
 
 -- | An 'AuthnResponseBody' contains a 'AuthnResponse', but you need to give it a trust base forn
 -- signature verification first, and you may get an error when you're looking at it.
-newtype AuthnResponseBody = AuthnResponseBody { fromAuthnResponseBody :: forall m. SPStoreIdP m => m AuthnResponse }
+newtype AuthnResponseBody = AuthnResponseBody
+  { fromAuthnResponseBody :: forall m err. SPStoreIdP (Error err) m => m AuthnResponse }
 
-parseAuthnResponseBody :: forall m. SPStoreIdP m => LBS -> m AuthnResponse
+parseAuthnResponseBody :: forall m err. SPStoreIdP (Error err) m => LBS -> m AuthnResponse
 parseAuthnResponseBody base64 = do
   xmltxt <-
-    either (const $ throwError err400 { errBody = "bad base64 encoding in SAMLResponse" }) pure $
+    either (throwError . BadSamlResponse . ("invalid base64 encoding: " <>) . cs) pure $
     EL.decode base64
   resp <-
-    either (\ex -> throwError err400 { errBody = cs $ show ex }) pure $
+    either (throwError . BadSamlResponse . cs) pure $
     decode (cs xmltxt)
   simpleVerifyAuthnResponse (resp ^. rspIssuer) xmltxt
   pure resp
@@ -111,15 +113,15 @@ parseAuthnResponseBody base64 = do
 -- | Pull assertions sub-forest and pass all trees in it to 'verify' individually.  The 'LBS'
 -- argument must be a valid 'AuthnResponse'.  All assertions need to be signed by the issuer
 -- given in the arguments using the same key.
-simpleVerifyAuthnResponse :: forall m. SPStoreIdP m => Maybe Issuer -> LBS -> m ()
-simpleVerifyAuthnResponse Nothing _ = throwError err400 { errBody = "missing issuer in response." }
+simpleVerifyAuthnResponse :: forall m err. SPStoreIdP (Error err) m => Maybe Issuer -> LBS -> m ()
+simpleVerifyAuthnResponse Nothing _ = throwError $ BadSamlResponse "missing issuer"
 simpleVerifyAuthnResponse (Just issuer) raw = do
     creds <- (^. idpPublicKey) <$> getIdPConfigByIssuer issuer
     key :: RSA.PublicKey <- case keyInfoToCreds creds of
         Right (SignCreds SignDigestSha256 (SignKeyRSA k)) -> pure k
-        Left msg -> throwError err500 { errBody = "IdP pubkey corrupted in SP config: " <> cs (show msg) }
+        Left msg -> throwError . BadServerConfig $ "IdP pubkey corrupted in SP config: " <> cs (show msg)
 
-    doc :: Cursor <- either (\msg -> throwError err400 { errBody = "could not parse document: " <> cs (show msg) })
+    doc :: Cursor <- either (throwError . BadSamlResponse . ("could not parse document: " <>) . cs . show)
                             (pure . fromDocument)
                             (parseLBS def raw)
 
@@ -130,16 +132,16 @@ simpleVerifyAuthnResponse (Just issuer) raw = do
         assertions = catMaybes $ elemOnly . node <$>
                      (doc $/ element "{urn:oasis:names:tc:SAML:2.0:assertion}Assertion")
     when (null assertions) $
-      throwError err400 { errBody = "no assertions: " <> cs (show raw) }
+      throwError . BadSamlResponse $ "no assertions: " <> cs (show raw)
 
     let assertionID :: Element -> m String
         assertionID el@(Element _ attrs _)
-          = maybe (throwError err400 { errBody = "assertion without ID: " <> cs (show el) }) (pure . cs)
+          = maybe (throwError . BadSamlResponse $ "assertion without ID: " <> cs (show el)) (pure . cs)
           $ Map.lookup "ID" attrs
     nodeids :: [String]
       <- assertionID `mapM` assertions
 
-    either (\msg -> throwError err400 { errBody = cs msg }) pure $ (verify key raw `mapM_` nodeids)
+    either (throwError . BadSamlResponse . cs) pure $ (verify key raw `mapM_` nodeids)
 
 
 ----------------------------------------------------------------------
@@ -179,9 +181,9 @@ instance MimeRender HTML ST where
 instance FromMultipart Mem AuthnResponseBody where
   fromMultipart resp = Just (AuthnResponseBody eval)
     where
-      eval :: forall m. SPStoreIdP m => m AuthnResponse
+      eval :: forall m err. SPStoreIdP (Error err) m => m AuthnResponse
       eval = do
-        base64 <- maybe (throwError err400 { errBody = "no SAMLResponse in the body" }) pure $
+        base64 <- maybe (throwError . BadSamlResponse $ "no SAMLResponse in the body") pure $
                   lookupInput "SAMLResponse" resp
         parseAuthnResponseBody (cs base64)
 
@@ -251,9 +253,9 @@ setHttpCachePolicy ap rq respond = ap rq $ respond . addHeadersToResponse httpCa
 ----------------------------------------------------------------------
 -- paths
 
-getResponseURI :: forall m endpoint api.
+getResponseURI :: forall m endpoint api err.
                   ( HasCallStack, SP m
-                  , MonadError ServantErr m
+                  , MonadError (Error err) m
                   , IsElem endpoint api, HasLink endpoint, ToHttpApiData (MkLink endpoint)
                   )
                => Proxy api -> Proxy endpoint -> m URI
@@ -266,13 +268,13 @@ getResponseURI proxyAPI proxyAPIAuthResp = resp =<< (^. cfgSPSsoURI) <$> getConf
         uri' = cs $ appendURI (cs . toUrlPiece $ safeLink proxyAPI proxyAPIAuthResp) uri
 
         showmsg :: String -> m a
-        showmsg msg = throwError err500 { errBody = "server configuration error: " <> cs (show (uri', msg)) }
+        showmsg = throwError . BadServerConfig . cs . (<> (": " <> show uri'))
 
 
 ----------------------------------------------------------------------
 -- handlers
 
-meta :: (SPHandler m, IsElem endpoint api, HasLink endpoint, ToHttpApiData (MkLink endpoint))
+meta :: (SPHandler (Error err) m, IsElem endpoint api, HasLink endpoint, ToHttpApiData (MkLink endpoint))
      => ST -> Proxy api -> Proxy endpoint -> m Meta.SPDesc
 meta appName proxyAPI proxyAPIAuthResp = do
   enterH "meta"
@@ -281,7 +283,7 @@ meta appName proxyAPI proxyAPIAuthResp = do
   contacts <- (^. cfgContacts) <$> getConfig
   Meta.spMeta <$> Meta.spDesc appName landing resp contacts
 
-authreq :: (SPStoreIdP m, SPHandler m) => NominalDiffTime -> IdPId -> m (FormRedirect AuthnRequest)
+authreq :: (SPHandler (Error err) m) => NominalDiffTime -> IdPId -> m (FormRedirect AuthnRequest)
 authreq lifeExpectancySecs idpname = do
   enterH "authreq"
   uri <- (^. idpRequestUri) <$> getIdPConfig idpname
@@ -290,10 +292,10 @@ authreq lifeExpectancySecs idpname = do
   logger Debug $ "authreq req: " <> show req
   leaveH $ FormRedirect uri req
 
-authreq' :: (SPStoreIdP m, SPHandler m) => IdPId -> m (FormRedirect AuthnRequest)
+authreq' :: (SPHandler (Error err) m) => IdPId -> m (FormRedirect AuthnRequest)
 authreq' = authreq (8 * 60 * 60)
 
-authresp :: SPHandler m => OnSuccess m -> AuthnResponseBody -> m (WithCookieAndLocation ST)
+authresp :: SPHandler (Error err) m => OnSuccess m -> AuthnResponseBody -> m (WithCookieAndLocation ST)
 authresp onsuccess body = do
   enterH "authresp: entering"
   resp <- fromAuthnResponseBody body
@@ -302,22 +304,21 @@ authresp onsuccess body = do
   logger Debug $ "authresp: " <> show verdict
   case verdict of
     AccessDenied reasons
-      -> logger Info (show reasons) >> reject (cs $ ST.intercalate ", " reasons)
+      -> logger Info (show reasons) >> (throwError . Forbidden . cs $ ST.intercalate ", " reasons)
     AccessGranted uid
       -> onsuccess uid <&> \(setcookie, uri)
                              -> addHeader setcookie $ addHeader uri ("SSO successful, redirecting to " <> renderURI uri)
 
-simpleOnSuccess :: SPHandler m => OnSuccess m
+simpleOnSuccess :: SPHandler (Error err) m => OnSuccess m
 simpleOnSuccess uid = (togglecookie . Just . userRefToST $ uid,) <$> getLandingURI
 
 
 ----------------------------------------------------------------------
 -- handler combinators
 
-crash :: (SP m, MonadError ServantErr m) => String -> m a
-crash msg = do
-  logger Fatal msg
-  throwError err500 { errBody = "internal error: consult server logs." }
+-- | Write error info to log, and apologise to client.
+crash :: (SP m, MonadError (Error err) m) => String -> m a
+crash msg = logger Fatal msg >> throwError UnknownError
 
 enterH :: SP m => String -> m ()
 enterH msg =

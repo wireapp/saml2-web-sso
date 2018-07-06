@@ -17,6 +17,7 @@ module SAML2.WebSSO (module X) where
 
 import SAML2.WebSSO.API as X
 import SAML2.WebSSO.Config as X
+import SAML2.WebSSO.Error as X
 import SAML2.WebSSO.SP as X
 import SAML2.WebSSO.Types as X
 import SAML2.WebSSO.XML as X

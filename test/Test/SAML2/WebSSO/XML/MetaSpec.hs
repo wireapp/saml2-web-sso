@@ -22,7 +22,7 @@ spec = do
   describe "spDesc" $ do
     it "does not smoke" $ do
       testCtx1 <- mkTestCtx1
-      have <- testSP testCtx1 $ spDesc
+      have <- ioFromTestSP testCtx1 $ spDesc
         "drnick" [uri|http://example.com/|] [uri|http://example.com/sso/login|] (fallbackContact :| [])
       let want = spdescpre (have ^. spdID)
       have `shouldBe` want
