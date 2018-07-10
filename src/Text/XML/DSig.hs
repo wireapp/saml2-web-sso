@@ -4,7 +4,7 @@
 -- other dubious packages internally, but expose xml-types and cryptonite.
 module Text.XML.DSig
   ( SignCreds(..), SignDigest(..), SignKey(..)
-  , parseKeyInfo, renderKeyInfo, keyInfoToCreds
+  , parseKeyInfo, renderKeyInfo, keyInfoToCreds, keyInfoToPublicKey
 
   , verify, verifyIO
   )
@@ -16,6 +16,7 @@ import Data.List.NonEmpty
 import Data.Monoid ((<>))
 import Data.String.Conversions
 import GHC.Stack
+import Lens.Micro ((<&>))
 import System.IO.Unsafe (unsafePerformIO)
 
 import qualified Crypto.PubKey.RSA as RSA
@@ -59,6 +60,9 @@ keyInfoToCreds cert = do
     bad -> throwError $ "unsupported: " <> show bad
   pure $ SignCreds digest key
 
+keyInfoToPublicKey :: (HasCallStack, MonadError String m) => X509.SignedCertificate -> m RSA.PublicKey
+keyInfoToPublicKey cert = keyInfoToCreds cert <&> \(SignCreds _ (SignKeyRSA key)) -> key
+
 
 {- this fails, but i don't know why.  it this base64 encoding after all?
 
@@ -73,12 +77,15 @@ q = [decodeASN1 DER, decodeASN1 BER] <*> [q1]
 ----------------------------------------------------------------------
 -- signature verification
 
-verify :: forall m. (MonadError String m) => RSA.PublicKey -> LBS -> String -> m ()
-verify key el signedID = either (throwError . show) pure . unsafePerformIO
-                       $ verifyIO key el signedID
+verify :: forall m. (MonadError String m) => X509.SignedCertificate -> LBS -> String -> m ()
+verify creds el signedID = either (throwError . show) pure . unsafePerformIO
+                         $ verifyIO creds el signedID
 
-verifyIO :: RSA.PublicKey -> LBS -> String -> IO (Either HS.SignatureError ())
-verifyIO key el signedID = do
+verifyIO :: X509.SignedCertificate -> LBS -> String -> IO (Either HS.SignatureError ())
+verifyIO creds el signedID = do
+  key :: RSA.PublicKey <- case keyInfoToCreds creds of
+    Right (SignCreds SignDigestSha256 (SignKeyRSA k)) -> pure k
+    Left msg -> throwIO . ErrorCall . show $ msg
   el' <- either (throwIO . ErrorCall) pure $ HS.xmlToDocE el
   HS.verifySignature (HS.PublicKeys Nothing . Just $ key) signedID el'
 

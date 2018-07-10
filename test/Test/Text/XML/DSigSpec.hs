@@ -23,6 +23,6 @@ spec = describe "xml:dsig" $ do
 
   describe "verify" $ do
     it "verify" $ do
-      let key = Samples.microsoft_idp_keyinfo
+      Right keyinfo <- parseKeyInfo <$> readSampleIO "microsoft-idp-keyinfo.xml"
       raw <- cs <$> readSampleIO "microsoft-authnresponse-2.xml"
-      verifyIO key raw "_c79c3ec8-1c26-4752-9443-1f76eb7d5dd6" `shouldReturn` Right ()
+      verifyIO keyinfo raw "_c79c3ec8-1c26-4752-9443-1f76eb7d5dd6" `shouldReturn` Right ()
