@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 {-# OPTIONS_GHC -Wno-orphans #-}
@@ -16,6 +17,9 @@ import Network.Wai hiding (Response)
 import SAML2.WebSSO
 import Servant.API hiding (URI(..))
 import Servant.Server
+#if !MIN_VERSION_servant_server(0,12,0)
+import Servant.Utils.Enter
+#endif
 import Text.Hamlet.XML
 import Text.XML
 import Text.XML.Util
@@ -28,11 +32,20 @@ app :: IO Application
 app = app' (Proxy @SimpleSP) =<< mkSimpleSPCtx =<< configIO
 
 app' :: forall (m :: * -> *).
-        ( SP m, SPHandler SimpleError m
+        (
+#if !MIN_VERSION_servant_server(0,12,0)
+          Enter (ServerT APPAPI m) m Handler (Server APPAPI),
+#endif
+          SP m, SPHandler SimpleError m
         ) => Proxy m -> NTCTX m -> IO Application
 app' Proxy ctx = do
   let served :: Application
-      served = serve (Proxy @APPAPI) (hoistServer (Proxy @APPAPI) (nt @SimpleError @m ctx) appapi :: Server APPAPI)
+      served = serve (Proxy @APPAPI)
+#if MIN_VERSION_servant_server(0,12,0)
+                   (hoistServer (Proxy @APPAPI) (nt @SimpleError @m ctx) appapi :: Server APPAPI)
+#else
+                   (enter (NT (nt @SimpleError @m ctx)) appapi :: Server APPAPI)
+#endif
   pure . setHttpCachePolicy $ served
 
 type SPAPI =
