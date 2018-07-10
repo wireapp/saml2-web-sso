@@ -6,7 +6,7 @@ module Text.XML.DSig
   ( SignCreds(..), SignDigest(..), SignKey(..)
   , parseKeyInfo, renderKeyInfo, keyInfoToCreds, keyInfoToPublicKey
 
-  , verify, verifyIO
+  , verify, verifyRoot, verifyIO
   )
 where
 
@@ -20,9 +20,11 @@ import Lens.Micro ((<&>))
 import System.IO.Unsafe (unsafePerformIO)
 
 import qualified Crypto.PubKey.RSA as RSA
+import qualified Data.Map as Map
 import qualified Data.X509 as X509
 import qualified SAML2.XML as HS hiding (URI, Node)
 import qualified SAML2.XML.Signature as HS
+import qualified Text.XML as XML
 
 
 ----------------------------------------------------------------------
@@ -80,6 +82,18 @@ q = [decodeASN1 DER, decodeASN1 BER] <*> [q1]
 verify :: forall m. (MonadError String m) => X509.SignedCertificate -> LBS -> String -> m ()
 verify creds el signedID = either (throwError . show) pure . unsafePerformIO
                          $ verifyIO creds el signedID
+
+verifyRoot :: forall m. (MonadError String m) => X509.SignedCertificate -> LBS -> m ()
+verifyRoot creds el = do
+  signedID <- do
+    XML.Document _ (XML.Element _ attrs _) _
+      <- either (throwError . ("Could not parse signed document: " <>) . cs . show)
+                pure
+                (XML.parseLBS XML.def el)
+    maybe (throwError "Could not parse signed document: no ID attribute in root element.")
+          (pure . cs)
+          (Map.lookup "ID" attrs)
+  verify creds el signedID
 
 verifyIO :: X509.SignedCertificate -> LBS -> String -> IO (Either HS.SignatureError ())
 verifyIO creds el signedID = do
