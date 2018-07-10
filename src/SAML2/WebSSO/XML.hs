@@ -27,7 +27,6 @@ import qualified Data.Tree.NTree.TypeDefs as HS
 import qualified Network.URI as HS
 import qualified SAML2.Core as HS
 import qualified SAML2.Core.Protocols as HS
-import qualified SAML2.Metadata as HS
 import qualified SAML2.Profiles as HS
 import qualified SAML2.XML as HS
 import qualified Text.XML
@@ -172,13 +171,6 @@ nameIDToST other = cs $ encodeElem other
 
 userRefToST :: UserRef -> ST
 userRefToST (UserRef (Issuer tenant) subject) = "{" <> renderURI tenant <> "}" <> nameIDToST subject
-
-
-importEntityDescriptor :: (HasCallStack, MonadError String m) => HS.Descriptor -> m EntityDescriptor
-importEntityDescriptor = error . ppShow
-
-exportEntityDescriptor :: HasCallStack => EntityDescriptor -> HS.Descriptor
-exportEntityDescriptor = error . ppShow
 
 
 importAuthnRequest :: MonadError String m => HS.AuthnRequest -> m AuthnRequest

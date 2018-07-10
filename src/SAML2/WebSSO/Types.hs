@@ -22,6 +22,8 @@ import URI.ByteString  -- FUTUREWORK: should saml2-web-sso also use the URI from
                        -- string-based?  is it less of a problem because we need it anyway?)
 
 import qualified Data.Text as ST
+import qualified Data.X509 as X509
+import qualified Text.XML as XML
 
 
 ----------------------------------------------------------------------
@@ -53,7 +55,11 @@ instance ToJSON Issuer where
 
 
 ----------------------------------------------------------------------
--- meta
+-- meta [4/2.3.2]
+
+-- | 'HS.Descriptor', but without exposing the use of hsaml2.
+newtype SPDesc = SPDesc XML.Document
+  deriving (Eq, Show, Generic)
 
 -- | high-level, condensed data uesd for constructing an 'SPDesc'.  what is not in here is set to
 -- some constant default.
@@ -88,78 +94,12 @@ data ContactType
   | ContactOther
   deriving (Eq, Enum, Bounded, Show, Generic)
 
--- | [4/2.3.2]
-data EntityDescriptor = EntityDescriptor
-  { _edEntityID      :: ST
-  , _edID            :: Maybe (ID EntityDescriptor)
-  , _edValidUntil    :: Maybe Time
-  , _edCacheDuration :: Maybe Duration
-  , _edExtensions    :: [EntityDescriptionExtension]
-  , _edRoles         :: [Role]
+data IdPDesc = IdPDesc
+  { _edIssuer      :: Issuer
+  , _edRequestURI  :: URI
+  , _edPublicKeys  :: [X509.SignedCertificate]
   }
   deriving (Eq, Show, Generic)
-
-data EntityDescriptionExtension =
-    EntityDescriptionDigestMethod URI
-  | EntityDescriptionSigningMethod URI
-  deriving (Eq, Show, Generic)
-
-data Role =
-    RoleRoleDescriptor RoleDescriptor
-  | RoleIDPSSODescriptor IDPSSODescriptor
-  | RoleSPSSODescriptor SPSSODescriptor
-  deriving (Eq, Show, Generic)
-
-
--- | [4/2.4.1]
-data RoleDescriptor = RoleDescriptor
-  { _rssoID                         :: Maybe (ID RoleDescriptor)
-  , _rssoValidUntil                 :: Maybe Time
-  , _rssoCacheDuration              :: Maybe Duration
-  , _rssoProtocolSupportEnumeration :: NonEmpty ST
-  , _rssoErrorURL                   :: Maybe URI
-  , _rssoKeyDescriptors             :: [KeyDescriptor]
-  }
-  deriving (Eq, Show, Generic)
-
--- | [4/2.4.1.1]
-data KeyDescriptor = KeyDescriptor
-  { _kdUse               :: Maybe KeyDescriptorUse
-  , _kdKeyInfo           :: ()  -- xml:dsig key (not implemented)
-  , _kdEncryptionMethods :: ()  -- xenc method (not implemented)
-  }
-  deriving (Eq, Show, Generic)
-
-data KeyDescriptorUse = KeyDescriptorEncryption | KeyDescriptorSigning
-  deriving (Eq, Show, Enum, Bounded, Generic)
-
-
--- | [4/2.4.4]
-data SPSSODescriptor = SPSSODescriptor
-  deriving (Eq, Show, Generic)
-
-
--- | [4/2.4.3]
-data IDPSSODescriptor = IDPSSODescriptor
-  { _idpWantAuthnRequestsSigned  :: Bool
-  , _idpSingleSignOnService      :: NonEmpty EndPointNoRespLoc
-  , _idNameIDMappingService      :: [EndPointNoRespLoc]
-  , _idAssertionIDRequestService :: [EndPointAllowRespLoc]
-  , _idAttributeProfile          :: [URI]
-  }
-  deriving (Eq, Show, Generic)
-
--- | [4/2.2.2].  Both binding and location should be type 'URI' according to standard, but Microsoft
--- Active Directory has unparseable URIs for locations.
-data EndPoint rl = EndPoint
-  { _epBinding          :: ST
-  , _epLocation         :: URI
-  , _epResponseLocation :: rl
-  }
-  deriving (Eq, Show, Generic)
-
-type EndPointNoRespLoc = EndPoint ()
-type EndPointAllowRespLoc = EndPoint (Maybe URI)
 
 
 ----------------------------------------------------------------------
@@ -446,25 +386,17 @@ makeLenses ''AuthnRequest
 makeLenses ''BaseID
 makeLenses ''Comparison
 makeLenses ''Conditions
+makeLenses ''ContactPerson
 makeLenses ''Duration
-makeLenses ''EndPoint
-makeLenses ''EntityDescriptionExtension
-makeLenses ''EntityDescriptor
+makeLenses ''IdPDesc
 makeLenses ''ID
-makeLenses ''IDPSSODescriptor
 makeLenses ''Issuer
-makeLenses ''KeyDescriptor
-makeLenses ''KeyDescriptorUse
 makeLenses ''Locality
 makeLenses ''NameID
 makeLenses ''NameIdPolicy
 makeLenses ''RequestedAuthnContext
 makeLenses ''Response
-makeLenses ''Role
-makeLenses ''RoleDescriptor
-makeLenses ''ContactPerson
 makeLenses ''SPDescPre
-makeLenses ''SPSSODescriptor
 makeLenses ''Statement
 makeLenses ''Status
 makeLenses ''Subject
@@ -476,8 +408,8 @@ makeLenses ''UnqualifiedNameID
 makeLenses ''UserRef
 makeLenses ''Version
 
-makePrisms ''UnqualifiedNameID
 makePrisms ''Statement
+makePrisms ''UnqualifiedNameID
 
 
 ----------------------------------------------------------------------

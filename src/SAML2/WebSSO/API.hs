@@ -65,7 +65,7 @@ import qualified SAML2.WebSSO.XML.Meta as Meta
 
 type OnSuccess m = UserRef -> m (SetCookie, URI)
 
-type APIMeta     = Get '[XML] Meta.SPDesc
+type APIMeta     = Get '[XML] SPDesc
 type APIAuthReq  = Capture "idp" IdPId :> Get '[HTML] (FormRedirect AuthnRequest)
 type APIAuthResp = MultipartForm Mem AuthnResponseBody :> PostRedir '[HTML] (WithCookieAndLocation ST)
 
@@ -270,7 +270,7 @@ getResponseURI proxyAPI proxyAPIAuthResp = resp =<< (^. cfgSPSsoURI) <$> getConf
 -- handlers
 
 meta :: (SPHandler (Error err) m, IsElem endpoint api, HasLink endpoint, ToHttpApiData (MkLink endpoint))
-     => ST -> Proxy api -> Proxy endpoint -> m Meta.SPDesc
+     => ST -> Proxy api -> Proxy endpoint -> m SPDesc
 meta appName proxyAPI proxyAPIAuthResp = do
   enterH "meta"
   landing <- getLandingURI
