@@ -16,7 +16,6 @@ import Network.Wai hiding (Response)
 import SAML2.WebSSO
 import Servant.API hiding (URI(..))
 import Servant.Server
-import Servant.Utils.Enter
 import Text.Hamlet.XML
 import Text.XML
 import Text.XML.Util
@@ -29,12 +28,11 @@ app :: IO Application
 app = app' (Proxy @SimpleSP) =<< mkSimpleSPCtx =<< configIO
 
 app' :: forall (m :: * -> *).
-        ( Enter (ServerT APPAPI m) m Handler (Server APPAPI)
-        , SP m, SPHandler SimpleError m
+        ( SP m, SPHandler SimpleError m
         ) => Proxy m -> NTCTX m -> IO Application
 app' Proxy ctx = do
   let served :: Application
-      served = serve (Proxy @APPAPI) (enter (NT (nt @SimpleError @m ctx)) appapi :: Server APPAPI)
+      served = serve (Proxy @APPAPI) (hoistServer (Proxy @APPAPI) (nt @SimpleError @m ctx) appapi :: Server APPAPI)
   pure . setHttpCachePolicy $ served
 
 type SPAPI =
