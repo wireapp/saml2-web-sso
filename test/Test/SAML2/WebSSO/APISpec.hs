@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 {-# OPTIONS_GHC -Wno-unused-binds -Wno-incomplete-patterns -Wno-incomplete-uni-patterns -Wno-orphans #-}
@@ -14,7 +15,9 @@ import Data.String.Conversions
 import Lens.Micro
 import SAML2.WebSSO
 import Servant
+#if !MIN_VERSION_servant_server(0,12,0)
 import Servant.Utils.Enter
+#endif
 import Shelly (shelly, run, setStdin, silently)
 import Test.Hspec hiding (pending)
 import Test.Hspec.Wai
@@ -51,10 +54,19 @@ base64theirs sbs = shelly . silently $ cs <$> (setStdin (cs sbs) >> run "/usr/bi
 -- on servant-0.12 or later, use 'hoistServer':
 -- <https://github.com/haskell-servant/servant/blob/master/servant/CHANGELOG.md#significant-changes-1>
 withapp :: forall (api :: *).
-  ( Enter (ServerT api TestSP) TestSP Handler (Server api)
-  , HasServer api '[]
+  (
+#if !MIN_VERSION_servant_server(0,12,0)
+    Enter (ServerT api TestSP) TestSP Handler (Server api),
+#endif
+    HasServer api '[]
   ) => Proxy api -> ServerT api TestSP -> IO Ctx -> SpecWith Application -> Spec
-withapp proxy handler mkctx = with (mkctx <&> \ctx -> serve proxy (enter (NT (nt @SimpleError @TestSP ctx)) handler :: Server api))
+withapp proxy handler mkctx = with (mkctx <&> \ctx -> serve proxy
+#if MIN_VERSION_servant_server(0,12,0)
+                                     (hoistServer (Proxy @api) (nt @SimpleError @TestSP ctx) handler :: Server api)
+#else
+                                     (enter (NT (nt @SimpleError @TestSP ctx)) handler :: Server api)
+#endif
+                                   )
 
 
 spec :: Spec
