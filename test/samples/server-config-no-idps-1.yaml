@@ -1,15 +1,15 @@
-version:     SAML2.0
-log_level:   Debug
+version:   SAML2.0
+logLevel:  Debug
 
-sp_host:     me.wire.com
-sp_port:     443
-sp_app_uri:  https://me.wire.com/sp
-sp_sso_uri:  https://me.wire.com/sso
+spHost:    me.wire.com
+spPort:    443
+spAppUri:  https://me.wire.com/sp
+spSsoUri:  https://me.wire.com/sso
 
 contacts:
   - type: ContactSupport
     company: evil corp.
-    given_name: Dr.
+    givenName: Dr.
     surname: Girlfriend
     email: email:president@evil.corp
     phone: '+314159265'

@@ -87,11 +87,11 @@ makeLenses ''IdPConfig
 instance ToJSON a => ToJSON (Config a) where
   toJSON Config {..} = object $
     [ "version"    .= _cfgVersion
-    , "log_level"  .= _cfgLogLevel
-    , "sp_host"    .= _cfgSPHost
-    , "sp_port"    .= _cfgSPPort
-    , "sp_app_uri" .= _cfgSPAppURI
-    , "sp_sso_uri" .= _cfgSPSsoURI
+    , "logLevel"   .= _cfgLogLevel
+    , "spHost"     .= _cfgSPHost
+    , "spPort"     .= _cfgSPPort
+    , "spAppUri"   .= _cfgSPAppURI
+    , "spSsoUri"   .= _cfgSPSsoURI
     , "contacts"   .= _cfgContacts
     ] <>
     [ "idps" .= _cfgIdps | not $ Prelude.null _cfgIdps ]
@@ -99,11 +99,11 @@ instance ToJSON a => ToJSON (Config a) where
 instance FromJSON a => FromJSON (Config a) where
   parseJSON = withObject "Config" $ \obj -> do
     _cfgVersion           <- obj .: "version"
-    _cfgLogLevel          <- obj .: "log_level"
-    _cfgSPHost            <- obj .: "sp_host"
-    _cfgSPPort            <- obj .: "sp_port"
-    _cfgSPAppURI          <- obj .: "sp_app_uri"
-    _cfgSPSsoURI          <- obj .: "sp_sso_uri"
+    _cfgLogLevel          <- obj .: "logLevel"
+    _cfgSPHost            <- obj .: "spHost"
+    _cfgSPPort            <- obj .: "spPort"
+    _cfgSPAppURI          <- obj .: "spAppUri"
+    _cfgSPSsoURI          <- obj .: "spSsoUri"
     _cfgContacts          <- obj .: "contacts"
     _cfgIdps              <- fromMaybe [] <$> obj .:? "idps"
     pure Config {..}

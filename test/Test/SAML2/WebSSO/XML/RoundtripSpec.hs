@@ -23,17 +23,11 @@ mkprop gen = property $ forAll gen >>= \v -> tripping v enc dec
 prop_tripNameID :: Property
 prop_tripNameID = mkprop genNameID
 
-{-- TODO: enable
+-- TODO: enable and fix
+-- prop_tripAuthnRequest :: Property
+-- prop_tripAuthnRequest = mkprop genAuthnRequest
 
-_prop_tripEntityDescriptor :: Property
-_prop_tripEntityDescriptor = mkprop genEntityDescriptor
-
--- TODO: enable
-_prop_tripAuthnRequest :: Property
-_prop_tripAuthnRequest = mkprop genAuthnRequest
-
--- TODO: enable
-_prop_tripAuthnResponse :: Property
-_prop_tripAuthnResponse = mkprop (Gen.prune genAuthnResponse)
+-- TODO: enable and fix
+-- prop_tripAuthnResponse :: Property
+-- prop_tripAuthnResponse = mkprop (Gen.prune genAuthnResponse)
   -- without the 'prune', this triggers https://github.com/hedgehogqa/haskell-hedgehog/issues/174
--}

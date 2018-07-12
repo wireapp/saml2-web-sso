@@ -47,13 +47,12 @@ import Text.Hamlet.XML
 import Text.Show.Pretty (ppShow)
 import Text.XML
 import Text.XML.Cursor
-import Text.XML.DSig (SignCreds(SignCreds), SignDigest(SignDigestSha256), SignKey(SignKeyRSA), verify, keyInfoToCreds)
+import Text.XML.DSig (verify)
 import Text.XML.Util
 import URI.ByteString
 import Web.Cookie
 
 import qualified Data.ByteString.Builder as SBSBuilder
-import qualified Crypto.PubKey.RSA as RSA
 import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
 import qualified Data.Text as ST
@@ -66,7 +65,7 @@ import qualified SAML2.WebSSO.XML.Meta as Meta
 
 type OnSuccess m = UserRef -> m (SetCookie, URI)
 
-type APIMeta     = Get '[XML] Meta.SPDesc
+type APIMeta     = Get '[XML] SPDesc
 type APIAuthReq  = Capture "idp" IdPId :> Get '[HTML] (FormRedirect AuthnRequest)
 type APIAuthResp = MultipartForm Mem AuthnResponseBody :> PostRedir '[HTML] (WithCookieAndLocation ST)
 
@@ -117,10 +116,6 @@ simpleVerifyAuthnResponse :: forall m err. SPStoreIdP (Error err) m => Maybe Iss
 simpleVerifyAuthnResponse Nothing _ = throwError $ BadSamlResponse "missing issuer"
 simpleVerifyAuthnResponse (Just issuer) raw = do
     creds <- (^. idpPublicKey) <$> getIdPConfigByIssuer issuer
-    key :: RSA.PublicKey <- case keyInfoToCreds creds of
-        Right (SignCreds SignDigestSha256 (SignKeyRSA k)) -> pure k
-        Left msg -> throwError . BadServerConfig $ "IdP pubkey corrupted in SP config: " <> cs (show msg)
-
     doc :: Cursor <- either (throwError . BadSamlResponse . ("could not parse document: " <>) . cs . show)
                             (pure . fromDocument)
                             (parseLBS def raw)
@@ -141,7 +136,7 @@ simpleVerifyAuthnResponse (Just issuer) raw = do
     nodeids :: [String]
       <- assertionID `mapM` assertions
 
-    either (throwError . BadSamlResponse . cs) pure $ (verify key raw `mapM_` nodeids)
+    either (throwError . BadSamlResponse . cs) pure $ (verify creds raw `mapM_` nodeids)
 
 
 ----------------------------------------------------------------------
@@ -275,7 +270,7 @@ getResponseURI proxyAPI proxyAPIAuthResp = resp =<< (^. cfgSPSsoURI) <$> getConf
 -- handlers
 
 meta :: (SPHandler (Error err) m, IsElem endpoint api, HasLink endpoint, ToHttpApiData (MkLink endpoint))
-     => ST -> Proxy api -> Proxy endpoint -> m Meta.SPDesc
+     => ST -> Proxy api -> Proxy endpoint -> m SPDesc
 meta appName proxyAPI proxyAPIAuthResp = do
   enterH "meta"
   landing <- getLandingURI

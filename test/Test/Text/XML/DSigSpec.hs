@@ -14,15 +14,21 @@ import qualified Samples
 
 spec :: Spec
 spec = describe "xml:dsig" $ do
-  describe "key handling" $ do
-    it "parseKeyInfo" $ do
+  describe "parseKeyInfo" $ do
+    it "works" $ do
       keyinfo <- readSampleIO "microsoft-idp-keyinfo.xml"
       let want = Samples.microsoft_idp_keyinfo
           Right (SignCreds _ (SignKeyRSA have)) = keyInfoToCreds =<< parseKeyInfo keyinfo
       have `shouldBe` want
 
   describe "verify" $ do
-    it "verify" $ do
-      let key = Samples.microsoft_idp_keyinfo
+    it "works" $ do
+      Right keyinfo <- parseKeyInfo <$> readSampleIO "microsoft-idp-keyinfo.xml"
       raw <- cs <$> readSampleIO "microsoft-authnresponse-2.xml"
-      verifyIO key raw "_c79c3ec8-1c26-4752-9443-1f76eb7d5dd6" `shouldReturn` Right ()
+      verify keyinfo raw "_c79c3ec8-1c26-4752-9443-1f76eb7d5dd6" `shouldBe` Right ()
+
+  describe "verifyRoot" $ do
+    it "works" $ do
+      Right keyinfo <- parseKeyInfo <$> readSampleIO "microsoft-idp-keyinfo.xml"
+      raw <- cs <$> readSampleIO "microsoft-meta-2.xml"
+      verifyRoot keyinfo raw `shouldBe` Right ()

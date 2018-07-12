@@ -230,7 +230,7 @@ spec = describe "API" $ do
 
 
   describe "idp smoke tests" $ do
-    burnIdP "octa.yaml" "octa-resp-1.base64" "2018-05-25T10:57:16.135Z" "https://zb2.zerobuzz.net:60443/"
+    burnIdP "okta-config.yaml" "okta-resp-1.base64" "2018-05-25T10:57:16.135Z" "https://zb2.zerobuzz.net:60443/"
     burnIdP "microsoft-idp-config.yaml" "microsoft-authnresponse-2.base64" "2018-04-14T10:53:57Z" "https://zb2.zerobuzz.net:60443/authresp"
     -- TODO: centrify
 

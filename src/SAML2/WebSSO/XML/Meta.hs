@@ -1,6 +1,8 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 module SAML2.WebSSO.XML.Meta
-  ( SPDescPre(..), ContactPerson(..), SPDesc(..)
-  , spdID
+  ( spdID
   , spdValidUntil
   , spdCacheDuration
   , spdOrgName
@@ -10,23 +12,29 @@ module SAML2.WebSSO.XML.Meta
 
   , spDesc
   , spMeta
+
+  , parseIdPDesc
   ) where
 
+import Control.Monad.Except
 import Data.List.NonEmpty
 import Data.Maybe
 import Data.Proxy
 import Data.String.Conversions
-import GHC.Generics (Generic)
 import GHC.Stack
 import Lens.Micro
 import SAML2.WebSSO.SP
 import SAML2.WebSSO.Types
 import SAML2.WebSSO.XML
 import Text.XML
+import Text.XML.Cursor
+import Text.XML.DSig (parseKeyInfo)
 import Text.XML.Util
 import URI.ByteString
 
+import qualified Data.Map as Map
 import qualified Data.UUID as UUID
+import qualified Data.X509 as X509
 import qualified Network.URI as OldURI
 import qualified SAML2.Bindings.Identifiers as HS
 import qualified SAML2.Core.Datatypes as HS hiding (AnyURI)
@@ -38,10 +46,6 @@ import qualified SAML2.XML as HX hiding (AnyURI)
 import qualified SAML2.XML.Schema.Datatypes as HX
 import qualified SAML2.XML.Signature.Types as HX
 
-
--- | 'HS.Descriptor', but without exposing the use of hsaml2.
-newtype SPDesc = SPDesc Document
-  deriving (Eq, Show, Generic)
 
 instance HasXML SPDesc where
   parse [NodeElement el] = pure . SPDesc $ Document defPrologue el defMiscellaneous
@@ -143,3 +147,45 @@ castContactType = \case
   ContactAdministrative -> HS.ContactTypeAdministrative
   ContactBilling        -> HS.ContactTypeBilling
   ContactOther          -> HS.ContactTypeOther
+
+
+instance HasXML IdPDesc where
+  parse [NodeElement el] = parseIdPDesc el
+  parse bad = die (Proxy @IdPDesc) bad
+
+instance HasXMLRoot IdPDesc where
+  renderRoot _ = error "instance HasXMLRoot SPDesc: not implemented."
+
+
+parseIdPDesc :: MonadError String m => Element -> m IdPDesc
+parseIdPDesc el@(Element _ attrs _) = do
+  _edIssuer :: Issuer <- do
+    issueruri :: ST <- maybe (throwError "no issuer") pure (Map.lookup "entityID" attrs)
+    Issuer <$> parseURI' issueruri
+
+  _edRequestURI :: URI <- do
+    let cur = fromNode $ NodeElement el
+        target :: [ST]
+        target = cur $// element "{urn:oasis:names:tc:SAML:2.0:metadata}IDPSSODescriptor"
+                     &/  element "{urn:oasis:names:tc:SAML:2.0:metadata}SingleSignOnService"
+                     >=> attributeIs "Binding" "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
+                     >=> attribute "Location"
+
+    case parseURI' <$> target of
+      [Right uri] -> pure uri
+      [Left msg]  -> throwError $ "bad request uri: " <> msg
+      _bad        -> throwError $ "no request uri"
+
+  _edPublicKeys :: [X509.SignedCertificate] <- do
+    let cur = fromNode $ NodeElement el
+        target :: [Cursor]
+        target = cur $// element "{urn:oasis:names:tc:SAML:2.0:metadata}IDPSSODescriptor"
+                     &/  element "{urn:oasis:names:tc:SAML:2.0:metadata}KeyDescriptor"
+                     >=> attributeIs "use" "signing"
+                     &/  element "{http://www.w3.org/2000/09/xmldsig#}KeyInfo"
+          -- TODO: is the public key for metadata verification located elsewhere in the metadata?
+    forM target $ \case
+      (node -> NodeElement key) -> parseKeyInfo . renderText def . mkDocument $ key
+      bad -> throwError $ "unexpected: could not parse x509 cert: " <> show bad
+
+  pure IdPDesc {..}
