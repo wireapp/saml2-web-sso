@@ -2,9 +2,10 @@ module SAML2.WebSSO.Config.TH (deriveJSONOptions) where
 
 import Data.Aeson
 import Data.Char
+import Lens.Micro
 
 deriveJSONOptions :: Options
 deriveJSONOptions = defaultOptions { fieldLabelModifier = labelmod }
 
 labelmod :: String -> String
-labelmod = camelTo2 '_' . dropWhile (not . isUpper)
+labelmod = (ix 0 %~ toLower) . dropWhile (not . isUpper)
