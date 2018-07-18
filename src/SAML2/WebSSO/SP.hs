@@ -60,7 +60,7 @@ class (SP m) => SPStore m where
   checkAgainstRequest :: ID AuthnRequest -> m Bool
 
   -- Store 'Assertion's to prevent replay attack.  'Time' argument is end of life (IDs may be
-  -- garbage collected after that time).  If assertion has already been stored and is not dead yet,
+  -- garbage collected after that time).  Iff assertion has already been stored and is not dead yet,
   -- return 'False'.
   storeAssertion :: ID Assertion -> Time -> m Bool
 
@@ -406,6 +406,6 @@ judgeConditions (Conditions lowlimit uplimit onetimeuse maudiences) = do
   us <- getLandingURI
   case maudiences of
     Just aus | us `notElem` aus
-      -> deny [show (renderURI us) <> " is not in the target audience " <>
-               show (renderURI <$> toList aus) <> " of this response."]
+      -> deny ["I am " <> cs (renderURI us) <> ", and I am not in the target audience [" <>
+               intercalate ", " (cs . renderURI <$> toList aus) <> "] of this response."]
     _ -> pure ()
