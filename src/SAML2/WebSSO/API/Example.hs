@@ -61,7 +61,7 @@ spapi :: SPHandler SimpleError m => ServerT SPAPI m
 spapi = loginStatus :<|> localLogout :<|> singleLogout
 
 appapi :: SPHandler SimpleError m => ServerT APPAPI m
-appapi = spapi :<|> api "toy-sp" simpleOnSuccess
+appapi = spapi :<|> api "toy-sp" (HandleVerdictRedirect simpleOnSuccess)
 
 loginStatus :: SP m => Maybe SetCookie -> m LoginStatus
 loginStatus cookie = do
