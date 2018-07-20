@@ -278,6 +278,8 @@ meta appName proxyAPI proxyAPIAuthResp = do
   contacts <- (^. cfgContacts) <$> getConfig
   Meta.spMeta <$> Meta.spDesc appName landing resp contacts
 
+-- | Create authnreq, store it for comparison against assertions later, and return it in an HTTP
+-- redirect together with the IdP's URI.
 authreq :: (SPHandler (Error err) m) => NominalDiffTime -> IdPId -> m (FormRedirect AuthnRequest)
 authreq lifeExpectancySecs idpname = do
   enterH "authreq"
@@ -287,19 +289,21 @@ authreq lifeExpectancySecs idpname = do
   logger Debug $ "authreq req: " <> show req
   leaveH $ FormRedirect uri req
 
+-- | 'authreq' with request life expectancy defaulting to 8 hours.
 authreq' :: (SPHandler (Error err) m) => IdPId -> m (FormRedirect AuthnRequest)
 authreq' = authreq (8 * 60 * 60)
 
+-- | parse and validate response, and pass the verdict to a user-provided verdict handler.
 authresp :: SPHandler (Error err) m => HandleVerdict m -> AuthnResponseBody -> m (WithCookieAndLocation ST)
 authresp handleVerdict body = do
   enterH "authresp: entering"
-  resp <- fromAuthnResponseBody body
+  resp :: AuthnResponse <- fromAuthnResponseBody body
   logger Debug $ "authresp: " <> ppShow resp
   verdict <- judge resp
   logger Debug $ "authresp: " <> show verdict
   case handleVerdict of
     HandleVerdictRedirect onsuccess -> simpleHandleVerdict onsuccess verdict
-    HandleVerdictRaw action -> throwError . CustomServant =<< action verdict
+    HandleVerdictRaw action -> throwError . CustomServant =<< action resp verdict
 
 
 type OnSuccessRedirect m = UserRef -> m (SetCookie, URI)
@@ -312,7 +316,7 @@ simpleOnSuccess uid = (togglecookie . Just . userRefToST $ uid,) <$> getLandingU
 -- suitable name here.
 data HandleVerdict m
   = HandleVerdictRedirect (OnSuccessRedirect m)
-  | HandleVerdictRaw (AccessVerdict -> m ResponseVerdict)
+  | HandleVerdictRaw (AuthnResponse -> AccessVerdict -> m ResponseVerdict)
 
 type ResponseVerdict = ServantErr
 
