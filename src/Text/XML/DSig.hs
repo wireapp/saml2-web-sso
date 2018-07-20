@@ -12,19 +12,23 @@ where
 
 import Control.Exception (throwIO, ErrorCall(ErrorCall))
 import Control.Monad.Except
+import Data.Char (isSpace)
+import Data.EitherR (fmapL)
 import Data.List.NonEmpty
 import Data.Monoid ((<>))
 import Data.String.Conversions
 import GHC.Stack
 import Lens.Micro ((<&>))
 import System.IO.Unsafe (unsafePerformIO)
+import Text.XML as XML
 
+import qualified Data.Generics.Uniplate.Data as Uniplate
 import qualified Crypto.PubKey.RSA as RSA
 import qualified Data.Map as Map
+import qualified Data.Text as ST
 import qualified Data.X509 as X509
 import qualified SAML2.XML as HS hiding (URI, Node)
 import qualified SAML2.XML.Signature as HS
-import qualified Text.XML as XML
 
 
 ----------------------------------------------------------------------
@@ -36,7 +40,7 @@ import qualified Text.XML as XML
 --
 -- TODO: verify self-signature?
 parseKeyInfo :: (HasCallStack, MonadError String m) => LT -> m X509.SignedCertificate
-parseKeyInfo lt = case HS.xmlToSAML @HS.KeyInfo . cs $ lt of
+parseKeyInfo (cs @LT @LBS -> lbs) = case HS.xmlToSAML @HS.KeyInfo =<< stripWhitespace lbs of
   Right keyinf -> case HS.keyInfoElements keyinf of
     HS.X509Data (HS.X509Certificate cert :| []) :| []
       -> pure cert
@@ -45,7 +49,22 @@ parseKeyInfo lt = case HS.xmlToSAML @HS.KeyInfo . cs $ lt of
     unsupported
       -> throwError $ "expected exactly one KeyInfo element: " <> show unsupported
   Left errmsg
-    -> throwError $ "expected exactly one KeyInfo element: " <> errmsg
+    -> throwError $ "expected exactly one KeyInfo XML element: " <> errmsg
+
+-- | Remove all whitespace in the text nodes of the xml document.  This requires parsing and re-rendering.
+stripWhitespace :: m ~ Either String => LBS -> m LBS
+stripWhitespace lbs = renderLBS def . stripws <$> fmapL show (parseLBS def lbs)
+  where
+    stripws :: Document -> Document
+    stripws = Uniplate.transformBis
+      [ [Uniplate.transformer $ \case
+            (NodeContent txt) -> NodeContent $ ST.filter (not . isSpace) txt
+            other -> other
+        ]
+      , [Uniplate.transformer $ \case
+            (Element nm attrs nodes) -> Element nm attrs (Prelude.filter (/= NodeContent "") $ nodes)
+        ]
+      ]
 
 renderKeyInfo :: (HasCallStack) => X509.SignedCertificate -> LT
 renderKeyInfo cert = cs . HS.samlToXML . HS.KeyInfo Nothing $ HS.X509Data (HS.X509Certificate cert :| []) :| []
