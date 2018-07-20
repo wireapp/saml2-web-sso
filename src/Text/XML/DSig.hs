@@ -36,9 +36,16 @@ import qualified Text.XML as XML
 --
 -- TODO: verify self-signature?
 parseKeyInfo :: (HasCallStack, MonadError String m) => LT -> m X509.SignedCertificate
-parseKeyInfo lt = case HS.xmlToSAML @HS.KeyInfo $ cs lt of
-  (Right (HS.keyInfoElements -> HS.X509Data (HS.X509Certificate cert :| []) :| [])) -> pure cert
-  bad -> throwError $ "unsupported: " <> show bad
+parseKeyInfo lt = case HS.xmlToSAML @HS.KeyInfo . cs $ lt of
+  Right keyinf -> case HS.keyInfoElements keyinf of
+    HS.X509Data (HS.X509Certificate cert :| []) :| []
+      -> pure cert
+    HS.X509Data (HS.X509Certificate _ :| bad) :| bad'
+      -> throwError $ "unreadable trailing data or noise: " <> show (bad, bad')
+    unsupported
+      -> throwError $ "expected exactly one KeyInfo element: " <> show unsupported
+  Left errmsg
+    -> throwError $ "expected exactly one KeyInfo element: " <> errmsg
 
 renderKeyInfo :: (HasCallStack) => X509.SignedCertificate -> LT
 renderKeyInfo cert = cs . HS.samlToXML . HS.KeyInfo Nothing $ HS.X509Data (HS.X509Certificate cert :| []) :| []
