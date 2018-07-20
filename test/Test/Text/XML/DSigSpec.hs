@@ -4,6 +4,7 @@
 
 module Test.Text.XML.DSigSpec (spec) where
 
+import Data.Either
 import Data.String.Conversions
 import Test.Hspec
 import Text.XML.DSig
@@ -15,11 +16,15 @@ import qualified Samples
 spec :: Spec
 spec = describe "xml:dsig" $ do
   describe "parseKeyInfo" $ do
-    it "works" $ do
+    it "works(1)" $ do
       keyinfo <- readSampleIO "microsoft-idp-keyinfo.xml"
       let want = Samples.microsoft_idp_keyinfo
           Right (SignCreds _ (SignKeyRSA have)) = keyInfoToCreds =<< parseKeyInfo keyinfo
       have `shouldBe` want
+
+    it "works(2)" $ do
+      keyinfo <- readSampleIO "okta-keyinfo-1.xml"
+      (keyInfoToCreds =<< parseKeyInfo keyinfo) `shouldSatisfy` isRight
 
   describe "verify" $ do
     it "works" $ do

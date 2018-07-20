@@ -15,6 +15,7 @@ data Error err
   | BadSamlResponse LT
   | BadServerConfig LT
   | UnknownError
+  | CustomServant ServantErr
   | CustomError err
   deriving (Eq, Show)
 
@@ -27,4 +28,5 @@ toServantErr (Forbidden msg)       = err403 { errBody = cs $ msg }
 toServantErr (BadSamlResponse msg) = err400 { errBody = cs $ msg }
 toServantErr (BadServerConfig msg) = err400 { errBody = cs $ "Invalid server config: " <> msg }
 toServantErr UnknownError          = err500 { errBody = "Internal server error.  Please consult the logs." }
+toServantErr (CustomServant err)   = err
 toServantErr (CustomError avoid)   = absurd avoid

@@ -249,6 +249,22 @@ nameIDFormat = \case
   NameIDFPersistent _  -> "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
   NameIDFTransient _   -> "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"
 
+-- | Extract the 'UnqualifiedNameID' part from the input and render it to a 'ST'.  If there are any
+-- qualifiers, return 'Nothing' to prevent name clashes (where two inputs are different, but produce
+-- the same output).
+shortShowNameID :: NameID -> Maybe ST
+shortShowNameID (NameID uqn Nothing Nothing Nothing) = case uqn of
+  NameIDFUnspecified st  -> Just st
+  NameIDFEmail       st  -> Just st
+  NameIDFX509        st  -> Just st
+  NameIDFWindows     st  -> Just st
+  NameIDFKerberos    st  -> Just st
+  NameIDFEntity      uri -> Just $ renderURI uri
+  NameIDFPersistent  st  -> Just st
+  NameIDFTransient   st  -> Just st
+shortShowNameID _ = Nothing
+
+
 data Version = Version_2_0
   deriving (Eq, Show, Bounded, Enum, Generic)
 

@@ -1,5 +1,5 @@
 name:          saml2-web-sso
-version:       '0.2'
+version:       '0.3'
 synopsis:      'Library and example web app for the SAML Web-based SSO profile.'
 author:        Wire Swiss GmbH
 maintainer:    Wire Swiss GmbH <backend@wire.com>
@@ -70,6 +70,7 @@ dependencies:
   - text
   - time
   - transformers
+  - uniplate
   - uri-bytestring
   - uuid
   - wai
@@ -113,7 +114,6 @@ tests:
       - process
       - shelly
       - temporary
-      - uniplate
 
 executables:
   toy-sp:

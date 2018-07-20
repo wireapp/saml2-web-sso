@@ -205,13 +205,13 @@ spec = describe "API" $ do
     let mkpostresp = readSampleIO "microsoft-authnresponse-2.xml"
           <&> \sample -> postHtmlForm "/authresp" [("SAMLResponse", cs . EL.encode . cs $ sample)]
 
-    context "unknown idp" . withapp (Proxy @APIAuthResp') (authresp simpleOnSuccess) mkTestCtx1 $ do
+    context "unknown idp" . withapp (Proxy @APIAuthResp') (authresp (HandleVerdictRedirect simpleOnSuccess)) mkTestCtx1 $ do
       let errmsg = "Unknown IdP: Issuer"
       it "responds with 404" $ do
         postresp <- liftIO mkpostresp
         postresp `shouldRespondWith` 404 { matchBody = bodyContains errmsg }
 
-    context "known idp, bad timestamp" . withapp (Proxy @APIAuthResp') (authresp simpleOnSuccess) mkTestCtx2 $ do
+    context "known idp, bad timestamp" . withapp (Proxy @APIAuthResp') (authresp (HandleVerdictRedirect simpleOnSuccess)) mkTestCtx2 $ do
       it "responds with 402" $ do
         postresp <- liftIO mkpostresp
         postresp `shouldRespondWith`
@@ -223,7 +223,7 @@ spec = describe "API" $ do
             <&> ctxNow .~ unsafeReadTime "2018-04-14T10:53:57Z"
             <&> ctxConfig . cfgSPAppURI .~ [uri|https://zb2.zerobuzz.net:60443/authresp|]
             <&> ctxRequestStore .~ reqstore
-    context "known idp, good timestamp" . withapp (Proxy @APIAuthResp') (authresp simpleOnSuccess) mkTestCtx3' $ do
+    context "known idp, good timestamp" . withapp (Proxy @APIAuthResp') (authresp (HandleVerdictRedirect simpleOnSuccess)) mkTestCtx3' $ do
       it "responds with 303" $ do
         postresp <- liftIO mkpostresp
         postresp `shouldRespondWith` 303 { matchBody = bodyContains "<body><p>SSO successful, redirecting to https://zb2.zerobuzz.net:60443/authresp" }
@@ -260,7 +260,7 @@ burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
         get ("/authreq/" <> cs (idPIdToST (idp ^. idpId)))
           `shouldRespondWith` 200 { matchBody = bodyContains "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" }
 
-    describe "authresp" . withapp (Proxy @APIAuthResp') (authresp simpleOnSuccess) ctx $ do
+    describe "authresp" . withapp (Proxy @APIAuthResp') (authresp (HandleVerdictRedirect simpleOnSuccess)) ctx $ do
       it "responds with 303" $ do
         sample <- liftIO $ cs <$> readSampleIO respXmlPath
         let postresp = postHtmlForm "/authresp" body

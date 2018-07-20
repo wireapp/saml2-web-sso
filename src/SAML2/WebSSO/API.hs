@@ -63,14 +63,13 @@ import qualified SAML2.WebSSO.XML.Meta as Meta
 ----------------------------------------------------------------------
 -- saml web-sso api
 
-type OnSuccess m = UserRef -> m (SetCookie, URI)
 
 type APIMeta     = Get '[XML] SPDesc
 type APIAuthReq  = Capture "idp" IdPId :> Get '[HTML] (FormRedirect AuthnRequest)
 type APIAuthResp = MultipartForm Mem AuthnResponseBody :> PostRedir '[HTML] (WithCookieAndLocation ST)
 
 -- NB: 'APIAuthResp' cannot easily be enhanced with a @Capture "idp" IdPId@ path segment like
--- 'APIAuthReq'.  The reason is a design flag in the standard: the meta information end-point must
+-- 'APIAuthReq'.  The reason is a design flaw in the standard: the meta information end-point must
 -- provide the response end-point URL to any client, and it would not be clear which IdP to include
 -- there.  So instead we need to accept responses from any IdP on the same URI, and rely on the
 -- information from the response body only to recover our internal spar IdP handle.
@@ -83,10 +82,11 @@ type API = APIMeta'
       :<|> APIAuthReq'
       :<|> APIAuthResp'
 
-api :: SPHandler (Error err) m => ST -> OnSuccess m -> ServerT API m
-api appName onsuccess = meta appName (Proxy @API) (Proxy @APIAuthResp')
-                   :<|> authreq'
-                   :<|> authresp onsuccess
+api :: forall err m. SPHandler (Error err) m => ST -> HandleVerdict m -> ServerT API m
+api appName handleVerdict =
+       meta appName (Proxy @API) (Proxy @APIAuthResp')
+  :<|> authreq'
+  :<|> authresp handleVerdict
 
 
 ----------------------------------------------------------------------
@@ -290,22 +290,39 @@ authreq lifeExpectancySecs idpname = do
 authreq' :: (SPHandler (Error err) m) => IdPId -> m (FormRedirect AuthnRequest)
 authreq' = authreq (8 * 60 * 60)
 
-authresp :: SPHandler (Error err) m => OnSuccess m -> AuthnResponseBody -> m (WithCookieAndLocation ST)
-authresp onsuccess body = do
+authresp :: SPHandler (Error err) m => HandleVerdict m -> AuthnResponseBody -> m (WithCookieAndLocation ST)
+authresp handleVerdict body = do
   enterH "authresp: entering"
   resp <- fromAuthnResponseBody body
   logger Debug $ "authresp: " <> ppShow resp
   verdict <- judge resp
   logger Debug $ "authresp: " <> show verdict
-  case verdict of
+  case handleVerdict of
+    HandleVerdictRedirect onsuccess -> simpleHandleVerdict onsuccess verdict
+    HandleVerdictRaw action -> throwError . CustomServant =<< action verdict
+
+
+type OnSuccessRedirect m = UserRef -> m (SetCookie, URI)
+
+simpleOnSuccess :: SPHandler (Error err) m => OnSuccessRedirect m
+simpleOnSuccess uid = (togglecookie . Just . userRefToST $ uid,) <$> getLandingURI
+
+-- | We support two cases: redirect with a cookie, and a generic response with arbitrary status,
+-- headers, and body.  The latter case fits the 'ServantErr' type well, but we give it a more
+-- suitable name here.
+data HandleVerdict m
+  = HandleVerdictRedirect (OnSuccessRedirect m)
+  | HandleVerdictRaw (AccessVerdict -> m ResponseVerdict)
+
+type ResponseVerdict = ServantErr
+
+simpleHandleVerdict :: (SP m, SPHandler (Error err) m) => OnSuccessRedirect m -> AccessVerdict -> m (WithCookieAndLocation ST)
+simpleHandleVerdict onsuccess = \case
     AccessDenied reasons
       -> logger Info (show reasons) >> (throwError . Forbidden . cs $ ST.intercalate ", " reasons)
     AccessGranted uid
       -> onsuccess uid <&> \(setcookie, uri)
                              -> addHeader setcookie $ addHeader uri ("SSO successful, redirecting to " <> renderURI uri)
-
-simpleOnSuccess :: SPHandler (Error err) m => OnSuccess m
-simpleOnSuccess uid = (togglecookie . Just . userRefToST $ uid,) <$> getLandingURI
 
 
 ----------------------------------------------------------------------
