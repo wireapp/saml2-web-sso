@@ -209,6 +209,15 @@ instance HasXMLRoot xml => MimeRender HTML (FormRedirect xml) where
                        <input type="submit" value="Continue">
              |]
 
+instance HasXMLRoot xml => Servant.MimeUnrender HTML (FormRedirect xml) where
+  mimeUnrender Proxy lbs = do
+    cursor <- fmapL show $ fromDocument <$> parseLBS def lbs
+    let formAction :: [ST] = cursor $// element "{http://www.w3.org/1999/xhtml}form" >=> attribute "action"
+        formBody   :: [ST] = cursor $// element "{http://www.w3.org/1999/xhtml}input" >=> attributeIs "name" "SAMLRequest" >=> attribute "value"
+    uri  <- fmapL (<> (": " <> show formAction)) . parseURI' $ mconcat formAction
+    resp <- fmapL (<> (": " <> show formBody)) $ decode . cs =<< (EL.decode . cs $ mconcat formBody)
+    pure $ FormRedirect uri resp
+
 mkHtml :: [Node] -> LBS
 mkHtml nodes = renderLBS def doc
   where

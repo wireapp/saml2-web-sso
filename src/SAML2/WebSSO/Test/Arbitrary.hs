@@ -292,6 +292,9 @@ genIdPConfig genExtra = do
   _idpExtraInfo  <- genExtra
   pure IdPConfig {..}
 
+genFormRedirect :: Gen a -> Gen (FormRedirect a)
+genFormRedirect genBody = FormRedirect <$> genURI <*> genBody
+
 
 -- TODO: the following should be TH-generated entirely (take all declarations matching '^gen' and
 -- turn the resp. types into Arbitrary instances).
@@ -361,3 +364,6 @@ instance Arbitrary X509.SignedCertificate where
 
 instance Arbitrary a => Arbitrary (IdPConfig a) where
   arbitrary = TQH.hedgehog (genIdPConfig (THQ.quickcheck arbitrary))
+
+instance Arbitrary a => Arbitrary (FormRedirect a) where
+  arbitrary = TQH.hedgehog (genFormRedirect (THQ.quickcheck arbitrary))

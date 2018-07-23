@@ -14,6 +14,7 @@ import Data.EitherR
 import Data.String.Conversions
 import Lens.Micro
 import SAML2.WebSSO
+import SAML2.WebSSO.Test.Arbitrary (genFormRedirect, genAuthnRequest)
 import Servant
 #if !MIN_VERSION_servant_server(0,12,0)
 import Servant.Utils.Enter
@@ -31,6 +32,7 @@ import Util
 import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
 import qualified Data.Yaml as Yaml
+import qualified Hedgehog
 
 
 newtype SomeSAMLRequest = SomeSAMLRequest { fromSomeSAMLRequest :: XML.Document }
@@ -69,8 +71,18 @@ withapp proxy handler mkctx = with (mkctx <&> \ctx -> serve proxy
                                    )
 
 
+hedgehogTests :: Hedgehog.Group
+hedgehogTests = Hedgehog.Group "hedgehog tests" $
+  [ ( "roundtrip: MimeRender HTML FormRedirect"
+    , Hedgehog.property $ Hedgehog.forAll (genFormRedirect genAuthnRequest) >>=
+        \formRedirect -> Hedgehog.tripping formRedirect (mimeRender (Proxy @HTML)) (mimeUnrender (Proxy @HTML))
+    )
+  ]
+
 spec :: Spec
 spec = describe "API" $ do
+  hedgehog $ Hedgehog.checkParallel hedgehogTests
+
   describe "base64 encoding" $ do
     describe "compatible with /usr/bin/base64" $ do
       let check :: LBS -> Spec
@@ -87,7 +99,7 @@ spec = describe "API" $ do
       check (cs $ replicate 1000 '_')
 
   describe "MimeRender HTML FormRedirect" $ do
-    it "roundtrip-0" $ do
+    it "fake roundtrip-0" $ do
       let -- source: [2/3.5.8]
           have = "<samlp:LogoutRequest xmlns:samlp=\"urn:oasis:names:tc:SAML:2.0:protocol\" xmlns=\"urn:oasis:names:tc:SAML:2.0:assertion\"" <>
                  "    ID=\"d2b7c388cec36fa7c39c28fd298644a8\" IssueInstant=\"2004-01-21T19:00:49Z\" Version=\"2.0\">" <>
