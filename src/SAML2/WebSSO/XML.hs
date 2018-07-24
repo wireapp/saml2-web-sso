@@ -19,6 +19,7 @@ import Prelude hiding ((.), id)
 import SAML2.WebSSO.Types
 import Text.Show.Pretty (ppShow)
 import Text.XML hiding (renderText)
+import Text.XML.Cursor
 import Text.XML.Util
 import URI.ByteString
 
@@ -151,7 +152,7 @@ wrapRenderRoot exprt = parseElement . HS.samlToXML . exprt
       Right (Document _ el _) -> el
       Left msg  -> error $ show (Proxy @us, msg)
 
-instance HasXML     AuthnRequest     where parse      = wrapParse importAuthnRequest
+instance HasXML     AuthnRequest     where parse      = importAuthnRequest
 instance HasXMLRoot AuthnRequest     where renderRoot = wrapRenderRoot exportAuthnRequest
 instance HasXML     AuthnResponse    where parse      = wrapParse importAuthnResponse
 instance HasXMLRoot AuthnResponse    where renderRoot = wrapRenderRoot exportAuthnResponse
@@ -173,8 +174,27 @@ userRefToST :: UserRef -> ST
 userRefToST (UserRef (Issuer tenant) subject) = "{" <> renderURI tenant <> "}" <> nameIDToST subject
 
 
-importAuthnRequest :: MonadError String m => HS.AuthnRequest -> m AuthnRequest
-importAuthnRequest req = do
+importAuthnRequest :: MonadError String m => [Node] -> m AuthnRequest
+importAuthnRequest [fromNode -> cursor] = do
+  _rqID <- case cursor $| attribute "ID" of
+    [i] -> pure $ ID i
+    bad -> die (Proxy @AuthnRequest) ("no valid ID: " <> show bad)
+  _rqVersion <- case cursor $| attribute "Version" of
+    ["2.0"] -> pure Version_2_0
+    bad     -> die (Proxy @AuthnRequest) ("no valid Version: " <> show bad)
+  _rqIssueInstant <- case cursor $| attribute "IssueInstant" of
+    [decodeTime -> Right t] -> pure t
+    bad     -> die (Proxy @AuthnRequest) ("no valid IssueInstant: " <> show bad)
+  _rqIssuer <- case parseURI' . mconcat $ (cursor $/ element "{urn:oasis:names:tc:SAML:2.0:assertion}Issuer" &/ content :: [ST]) of
+    Right iss -> pure $ Issuer iss
+    Left msg -> die (Proxy @AuthnRequest) ("no valid Issuer: " <> show msg)
+  pure AuthnRequest {..}
+importAuthnRequest bad = die (Proxy @AuthnRequest) ("unvalid input: " <> show bad)
+
+
+-- | TODO: this makes the test suite fail, not sure why hsaml2 is unhappy with its own rendering.
+importAuthnRequest_broken :: MonadError String m => HS.AuthnRequest -> m AuthnRequest
+importAuthnRequest_broken req = do
   let proto = HS.requestProtocol $ HS.authnRequest req
   _rqID           <- importID $ HS.protocolID proto
   _rqVersion      <- importVersion $ HS.protocolVersion proto

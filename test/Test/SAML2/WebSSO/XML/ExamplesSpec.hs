@@ -55,7 +55,20 @@ spec = describe "XML serialization" $ do
     -- roundtrip 7 (readSample "onelogin-response-2.xml") (undefined :: AuthnResponse)
     -- roundtrip 8 (readSample "onelogin-response-3.xml") (undefined :: AuthnResponse)
 
-    describe "centrify AuthnResponse" $ do
+  describe "AuthnRequest" $ do
+    it "works" $ do
+      let req = AuthnRequest
+            { _rqID = ID "aiandama aiandama"
+            , _rqVersion = Version_2_0
+            , _rqIssueInstant = unsafeReadTime "2013-03-18T07:33:56Z"
+            , _rqIssuer = iss
+            }
+          iss = Issuer $ unsafeParseURI "http://wire.com"
+      decodeElem @Issuer @(Either String) (encodeElem iss) `shouldBe` Right iss
+      decodeElem @AuthnRequest @(Either String) (encodeElem req) `shouldBe` Right req
+
+
+  describe "centrify AuthnResponse" $ do
       -- (this blob is just to demonstrate that centrify responses can be parsed; should be a
       -- simple roundtrip once we're done fixing things, except for the encoding.)
 
@@ -83,7 +96,7 @@ spec = describe "XML serialization" $ do
 
       -- roundtrip 9 have want
 
-    describe "microsoft IdPDesc" $ do
+  describe "microsoft IdPDesc" $ do
       it "works" $ do
         raw :: LT <- readSampleIO "microsoft-meta-2.xml"
         _edIssuer     <- either (error . show) (pure . Issuer) $ parseURI' "https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/"

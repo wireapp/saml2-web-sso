@@ -293,6 +293,9 @@ checkDestination msg (renderURI -> haveDest) = do
     unless (wantDest `ST.isPrefixOf` haveDest) $ do
       deny ["bad " <> msg <> ": expected " <> show wantDest <> ", got " <> show haveDest]
 
+-- TODO: check that inresponseto in 'Response' matches the one in 'Assertion' (or
+-- 'SubjectConfirmationData', to be more specific).  if it is Nothing, set it in the output?
+
 checkAssertions :: (SP m, SPStore m, MonadJudge m) => Maybe Issuer -> [Assertion] -> m AccessVerdict
 checkAssertions _ [] = giveup ["no assertions"]
 checkAssertions missuer assertions = do
@@ -330,7 +333,7 @@ checkAssertions missuer assertions = do
     deny ["no AuthnStatement in assertions"]
 
   checkStatement `mapM_` statements
-  pure . AccessGranted $ UserRef issuer subject
+  pure $ AccessGranted (UserRef issuer subject)
 
 checkStatement :: (SP m, MonadJudge m) => Statement -> m ()
 checkStatement = \case

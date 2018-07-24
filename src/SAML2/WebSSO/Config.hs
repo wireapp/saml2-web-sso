@@ -62,9 +62,11 @@ type IdPConfig_ = IdPConfig ()
 data IdPConfig extra = IdPConfig
   { _idpId              :: IdPId
   , _idpMetadata        :: URI
-  , _idpIssuer          :: Issuer
-  , _idpRequestUri      :: URI
-  , _idpPublicKey       :: X509.SignedCertificate
+  , _idpIssuer          :: Issuer  -- ^ can be found in metadata
+  , _idpRequestUri      :: URI  -- ^ can be found in metadata
+  , _idpPublicKey       :: X509.SignedCertificate  -- ^ can be found in metadata
+                           -- TODO: azure has 3 (three!) public keys that it signs the assertions
+                           -- with, so we need to maintain a list there!
   , _idpExtraInfo       :: extra
   }
   deriving (Eq, Show, Generic)
