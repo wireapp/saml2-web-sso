@@ -8,7 +8,7 @@ import Control.Monad.Except
 import Data.Aeson
 import Data.List.NonEmpty
 import Data.Maybe
-import Data.Monoid
+import Data.Monoid ((<>))
 import Data.String.Conversions (ST)
 import Data.Time (UTCTime(..), NominalDiffTime, formatTime, defaultTimeLocale, addUTCTime)
 import Data.UUID as UUID
@@ -18,7 +18,7 @@ import Lens.Micro
 import Lens.Micro.TH
 import Text.XML.Util
 import URI.ByteString  -- FUTUREWORK: should saml2-web-sso also use the URI from http-types?  we already
-                       -- depend on that via xml-conduit anyway.  (is it a probley though that it is
+                       -- depend on that via xml-conduit anyway.  (is it a problem though that it is
                        -- string-based?  is it less of a problem because we need it anyway?)
 
 import qualified Data.Text as ST

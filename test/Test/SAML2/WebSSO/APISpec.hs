@@ -6,7 +6,6 @@
 module Test.SAML2.WebSSO.APISpec (spec) where
 
 import Control.Concurrent.MVar (newMVar)
-import Control.Exception (throwIO, ErrorCall(ErrorCall))
 import Control.Monad.Reader
 import Control.Monad.Except
 import Data.Either
@@ -156,7 +155,7 @@ spec = describe "API" $ do
                   else "microsoft-authnresponse-2-badsig.xml"
 
             resp :: LBS <- cs <$> readSampleIO respfile
-            Right (cfg :: IdPConfig_) <- Yaml.decodeEither . cs <$> readSampleIO "microsoft-idp-config.yaml"
+            Right (cfg :: IdPConfig_) <- Yaml.decodeEither' . cs <$> readSampleIO "microsoft-idp-config.yaml"
 
             let rungo :: TestSPStoreIdP a -> Either ServantErr a
                 rungo (TestSPStoreIdP action) = fmapL toServantErr $ runExceptT action `runReader` mcfg
@@ -263,7 +262,7 @@ burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
                                     & ctxRequestStore .~ reqstore
 
       getIdP :: IO IdPConfig_
-      getIdP = either (throwIO . ErrorCall . show) pure =<< (Yaml.decodeEither . cs <$> readSampleIO cfgPath)
+      getIdP = Yaml.decodeThrow . cs =<< readSampleIO cfgPath
 
   describe ("smoke tests: " <> show cfgPath) $ do
     describe "authreq" . withapp (Proxy @APIAuthReq') authreq' ctx $ do

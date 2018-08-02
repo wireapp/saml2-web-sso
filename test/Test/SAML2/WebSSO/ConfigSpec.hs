@@ -48,19 +48,23 @@ spec = describe "Config" $ do
 
     it "standard" $ do
       want <- readSampleIO "server-config.yaml"
-      Yaml.decodeEither (cs want) `shouldBe` Right have
+      over _Left show (Yaml.decodeEither' (cs want))
+        `shouldBe` Right have
 
     it "empty idp list" $ do
       want <- readSampleIO "server-config-no-idps-1.yaml"
-      Yaml.decodeEither (cs want) `shouldBe` Right (have & cfgIdps .~ [] :: Config_)
+      over _Left show (Yaml.decodeEither' (cs want))
+        `shouldBe` Right (have & cfgIdps .~ [] :: Config_)
 
     it "no idp list at all" $ do
       want <- readSampleIO "server-config-no-idps-2.yaml"
-      Yaml.decodeEither (cs want) `shouldBe` Right (have & cfgIdps .~ [] :: Config_)
+      over _Left show (Yaml.decodeEither' (cs want))
+        `shouldBe` Right (have & cfgIdps .~ [] :: Config_)
 
     it "minimal contacts" $ do
       want <- readSampleIO "server-config-minimal-contact-details.yaml"
       let pers = ContactPerson ContactAdministrative Nothing Nothing Nothing (Just [uri|email:president@evil.corp|]) Nothing
           have' = have & cfgIdps .~ ([] :: [IdPConfig_])
                        & cfgContacts .~ (pers :| [])
-      Yaml.decodeEither (cs want) `shouldBe` Right have'
+      over _Left show (Yaml.decodeEither' (cs want))
+        `shouldBe` Right have'

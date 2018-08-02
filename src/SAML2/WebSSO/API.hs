@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE CPP #-}
 
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -260,7 +261,13 @@ setHttpCachePolicy ap rq respond = ap rq $ respond . addHeadersToResponse httpCa
 getResponseURI :: forall m endpoint api err.
                   ( HasCallStack, SP m
                   , MonadError (Error err) m
-                  , IsElem endpoint api, HasLink endpoint, ToHttpApiData (MkLink endpoint)
+                  , IsElem endpoint api
+                  , HasLink endpoint
+#if MIN_VERSION_servant(0,14,0)
+                  , ToHttpApiData (MkLink endpoint Link)
+#else
+                  , ToHttpApiData (MkLink endpoint)
+#endif
                   )
                => Proxy api -> Proxy endpoint -> m URI
 getResponseURI proxyAPI proxyAPIAuthResp = resp =<< (^. cfgSPSsoURI) <$> getConfig
@@ -278,7 +285,15 @@ getResponseURI proxyAPI proxyAPIAuthResp = resp =<< (^. cfgSPSsoURI) <$> getConf
 ----------------------------------------------------------------------
 -- handlers
 
-meta :: (SPHandler (Error err) m, IsElem endpoint api, HasLink endpoint, ToHttpApiData (MkLink endpoint))
+meta :: ( SPHandler (Error err) m
+        , IsElem endpoint api
+        , HasLink endpoint
+#if MIN_VERSION_servant(0,14,0)
+        , ToHttpApiData (MkLink endpoint Link)
+#else
+        , ToHttpApiData (MkLink endpoint)
+#endif
+        )
      => ST -> Proxy api -> Proxy endpoint -> m SPDesc
 meta appName proxyAPI proxyAPIAuthResp = do
   enterH "meta"
