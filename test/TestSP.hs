@@ -56,7 +56,7 @@ mkTestCtx2 = do
 
 mkmyidp :: IO IdPConfig_
 mkmyidp = do
-  either error id . decodeEither . cs <$> readSampleIO "microsoft-idp-config.yaml"
+  decodeThrow . cs =<< readSampleIO "microsoft-idp-config.yaml"
 
 mkTestCtx3 :: IO Ctx
 mkTestCtx3 = mkTestCtx2

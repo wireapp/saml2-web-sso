@@ -3,7 +3,6 @@
 
 module SAML2.WebSSO.Error where
 
-import Control.Monad.Writer
 import Data.String.Conversions
 import Data.Void (Void, absurd)
 import Servant.Server

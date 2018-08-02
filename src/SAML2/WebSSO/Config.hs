@@ -12,7 +12,6 @@ import Control.Monad (when)
 import Data.Aeson
 import Data.Aeson.TH
 import Data.Maybe (fromMaybe)
-import Data.Monoid
 import Data.List.NonEmpty
 import Data.String.Conversions
 import GHC.Generics
