@@ -4,12 +4,16 @@
 
 module Test.Text.XML.DSigSpec (spec) where
 
+import Control.Monad ((>=>))
 import Data.Either
 import Data.String.Conversions
 import Test.Hspec
+import Text.Hamlet.XML (xml)
+import Text.XML
 import Text.XML.DSig
 import Util
 
+import qualified Data.Map as Map
 import qualified Samples
 
 
@@ -28,12 +32,35 @@ spec = describe "xml:dsig" $ do
 
   describe "verify" $ do
     it "works" $ do
-      Right keyinfo <- parseKeyInfo <$> readSampleIO "microsoft-idp-keyinfo.xml"
+      Right keyinfo <- (parseKeyInfo >=> keyInfoToCreds) <$> readSampleIO "microsoft-idp-keyinfo.xml"
       raw <- cs <$> readSampleIO "microsoft-authnresponse-2.xml"
       verify keyinfo raw "_c79c3ec8-1c26-4752-9443-1f76eb7d5dd6" `shouldBe` Right ()
 
   describe "verifyRoot" $ do
     it "works" $ do
-      Right keyinfo <- parseKeyInfo <$> readSampleIO "microsoft-idp-keyinfo.xml"
+      Right keyinfo <- (parseKeyInfo >=> keyInfoToCreds) <$> readSampleIO "microsoft-idp-keyinfo.xml"
       raw <- cs <$> readSampleIO "microsoft-meta-2.xml"
       verifyRoot keyinfo raw `shouldBe` Right ()
+
+  describe "verifyRoot vs. signRoot" $ do
+    let check :: HasCallStack => SignPrivCreds -> SignCreds -> Bool -> Expectation
+        check privCreds pubCreds withID =
+          (verifyRoot pubCreds . renderLBS def . signRoot privCreds $ doc) `shouldBe` Right ()
+          where
+            someID = Map.fromList [("ID", "fde150a6-9bc6-11e8-a30b-dbd406c1d75d") | withID]
+            doc    = Document (Prologue [] Nothing []) (Element "root" someID root) []
+            root   = [xml|
+                        <bloo hign="___">
+                          <ack hoghn="true">
+                            <nonack>
+                          hackach
+                      |]
+
+    it "pass on matching keys" $ do
+      (privCreds, pubCreds) <- mkSignCreds 768
+      check privCreds pubCreds `mapM_` [minBound..]
+
+    it "reject on key mismatch" $ do
+      (privCreds, _) <- mkSignCreds 768
+      (_, pubCreds)  <- mkSignCreds 768
+      check privCreds pubCreds `mapM_` [minBound..]

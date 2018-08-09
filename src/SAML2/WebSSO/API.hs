@@ -48,7 +48,7 @@ import Text.Hamlet.XML
 import Text.Show.Pretty (ppShow)
 import Text.XML
 import Text.XML.Cursor
-import Text.XML.DSig (verify)
+import Text.XML.DSig (verify, keyInfoToCreds)
 import Text.XML.Util
 import URI.ByteString
 import Web.Cookie
@@ -116,7 +116,11 @@ parseAuthnResponseBody base64 = do
 simpleVerifyAuthnResponse :: forall m err. SPStoreIdP (Error err) m => Maybe Issuer -> LBS -> m ()
 simpleVerifyAuthnResponse Nothing _ = throwError $ BadSamlResponse "missing issuer"
 simpleVerifyAuthnResponse (Just issuer) raw = do
-    creds <- (^. idpPublicKey) <$> getIdPConfigByIssuer issuer
+    creds <- do
+      cert <- (^. idpPublicKey) <$> getIdPConfigByIssuer issuer
+      keyInfoToCreds cert &
+        either (throwError . BadServerConfig . ((encodeElem issuer <> ": ") <>) . cs) pure
+
     doc :: Cursor <- either (throwError . BadSamlResponse . ("could not parse document: " <>) . cs . show)
                             (pure . fromDocument)
                             (parseLBS def raw)

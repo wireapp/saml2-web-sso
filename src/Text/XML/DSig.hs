@@ -3,10 +3,10 @@
 -- | Partial implementation of <https://www.w3.org/TR/xmldsig-core/>.  We use hsaml2, hxt, x509 and
 -- other dubious packages internally, but expose xml-types and cryptonite.
 module Text.XML.DSig
-  ( SignCreds(..), SignDigest(..), SignKey(..)
-  , parseKeyInfo, renderKeyInfo, keyInfoToCreds, keyInfoToPublicKey
-
+  ( SignCreds(..), SignDigest(..), SignKey(..), SignPrivCreds(..), SignPrivKey(..)
+  , parseKeyInfo, renderKeyInfo, keyInfoToCreds, keyInfoToPublicKey, mkSignCreds
   , verify, verifyRoot, verifyIO
+  , signRoot
   )
 where
 
@@ -22,8 +22,10 @@ import Lens.Micro ((<&>))
 import System.IO.Unsafe (unsafePerformIO)
 import Text.XML as XML
 
-import qualified Data.Generics.Uniplate.Data as Uniplate
 import qualified Crypto.PubKey.RSA as RSA
+import qualified Crypto.PubKey.RSA.Types as RSA
+import qualified Crypto.Random.Types as Crypto
+import qualified Data.Generics.Uniplate.Data as Uniplate
 import qualified Data.Map as Map
 import qualified Data.Text as ST
 import qualified Data.X509 as X509
@@ -31,8 +33,24 @@ import qualified SAML2.XML as HS hiding (URI, Node)
 import qualified SAML2.XML.Signature as HS
 
 
+data SignCreds = SignCreds SignDigest SignKey
+  deriving (Eq, Show)
+
+data SignDigest = SignDigestSha256
+  deriving (Eq, Show, Bounded, Enum)
+
+data SignKey = SignKeyRSA RSA.PublicKey
+  deriving (Eq, Show)
+
+data SignPrivCreds = SignPrivCreds SignDigest SignPrivKey
+  deriving (Eq, Show)
+
+data SignPrivKey = SignPrivKeyRSA RSA.KeyPair
+  deriving (Eq, Show)
+
+
 ----------------------------------------------------------------------
--- metadata
+-- public keys and certificats
 
 -- | Read the KeyInfo element of a meta file's IDPSSODescriptor into a public key that can be used
 -- for signing.  Tested for KeyInfo elements that contain an x509 certificate with a self-signed
@@ -69,15 +87,6 @@ stripWhitespace lbs = renderLBS def . stripws <$> fmapL show (parseLBS def lbs)
 renderKeyInfo :: (HasCallStack) => X509.SignedCertificate -> LT
 renderKeyInfo cert = cs . HS.samlToXML . HS.KeyInfo Nothing $ HS.X509Data (HS.X509Certificate cert :| []) :| []
 
-data SignCreds = SignCreds SignDigest SignKey
-  deriving (Eq, Show)
-
-data SignDigest = SignDigestSha256
-  deriving (Eq, Show, Bounded, Enum)
-
-data SignKey = SignKeyRSA RSA.PublicKey
-  deriving (Eq, Show)
-
 keyInfoToCreds :: (HasCallStack, MonadError String m) => X509.SignedCertificate -> m SignCreds
 keyInfoToCreds cert = do
   digest <- case X509.signedAlg $ X509.getSigned cert of
@@ -101,15 +110,23 @@ q = [decodeASN1 DER, decodeASN1 BER] <*> [q1]
 
 -}
 
+mkSignCreds :: (Crypto.MonadRandom m) => Int -> m (SignPrivCreds, SignCreds)
+mkSignCreds size = do
+  let rsaexp = 17
+  (pubkey, privkey) <- RSA.generate size rsaexp
+  pure ( SignPrivCreds SignDigestSha256 . SignPrivKeyRSA $ RSA.KeyPair privkey
+       , SignCreds     SignDigestSha256 . SignKeyRSA     $ pubkey
+       )
+
 
 ----------------------------------------------------------------------
 -- signature verification
 
-verify :: forall m. (MonadError String m) => X509.SignedCertificate -> LBS -> String -> m ()
+verify :: forall m. (MonadError String m) => SignCreds -> LBS -> String -> m ()
 verify creds el signedID = either (throwError . show) pure . unsafePerformIO
                          $ verifyIO creds el signedID
 
-verifyRoot :: forall m. (MonadError String m) => X509.SignedCertificate -> LBS -> m ()
+verifyRoot :: forall m. (MonadError String m) => SignCreds -> LBS -> m ()
 verifyRoot creds el = do
   signedID <- do
     XML.Document _ (XML.Element _ attrs _) _
@@ -121,13 +138,18 @@ verifyRoot creds el = do
           (Map.lookup "ID" attrs)
   verify creds el signedID
 
-verifyIO :: X509.SignedCertificate -> LBS -> String -> IO (Either HS.SignatureError ())
-verifyIO creds el signedID = do
-  key :: RSA.PublicKey <- case keyInfoToCreds creds of
-    Right (SignCreds SignDigestSha256 (SignKeyRSA k)) -> pure k
-    Left msg -> throwIO . ErrorCall . show $ msg
+verifyIO :: SignCreds -> LBS -> String -> IO (Either HS.SignatureError ())
+verifyIO (SignCreds SignDigestSha256 (SignKeyRSA key)) el signedID = do
   el' <- either (throwIO . ErrorCall) pure $ HS.xmlToDocE el
   HS.verifySignature (HS.PublicKeys Nothing . Just $ key) signedID el'
+
+
+----------------------------------------------------------------------
+-- signature creation
+
+-- | Make sure that root node node has ID attribute and sign it.
+signRoot :: SignPrivCreds -> XML.Document -> XML.Document
+signRoot = undefined
 
 
 
