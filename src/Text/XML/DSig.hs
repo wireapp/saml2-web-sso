@@ -10,26 +10,32 @@ module Text.XML.DSig
   )
 where
 
-import Control.Exception (throwIO, ErrorCall(ErrorCall))
+import Control.Exception (throwIO, try, ErrorCall(ErrorCall), SomeException)
 import Control.Monad.Except
-import Data.Char (isSpace)
 import Data.EitherR (fmapL)
+import Data.List (foldl')
 import Data.List.NonEmpty
 import Data.Monoid ((<>))
 import Data.String.Conversions
+import Data.UUID as UUID
 import GHC.Stack
 import Lens.Micro ((<&>))
 import System.IO.Unsafe (unsafePerformIO)
+import System.Random (random, mkStdGen)
 import Text.XML as XML
+import Text.XML.Util
 
+import qualified Crypto.Hash as Crypto
 import qualified Crypto.PubKey.RSA as RSA
+import qualified Crypto.PubKey.RSA.PKCS15 as RSA
 import qualified Crypto.PubKey.RSA.Types as RSA
 import qualified Crypto.Random.Types as Crypto
-import qualified Data.Generics.Uniplate.Data as Uniplate
+import qualified Data.ByteArray as ByteArray
+import qualified Data.ByteString.Base64 as Base64
 import qualified Data.Map as Map
-import qualified Data.Text as ST
 import qualified Data.X509 as X509
 import qualified SAML2.XML as HS hiding (URI, Node)
+import qualified SAML2.XML.Canonical as HS
 import qualified SAML2.XML.Signature as HS
 
 
@@ -58,7 +64,7 @@ data SignPrivKey = SignPrivKeyRSA RSA.KeyPair
 --
 -- TODO: verify self-signature?
 parseKeyInfo :: (HasCallStack, MonadError String m) => LT -> m X509.SignedCertificate
-parseKeyInfo (cs @LT @LBS -> lbs) = case HS.xmlToSAML @HS.KeyInfo =<< stripWhitespace lbs of
+parseKeyInfo (cs @LT @LBS -> lbs) = case HS.xmlToSAML @HS.KeyInfo =<< stripWhitespaceLBS lbs of
   Right keyinf -> case HS.keyInfoElements keyinf of
     HS.X509Data (HS.X509Certificate cert :| []) :| []
       -> pure cert
@@ -69,20 +75,9 @@ parseKeyInfo (cs @LT @LBS -> lbs) = case HS.xmlToSAML @HS.KeyInfo =<< stripWhite
   Left errmsg
     -> throwError $ "expected exactly one KeyInfo XML element: " <> errmsg
 
--- | Remove all whitespace in the text nodes of the xml document.  This requires parsing and re-rendering.
-stripWhitespace :: m ~ Either String => LBS -> m LBS
-stripWhitespace lbs = renderLBS def . stripws <$> fmapL show (parseLBS def lbs)
-  where
-    stripws :: Document -> Document
-    stripws = Uniplate.transformBis
-      [ [Uniplate.transformer $ \case
-            (NodeContent txt) -> NodeContent $ ST.filter (not . isSpace) txt
-            other -> other
-        ]
-      , [Uniplate.transformer $ \case
-            (Element nm attrs nodes) -> Element nm attrs (Prelude.filter (/= NodeContent "") $ nodes)
-        ]
-      ]
+-- | Call 'stripWhitespaceDoc' on a rendered bytestring.
+stripWhitespaceLBS :: m ~ Either String => LBS -> m LBS
+stripWhitespaceLBS lbs = renderLBS def . stripWhitespace <$> fmapL show (parseLBS def lbs)
 
 renderKeyInfo :: (HasCallStack) => X509.SignedCertificate -> LT
 renderKeyInfo cert = cs . HS.samlToXML . HS.KeyInfo Nothing $ HS.X509Data (HS.X509Certificate cert :| []) :| []
@@ -133,7 +128,7 @@ verifyRoot creds el = do
       <- either (throwError . ("Could not parse signed document: " <>) . cs . show)
                 pure
                 (XML.parseLBS XML.def el)
-    maybe (throwError "Could not parse signed document: no ID attribute in root element.")
+    maybe (throwError $ "Could not parse signed document: no ID attribute in root element." <> show el)
           (pure . cs)
           (Map.lookup "ID" attrs)
   verify creds el signedID
@@ -148,9 +143,60 @@ verifyIO (SignCreds SignDigestSha256 (SignKeyRSA key)) el signedID = do
 -- signature creation
 
 -- | Make sure that root node node has ID attribute and sign it.
-signRoot :: SignPrivCreds -> XML.Document -> XML.Document
-signRoot = undefined
+signRoot :: (Crypto.MonadRandom m, MonadError String m) => SignPrivCreds -> XML.Document -> m XML.Document
+signRoot (SignPrivCreds SignDigestSha256 (SignPrivKeyRSA keypair)) doc
+  = do
+    (doc', reference) <- addRootIDIfMissing doc
+    doc'' <- conduitToHxt doc'
+    let canoAlg = HS.CanonicalXMLExcl10 True
+    digest <- either (throwError . show @SomeException) pure . unsafePerformIO . try $ do
+      can <- HS.canonicalize canoAlg Nothing Nothing doc''
+      dig <- RSA.signSafer (Just Crypto.SHA256) (RSA.toPrivateKey keypair) can
+      either (throwIO . ErrorCall . show) pure dig
 
+    let signedInfo = HS.SignedInfo
+          { signedInfoId = Nothing :: Maybe HS.ID
+          , signedInfoCanonicalizationMethod = HS.CanonicalizationMethod (HS.Identified canoAlg) Nothing []
+          , signedInfoSignatureMethod = HS.SignatureMethod (HS.Identified HS.SignatureRSA_SHA256) Nothing []
+          , signedInfoReference = HS.Reference
+            { referenceId = Just reference
+            , referenceURI = Nothing
+            , referenceType = Nothing
+            , referenceTransforms = Just . HS.Transforms . fmap (\alg -> HS.Transform (HS.Identified alg) Nothing []) $
+                HS.TransformCanonicalization canoAlg :| [HS.TransformEnvelopedSignature]
+            , referenceDigestMethod = HS.DigestMethod (HS.Identified HS.DigestSHA256) []
+            , referenceDigestValue = Base64.encode digest
+            } :| []
+          }
+
+    injectSignedInfoAtRoot signedInfo =<< hxtToConduit doc''
+
+addRootIDIfMissing :: forall m. Crypto.MonadRandom m => XML.Document -> m (XML.Document, HS.ID)
+addRootIDIfMissing (XML.Document prol (Element tag attrs nodes) epil) = do
+  (fresh, ref) <- maybe makeID keepID $ Map.lookup "ID" attrs
+  let updAttrs = if fresh then Map.insert "ID" ref else id
+  pure (XML.Document prol (Element tag (updAttrs attrs) nodes) epil, cs ref)
+  where
+    makeID :: m (Bool, ST)
+    makeID = (True,) . UUID.toText <$> randomUUID
+
+    keepID :: ST -> m (Bool, ST)
+    keepID = pure . (False,)
+
+randomUUID :: Crypto.MonadRandom m => m UUID.UUID
+randomUUID = fst . random . mkStdGen . fromIntegral <$> randomInteger
+
+-- | (uses 64 bits of entropy)
+randomInteger :: Crypto.MonadRandom m => m Integer
+randomInteger = Crypto.getRandomBytes 8
+            <&> ByteArray.unpack @ByteArray.Bytes
+            <&> fmap fromIntegral
+            <&> foldl' (*) 1
+
+injectSignedInfoAtRoot :: MonadError String m => HS.SignedInfo -> XML.Document -> m XML.Document
+injectSignedInfoAtRoot signedInfo (XML.Document prol (Element tag attrs nodes) epil) = do
+  XML.Document _ signedInfoXML _ <- samlToConduit signedInfo
+  pure $ XML.Document prol (Element tag attrs (XML.NodeElement signedInfoXML : nodes)) epil
 
 
 
