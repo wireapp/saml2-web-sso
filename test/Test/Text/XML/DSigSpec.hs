@@ -50,25 +50,26 @@ spec = describe "xml:dsig" $ do
       raw <- cs <$> readSampleIO "microsoft-meta-2.xml"
       verifyRoot keyinfo raw `shouldBe` Right ()
 
-  xdescribe "verifyRoot vs. signRoot" $ do
+  describe "verifyRoot vs. signRoot" $ do
     let check :: HasCallStack => Bool -> Bool -> Either String () -> Spec
         check withMatchingCreds withID expected =
           it (show (withMatchingCreds, withID, expected)) $ do
-            (privCreds, pubCreds) <- mkcrds
-            (verifyRoot pubCreds . renderLBS def =<< signRoot privCreds doc) `shouldBe` expected
-          where
-            mkcrds = if withMatchingCreds
-              then mkSignCreds 768
-              else (,) <$> (fst <$> mkSignCreds 768) <*> (snd <$> mkSignCreds 768)
+            (privCreds, pubCreds) <- mkcrds withMatchingCreds
+            (verifyRoot pubCreds . renderLBS def =<< signRoot privCreds (doc withID)) `shouldBe` expected
 
-            someID = Map.fromList [("ID", UUID.toText UUID.nil) | withID]
-            doc    = Document (Prologue [] Nothing []) (Element "root" someID root) []
-            root   = [xml|
-                        <bloo hign="___">
-                          <ack hoghn="true">
-                            <nonack>
-                          hackach
-                      |]
+        keysize = 192  -- not long enough for security, but hopefully long enough for swift testing
+        mkcrds = \case
+          True  -> mkSignCreds keysize
+          False -> (,) <$> (fst <$> mkSignCreds keysize) <*> (snd <$> mkSignCreds keysize)
+
+        someID withID = Map.fromList [("ID", UUID.toText UUID.nil) | withID]
+        doc withID = Document (Prologue [] Nothing []) (Element "root" (someID withID) root) []
+        root = [xml|
+                  <bloo hign="___">
+                    <ack hoghn="true">
+                      <nonack>
+                    hackach
+                |]
 
     check True True (Right ())
     check True False (Right ())
@@ -76,4 +77,7 @@ spec = describe "xml:dsig" $ do
     check False False (Left "")
 
     it "keeps data intact" $ do
-      pending  -- TODO: search for 'ack' elem and 'hackach' text.
+      (privCreds, _pubCreds) <- mkcrds True
+      let outcome = either (error . show) cs
+            $ renderLBS def <$> signRoot privCreds (doc False)
+      (outcome `shouldContain`) `mapM_` ["bloo", "ack", "hackach", "hackach"]
