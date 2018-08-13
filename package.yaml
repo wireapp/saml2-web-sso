@@ -112,6 +112,7 @@ tests:
 
       - hedgehog
       - hspec
+      - hspec-core
       - hspec-discover
       - hspec-wai
       - pretty-show

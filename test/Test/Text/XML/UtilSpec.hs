@@ -7,6 +7,7 @@ module Test.Text.XML.UtilSpec (spec) where
 import Control.Monad ((>=>))
 import SAML2.WebSSO.Test.Arbitrary ()
 import Test.Hspec
+import Test.Hspec.Core.QuickCheck (modifyMaxSize)
 import Test.QuickCheck
 import Text.Show.Pretty
 import Text.XML
@@ -16,7 +17,7 @@ import Text.XML.Util
 spec :: Spec
 spec = do
   describe "hxtToConduit, conduitToHxt" $ do
-    it "roundtrip" . property $ \(normalizeDoc -> doc) -> do
+    modifyMaxSize (*10) $ it "roundtrip" . property $ \(normalizeDoc -> doc) -> do
       let msg = ppShow ( '1', doc
                        , '2', renderLBS def doc
                        , '3', conduitToHxt @(Either String) doc
