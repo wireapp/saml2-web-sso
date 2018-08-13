@@ -20,6 +20,7 @@ import Data.String.Conversions
 import Data.UUID as UUID
 import GHC.Stack
 import Lens.Micro ((<&>))
+import Network.URI (URI, parseRelativeReference)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Random (random, mkStdGen)
 import Text.XML as XML
@@ -31,7 +32,7 @@ import qualified Crypto.PubKey.RSA.PKCS15 as RSA
 import qualified Crypto.PubKey.RSA.Types as RSA
 import qualified Crypto.Random.Types as Crypto
 import qualified Data.ByteArray as ByteArray
-import qualified Data.ByteString.Base64 as Base64
+import qualified Data.ByteString.Base64.Lazy as LBase64
 import qualified Data.Map as Map
 import qualified Data.X509 as X509
 import qualified SAML2.XML as HS hiding (URI, Node)
@@ -95,6 +96,9 @@ keyInfoToCreds cert = do
 keyInfoToPublicKey :: (HasCallStack, MonadError String m) => X509.SignedCertificate -> m RSA.PublicKey
 keyInfoToPublicKey cert = keyInfoToCreds cert <&> \(SignCreds _ (SignKeyRSA key)) -> key
 
+publicKeyToKeyInfo :: (HasCallStack) => RSA.PublicKey -> X509.SignedCertificate
+publicKeyToKeyInfo = undefined
+
 
 {- this fails, but i don't know why.  it this base64 encoding after all?
 
@@ -149,33 +153,50 @@ signRoot (SignPrivCreds SignDigestSha256 (SignPrivKeyRSA keypair)) doc
     (doc', reference) <- addRootIDIfMissing doc
     doc'' <- conduitToHxt doc'
     let canoAlg = HS.CanonicalXMLExcl10 True
-    digest <- either (throwError . show @SomeException) pure . unsafePerformIO . try $ do
-      can <- HS.canonicalize canoAlg Nothing Nothing doc''
-      dig <- RSA.signSafer (Just Crypto.SHA256) (RSA.toPrivateKey keypair) can
-      either (throwIO . ErrorCall . show) pure dig
+        hashAlg = Crypto.SHA256
+
+    doc''' :: SBS
+           <- either (throwError . show @SomeException) pure . unsafePerformIO . try $
+              HS.canonicalize canoAlg Nothing Nothing doc''
+    let digest :: SBS
+        digest = cs . show $ Crypto.hash @SBS @Crypto.SHA256 doc'''
+    sigval :: HS.SignatureValue
+           <- either (throwError . show @RSA.Error)
+                     (pure . HS.SignatureValue Nothing . cs . LBase64.encode . cs)
+              =<< RSA.signSafer (Just hashAlg) (RSA.toPrivateKey keypair) digest
 
     let signedInfo = HS.SignedInfo
           { signedInfoId = Nothing :: Maybe HS.ID
           , signedInfoCanonicalizationMethod = HS.CanonicalizationMethod (HS.Identified canoAlg) Nothing []
           , signedInfoSignatureMethod = HS.SignatureMethod (HS.Identified HS.SignatureRSA_SHA256) Nothing []
           , signedInfoReference = HS.Reference
-            { referenceId = Just reference
-            , referenceURI = Nothing
+            { referenceId = Nothing
+            , referenceURI = Just reference
             , referenceType = Nothing
             , referenceTransforms = Just . HS.Transforms . fmap (\alg -> HS.Transform (HS.Identified alg) Nothing []) $
                 HS.TransformCanonicalization canoAlg :| [HS.TransformEnvelopedSignature]
             , referenceDigestMethod = HS.DigestMethod (HS.Identified HS.DigestSHA256) []
-            , referenceDigestValue = Base64.encode digest
+            , referenceDigestValue = cs . LBase64.encode . cs $ digest
             } :| []
           }
 
-    injectSignedInfoAtRoot signedInfo =<< hxtToConduit doc''
+        _cert = publicKeyToKeyInfo $ RSA.toPublicKey keypair
+        sig = HS.Signature
+          { signatureId = Nothing :: Maybe HS.ID
+          , signatureSignedInfo = signedInfo :: HS.SignedInfo
+          , signatureSignatureValue = sigval :: HS.SignatureValue
+          , signatureKeyInfo = Nothing :: Maybe HS.KeyInfo  -- @Just _cert@ would be nice, but we'd have to implement that.
+          , signatureObject = []
+          }
 
-addRootIDIfMissing :: forall m. Crypto.MonadRandom m => XML.Document -> m (XML.Document, HS.ID)
+    injectSignedInfoAtRoot sig =<< hxtToConduit doc''
+
+addRootIDIfMissing :: forall m. (MonadError String m, Crypto.MonadRandom m) => XML.Document -> m (XML.Document, URI)
 addRootIDIfMissing (XML.Document prol (Element tag attrs nodes) epil) = do
   (fresh, ref) <- maybe makeID keepID $ Map.lookup "ID" attrs
+  uriref <- maybe (throwError "bad reference URI") pure . parseRelativeReference . cs $ "#" <> ref
   let updAttrs = if fresh then Map.insert "ID" ref else id
-  pure (XML.Document prol (Element tag (updAttrs attrs) nodes) epil, cs ref)
+  pure (XML.Document prol (Element tag (updAttrs attrs) nodes) epil, uriref)
   where
     makeID :: m (Bool, ST)
     makeID = (True,) . UUID.toText <$> randomUUID
@@ -193,7 +214,7 @@ randomInteger = Crypto.getRandomBytes 8
             <&> fmap fromIntegral
             <&> foldl' (*) 1
 
-injectSignedInfoAtRoot :: MonadError String m => HS.SignedInfo -> XML.Document -> m XML.Document
+injectSignedInfoAtRoot :: MonadError String m => HS.Signature -> XML.Document -> m XML.Document
 injectSignedInfoAtRoot signedInfo (XML.Document prol (Element tag attrs nodes) epil) = do
   XML.Document _ signedInfoXML _ <- samlToConduit signedInfo
   pure $ XML.Document prol (Element tag attrs (XML.NodeElement signedInfoXML : nodes)) epil
