@@ -5,6 +5,7 @@
 module Test.Text.XML.DSigSpec (spec) where
 
 import Control.Monad ((>=>))
+import Control.Monad.Except
 import Data.Either
 import Data.String.Conversions
 import Samples (pubA, privA, pubB)
@@ -15,15 +16,14 @@ import Text.XML.DSig
 import Util
 
 import qualified Crypto.Random as Crypto
-import qualified Data.ByteArray as ByteArray
 import qualified Data.Map as Map
 import qualified Data.UUID as UUID
 import qualified Samples
 
 
 -- do not export this, use only for the tests in this module!
-instance Crypto.MonadRandom (Either String) where
-  getRandomBytes = pure . ByteArray.pack . (`replicate` 0)
+instance Crypto.MonadRandom (ExceptT String IO) where
+  getRandomBytes l = ExceptT $ Right <$> Crypto.getRandomBytes l
 
 
 spec :: Spec
@@ -52,12 +52,12 @@ spec = describe "xml:dsig" $ do
       verifyRoot keyinfo raw `shouldBe` Right ()
 
   describe "verifyRoot vs. signRoot" $ do
-    let check :: HasCallStack => Bool -> Bool -> Either String () -> Spec
+    let check :: HasCallStack => Bool -> Bool -> (Either String () -> Bool) -> Spec
         check withMatchingCreds withID expected =
-          it (show (withMatchingCreds, withID, expected)) $ do
+          it (show (withMatchingCreds, withID)) $ do
             (privCreds, pubCreds) <- mkcrds withMatchingCreds
-            putStrLn . cs . renderLBS def . either error id $ signRoot privCreds (doc withID)
-            (verifyRoot pubCreds . renderLBS def =<< signRoot privCreds (doc withID)) `shouldBe` expected
+            signature <- runExceptT $ renderLBS def <$> signRoot privCreds (doc withID)
+            (verifyRoot pubCreds =<< signature) `shouldSatisfy` expected
 
         mkcrds, _mkcrdsReal, _mkcrdsCached :: Bool -> IO (SignPrivCreds, SignCreds)
         mkcrds = _mkcrdsCached
@@ -80,13 +80,12 @@ spec = describe "xml:dsig" $ do
                     hackach
                 |]
 
-    check True True (Right ())
-    check True False (Right ())
-    check False True (Left "")
-    check False False (Left "")
+    check True True (== Right ())
+    check True False (== Right ())
+    check False True isLeft
+    check False False isLeft
 
     it "keeps data intact" $ do
       (privCreds, _pubCreds) <- mkcrds True
-      let outcome = either (error . show) cs
-            $ renderLBS def <$> signRoot privCreds (doc False)
+      Right outcome <- runExceptT (cs . renderLBS def <$> signRoot privCreds (doc False))
       (outcome `shouldContain`) `mapM_` ["bloo", "ack", "hackach", "hackach"]

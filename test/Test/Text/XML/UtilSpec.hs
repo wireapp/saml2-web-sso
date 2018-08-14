@@ -17,7 +17,7 @@ import Text.XML.Util
 spec :: Spec
 spec = do
   describe "hxtToConduit, conduitToHxt" $ do
-    modifyMaxSize (*10) $ it "roundtrip" . property $ \(normalizeDoc -> doc) -> do
+    modifyMaxSize (*2) {- it took @*10@ here to find a bug once -} $ it "roundtrip" . property $ \(normalizeDoc -> doc) -> do
       let msg = ppShow ( '1', doc
                        , '2', renderLBS def doc
                        , '3', conduitToHxt @(Either String) doc

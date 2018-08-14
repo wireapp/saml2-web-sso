@@ -293,8 +293,9 @@ checkDestination msg (renderURI -> haveDest) = do
     unless (wantDest `ST.isPrefixOf` haveDest) $ do
       deny ["bad " <> msg <> ": expected " <> show wantDest <> ", got " <> show haveDest]
 
--- TODO: check that inresponseto in 'Response' matches the one in 'Assertion' (or
--- 'SubjectConfirmationData', to be more specific).  if it is Nothing, set it in the output?
+-- TODO: check that the @InResponseTo@ field in 'Response' exists and matches the one in 'Assertion'
+-- (or 'SubjectConfirmationData', to be more specific).  if that's not the case, can we crash with
+-- an error?
 
 checkAssertions :: (SP m, SPStore m, MonadJudge m) => Maybe Issuer -> [Assertion] -> m AccessVerdict
 checkAssertions _ [] = giveup ["no assertions"]

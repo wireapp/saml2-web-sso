@@ -32,12 +32,12 @@ import qualified Crypto.PubKey.RSA.PKCS15 as RSA
 import qualified Crypto.PubKey.RSA.Types as RSA
 import qualified Crypto.Random.Types as Crypto
 import qualified Data.ByteArray as ByteArray
-import qualified Data.ByteString.Base64.Lazy as LBase64
 import qualified Data.Map as Map
 import qualified Data.X509 as X509
 import qualified SAML2.XML as HS hiding (URI, Node)
 import qualified SAML2.XML.Canonical as HS
 import qualified SAML2.XML.Signature as HS
+import qualified Text.XML.HXT.DOM.XmlNode as HXT
 
 
 data SignCreds = SignCreds SignDigest SignKey
@@ -146,24 +146,33 @@ verifyIO (SignCreds SignDigestSha256 (SignKeyRSA key)) el signedID = do
 ----------------------------------------------------------------------
 -- signature creation
 
--- | Make sure that root node node has ID attribute and sign it.
+-- | Make sure that root node node has ID attribute and sign it.  This is similar to the more
+-- primitive 'HS.generateSignature'.
 signRoot :: (Crypto.MonadRandom m, MonadError String m) => SignPrivCreds -> XML.Document -> m XML.Document
-signRoot (SignPrivCreds SignDigestSha256 (SignPrivKeyRSA keypair)) doc
+signRoot (SignPrivCreds hashAlg (SignPrivKeyRSA keypair)) doc
   = do
-    (doc', reference) <- addRootIDIfMissing doc
-    doc'' <- conduitToHxt doc'
-    let canoAlg = HS.CanonicalXMLExcl10 True
-        hashAlg = Crypto.SHA256
+    (docWithID :: XML.Document, reference) <- addRootIDIfMissing doc
+    docInHXT <- conduitToHxt docWithID
 
-    doc''' :: SBS
-           <- either (throwError . show @SomeException) pure . unsafePerformIO . try $
-              HS.canonicalize canoAlg Nothing Nothing doc''
+    let canoAlg = HS.CanonicalXMLExcl10 True
+        transforms = Just . HS.Transforms $
+                       HS.Transform { HS.transformAlgorithm = HS.Identified HS.TransformEnvelopedSignature
+                                    , HS.transformInclusiveNamespaces = Nothing
+                                    , HS.transform = []
+                                    }
+                  :| [ HS.Transform { HS.transformAlgorithm = HS.Identified (HS.TransformCanonicalization canoAlg)
+                                    , HS.transformInclusiveNamespaces = Nothing
+                                    , HS.transform = []
+                                    }
+                     ]
+
+    docCanonic :: SBS
+           <- either (throwError . show @SomeException) (pure . cs) . unsafePerformIO . try $
+              HS.applyTransforms transforms (HXT.mkRoot [] [docInHXT])
+
     let digest :: SBS
-        digest = cs . show $ Crypto.hash @SBS @Crypto.SHA256 doc'''
-    sigval :: HS.SignatureValue
-           <- either (throwError . show @RSA.Error)
-                     (pure . HS.SignatureValue Nothing . cs . LBase64.encode . cs)
-              =<< RSA.signSafer (Just hashAlg) (RSA.toPrivateKey keypair) digest
+        digest = case hashAlg of
+          SignDigestSha256 -> ByteArray.convert $ Crypto.hash @SBS @Crypto.SHA256 docCanonic
 
     let signedInfo = HS.SignedInfo
           { signedInfoId = Nothing :: Maybe HS.ID
@@ -173,23 +182,37 @@ signRoot (SignPrivCreds SignDigestSha256 (SignPrivKeyRSA keypair)) doc
             { referenceId = Nothing
             , referenceURI = Just reference
             , referenceType = Nothing
-            , referenceTransforms = Just . HS.Transforms . fmap (\alg -> HS.Transform (HS.Identified alg) Nothing []) $
-                HS.TransformCanonicalization canoAlg :| [HS.TransformEnvelopedSignature]
+            , referenceTransforms = transforms
             , referenceDigestMethod = HS.DigestMethod (HS.Identified HS.DigestSHA256) []
-            , referenceDigestValue = cs . LBase64.encode . cs $ digest
+            , referenceDigestValue = digest
             } :| []
           }
+          -- (note that there are two rounds of SHA256 application, hence two mentions of the has alg here)
 
-        _cert = publicKeyToKeyInfo $ RSA.toPublicKey keypair
+    signedInfoSBS :: SBS
+      <- either (throwError . show @SomeException) (pure . cs) . unsafePerformIO . try $
+           HS.applyCanonicalization (HS.signedInfoCanonicalizationMethod signedInfo) Nothing $
+             HS.samlToDoc signedInfo
+
+    sigval :: SBS
+           <- either (throwError . show @RSA.Error) pure
+              =<< RSA.signSafer (Just Crypto.SHA256)
+                                (RSA.toPrivateKey keypair)
+                                signedInfoSBS
+
+    let _cert = publicKeyToKeyInfo $ RSA.toPublicKey keypair
         sig = HS.Signature
           { signatureId = Nothing :: Maybe HS.ID
           , signatureSignedInfo = signedInfo :: HS.SignedInfo
-          , signatureSignatureValue = sigval :: HS.SignatureValue
+          , signatureSignatureValue = HS.SignatureValue Nothing sigval :: HS.SignatureValue
           , signatureKeyInfo = Nothing :: Maybe HS.KeyInfo  -- @Just _cert@ would be nice, but we'd have to implement that.
           , signatureObject = []
           }
 
-    injectSignedInfoAtRoot sig =<< hxtToConduit doc''
+    unless (RSA.verify (Just Crypto.SHA256) (RSA.toPublicKey keypair) signedInfoSBS sigval) $
+      throwError "signRoot: internal error: failed to verify my own signature!"
+
+    injectSignedInfoAtRoot sig =<< hxtToConduit docInHXT
 
 addRootIDIfMissing :: forall m. (MonadError String m, Crypto.MonadRandom m) => XML.Document -> m (XML.Document, URI)
 addRootIDIfMissing (XML.Document prol (Element tag attrs nodes) epil) = do
