@@ -80,7 +80,7 @@ dependencies:
   - xml-conduit-writer
   - xml-hamlet
   - xml-types
-  - yaml >= 0.8.31
+  - yaml >= 0.8.25.1
 
   # for SAML2.WebSSO.Test.*; we should have a cabal flag that allows users to disable these deps.
   - hedgehog
