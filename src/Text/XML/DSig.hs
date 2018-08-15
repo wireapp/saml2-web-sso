@@ -13,6 +13,7 @@ where
 import Control.Exception (throwIO, try, ErrorCall(ErrorCall), SomeException)
 import Control.Monad.Except
 import Data.EitherR (fmapL)
+import Data.Functor (($>))
 import Data.List (foldl')
 import Data.List.NonEmpty
 import Data.Monoid ((<>))
@@ -59,16 +60,23 @@ data SignPrivKey = SignPrivKeyRSA RSA.KeyPair
 ----------------------------------------------------------------------
 -- public keys and certificats
 
+verifySelfSignature :: (HasCallStack, MonadError String m) => X509.SignedCertificate -> m ()
+verifySelfSignature cert = do
+  keyInfoToCreds cert >>= \case
+    SignCreds SignDigestSha256 (SignKeyRSA pubkey) -> do
+      let signedMessage  = X509.getSignedData cert
+          signatureValue = X509.signedSignature $ X509.getSigned cert
+      unless (RSA.verify (Just Crypto.SHA256) pubkey signedMessage signatureValue) $
+        throwError "verifySelfSignature: invalid signature."
+
 -- | Read the KeyInfo element of a meta file's IDPSSODescriptor into a public key that can be used
 -- for signing.  Tested for KeyInfo elements that contain an x509 certificate with a self-signed
 -- signing RSA key.
---
--- TODO: verify self-signature?
 parseKeyInfo :: (HasCallStack, MonadError String m) => LT -> m X509.SignedCertificate
 parseKeyInfo (cs @LT @LBS -> lbs) = case HS.xmlToSAML @HS.KeyInfo =<< stripWhitespaceLBS lbs of
   Right keyinf -> case HS.keyInfoElements keyinf of
     HS.X509Data (HS.X509Certificate cert :| []) :| []
-      -> pure cert
+      -> verifySelfSignature cert $> cert
     HS.X509Data (HS.X509Certificate _ :| bad) :| bad'
       -> throwError $ "unreadable trailing data or noise: " <> show (bad, bad')
     unsupported
