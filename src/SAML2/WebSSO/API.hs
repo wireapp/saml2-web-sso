@@ -48,7 +48,7 @@ import Text.Hamlet.XML
 import Text.Show.Pretty (ppShow)
 import Text.XML
 import Text.XML.Cursor
-import Text.XML.DSig (verify, keyInfoToCreds)
+import Text.XML.DSig (verify, certToCreds)
 import Text.XML.Util
 import URI.ByteString
 import Web.Cookie
@@ -118,7 +118,7 @@ simpleVerifyAuthnResponse Nothing _ = throwError $ BadSamlResponse "missing issu
 simpleVerifyAuthnResponse (Just issuer) raw = do
     creds <- do
       cert <- (^. idpPublicKey) <$> getIdPConfigByIssuer issuer
-      keyInfoToCreds cert &
+      certToCreds cert &
         either (throwError . BadServerConfig . ((encodeElem issuer <> ": ") <>) . cs) pure
 
     doc :: Cursor <- either (throwError . BadSamlResponse . ("could not parse document: " <>) . cs . show)

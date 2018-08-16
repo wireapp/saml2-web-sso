@@ -4,7 +4,7 @@
 -- other dubious packages internally, but expose xml-types and cryptonite.
 module Text.XML.DSig
   ( SignCreds(..), SignDigest(..), SignKey(..), SignPrivCreds(..), SignPrivKey(..)
-  , parseKeyInfo, renderKeyInfo, keyInfoToCreds, keyInfoToPublicKey
+  , parseKeyInfo, renderKeyInfo, certToCreds, certToPublicKey
   , verifySelfSignature, mkSignCreds, mkSignCredsWithCert
   , verify, verifyRoot, verifyIO
   , signRoot
@@ -65,7 +65,7 @@ data SignPrivKey = SignPrivKeyRSA RSA.KeyPair
 
 verifySelfSignature :: (HasCallStack, MonadError String m) => X509.SignedCertificate -> m ()
 verifySelfSignature cert = do
-  keyInfoToCreds cert >>= \case
+  certToCreds cert >>= \case
     SignCreds SignDigestSha256 (SignKeyRSA pubkey) -> do
       let signedMessage  = X509.getSignedData cert
           signatureValue = X509.signedSignature $ X509.getSigned cert
@@ -94,8 +94,8 @@ stripWhitespaceLBS lbs = renderLBS def . stripWhitespace <$> fmapL show (parseLB
 renderKeyInfo :: (HasCallStack) => X509.SignedCertificate -> LT
 renderKeyInfo cert = cs . HS.samlToXML . HS.KeyInfo Nothing $ HS.X509Data (HS.X509Certificate cert :| []) :| []
 
-keyInfoToCreds :: (HasCallStack, MonadError String m) => X509.SignedCertificate -> m SignCreds
-keyInfoToCreds cert = do
+certToCreds :: (HasCallStack, MonadError String m) => X509.SignedCertificate -> m SignCreds
+certToCreds cert = do
   digest <- case X509.signedAlg $ X509.getSigned cert of
     X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_RSA -> pure SignDigestSha256
     bad -> throwError $ "unsupported: " <> show bad
@@ -104,11 +104,11 @@ keyInfoToCreds cert = do
     bad -> throwError $ "unsupported: " <> show bad
   pure $ SignCreds digest key
 
-keyInfoToPublicKey :: (HasCallStack, MonadError String m) => X509.SignedCertificate -> m RSA.PublicKey
-keyInfoToPublicKey cert = keyInfoToCreds cert <&> \(SignCreds _ (SignKeyRSA key)) -> key
+certToPublicKey :: (HasCallStack, MonadError String m) => X509.SignedCertificate -> m RSA.PublicKey
+certToPublicKey cert = certToCreds cert <&> \(SignCreds _ (SignKeyRSA key)) -> key
 
-publicKeyToKeyInfo :: (HasCallStack) => RSA.PublicKey -> X509.SignedCertificate
-publicKeyToKeyInfo = undefined
+publicKeyToCert :: (HasCallStack) => RSA.PublicKey -> X509.SignedCertificate
+publicKeyToCert = undefined
 
 
 mkSignCreds :: (Crypto.MonadRandom m, MonadIO m) => Int -> m (SignPrivCreds, SignCreds)
@@ -231,7 +231,7 @@ signRoot (SignPrivCreds hashAlg (SignPrivKeyRSA keypair)) doc
                                 (RSA.toPrivateKey keypair)
                                 signedInfoSBS
 
-    let _cert = publicKeyToKeyInfo $ RSA.toPublicKey keypair
+    let _cert = publicKeyToCert $ RSA.toPublicKey keypair
         sig = HS.Signature
           { signatureId = Nothing :: Maybe HS.ID
           , signatureSignedInfo = signedInfo :: HS.SignedInfo
