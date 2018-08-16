@@ -39,6 +39,11 @@ spec = describe "xml:dsig" $ do
       keyinfo <- readSampleIO "okta-keyinfo-1.xml"
       (keyInfoToCreds =<< parseKeyInfo keyinfo) `shouldSatisfy` isRight
 
+    it "works against mkSignCredsWithCert" $ do
+      (_privcreds, creds, cert) <- mkSignCredsWithCert Nothing 192
+      verifySelfSignature cert `shouldBe` Right ()
+      keyInfoToCreds cert `shouldBe` Right creds
+
   describe "verify" $ do
     it "works" $ do
       Right keyinfo <- (parseKeyInfo >=> keyInfoToCreds) <$> readSampleIO "microsoft-idp-keyinfo.xml"

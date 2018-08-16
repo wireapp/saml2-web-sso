@@ -4,7 +4,8 @@
 -- other dubious packages internally, but expose xml-types and cryptonite.
 module Text.XML.DSig
   ( SignCreds(..), SignDigest(..), SignKey(..), SignPrivCreds(..), SignPrivKey(..)
-  , parseKeyInfo, renderKeyInfo, keyInfoToCreds, keyInfoToPublicKey, mkSignCreds
+  , parseKeyInfo, renderKeyInfo, keyInfoToCreds, keyInfoToPublicKey
+  , verifySelfSignature, mkSignCreds, mkSignCredsWithCert
   , verify, verifyRoot, verifyIO
   , signRoot
   )
@@ -33,12 +34,14 @@ import qualified Crypto.PubKey.RSA.PKCS15 as RSA
 import qualified Crypto.PubKey.RSA.Types as RSA
 import qualified Crypto.Random.Types as Crypto
 import qualified Data.ByteArray as ByteArray
+import qualified Data.Hourglass as Hourglass
 import qualified Data.Map as Map
 import qualified Data.X509 as X509
 import qualified SAML2.XML as HS hiding (URI, Node)
 import qualified SAML2.XML.Canonical as HS
 import qualified SAML2.XML.Signature as HS
 import qualified Text.XML.HXT.DOM.XmlNode as HXT
+import qualified Time.System as Hourglass
 
 
 data SignCreds = SignCreds SignDigest SignKey
@@ -108,21 +111,41 @@ publicKeyToKeyInfo :: (HasCallStack) => RSA.PublicKey -> X509.SignedCertificate
 publicKeyToKeyInfo = undefined
 
 
-{- this fails, but i don't know why.  it this base64 encoding after all?
+mkSignCreds :: (Crypto.MonadRandom m, MonadIO m) => Int -> m (SignPrivCreds, SignCreds)
+mkSignCreds size = mkSignCredsWithCert Nothing size <&> \(priv, pub, _) -> (priv, pub)
 
-q :: [Either ASN1Error [ASN1]]
-q = [decodeASN1 DER, decodeASN1 BER] <*> [q1]
-  where
-    q1 = "MIIDBTCCAe2gAwIBAgIQev76BWqjWZxChmKkGqoAfDANBgkqhkiG9w0BAQsFADAtMSswKQYDVQQDEyJhY2NvdW50cy5hY2Nlc3Njb250cm9sLndpbmRvd3MubmV0MB4XDTE4MDIxODAwMDAwMFoXDTIwMDIxOTAwMDAwMFowLTErMCkGA1UEAxMiYWNjb3VudHMuYWNjZXNzY29udHJvbC53aW5kb3dzLm5ldDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMgmGiRfLh6Fdi99XI2VA3XKHStWNRLEy5Aw/gxFxchnh2kPdk/bejFOs2swcx7yUWqxujjCNRsLBcWfaKUlTnrkY7i9x9noZlMrijgJy/Lk+HH5HX24PQCDf+twjnHHxZ9G6/8VLM2e5ZBeZm+t7M3vhuumEHG3UwloLF6cUeuPdW+exnOB1U1fHBIFOG8ns4SSIoq6zw5rdt0CSI6+l7b1DEjVvPLtJF+zyjlJ1Qp7NgBvAwdiPiRMU4l8IRVbuSVKoKYJoyJ4L3eXsjczoBSTJ6VjV2mygz96DC70MY3avccFrk7tCEC6ZlMRBfY1XPLyldT7tsR3EuzjecSa1M8CAwEAAaMhMB8wHQYDVR0OBBYEFIks1srixjpSLXeiR8zES5cTY6fBMA0GCSqGSIb3DQEBCwUAA4IBAQCKthfK4C31DMuDyQZVS3F7+4Evld3hjiwqu2uGDK+qFZas/D/eDunxsFpiwqC01RIMFFN8yvmMjHphLHiBHWxcBTS+tm7AhmAvWMdxO5lzJLS+UWAyPF5ICROe8Mu9iNJiO5JlCo0Wpui9RbB1C81Xhax1gWHK245ESL6k7YWvyMYWrGqr1NuQcNS0B/AIT1Nsj1WY7efMJQOmnMHkPUTWryVZlthijYyd7P2Gz6rY5a81DAFqhDNJl2pGIAE6HWtSzeUEh3jCsHEkoglKfm4VrGJEuXcALmfCMbdfTvtu4rlsaP2hQad+MG/KJFlenoTK34EMHeBPDCpqNDz8UVNk"
-
--}
-
-mkSignCreds :: (Crypto.MonadRandom m) => Int -> m (SignPrivCreds, SignCreds)
-mkSignCreds size = do
+-- | If first argument @validSince@ is @Nothing@, use cucrent system time.
+mkSignCredsWithCert :: forall m. (Crypto.MonadRandom m, MonadIO m)
+                    => Maybe Hourglass.DateTime -> Int -> m (SignPrivCreds, SignCreds, X509.SignedCertificate)
+mkSignCredsWithCert mValidSince size = do
   let rsaexp = 17
   (pubkey, privkey) <- RSA.generate size rsaexp
+
+  validSince :: Hourglass.DateTime <- maybe (liftIO Hourglass.dateCurrent) pure mValidSince
+  let validUntil = validSince `Hourglass.timeAdd` mempty { Hourglass.durationHours = 24 * 365 * 20 }
+
+      signcert :: SBS -> m (SBS, X509.SignatureALG)
+      signcert sbs = (, sigalg) <$> sigval
+        where
+          sigalg = X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_RSA
+          sigval :: m SBS = liftIO $
+            RSA.signSafer (Just Crypto.SHA256) privkey sbs
+              >>= either (throwIO . ErrorCall . show) pure
+
+  cert <- X509.objectToSignedExactF signcert X509.Certificate
+        { X509.certVersion = 2 :: Int
+        , X509.certSerial = 387928798798718181888591698169861 :: Integer
+        , X509.certSignatureAlg = X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_RSA
+        , X509.certIssuerDN = X509.DistinguishedName []
+        , X509.certValidity = (validSince, validUntil)
+        , X509.certSubjectDN = X509.DistinguishedName []
+        , X509.certPubKey = X509.PubKeyRSA pubkey
+        , X509.certExtensions = X509.Extensions Nothing
+        }
+
   pure ( SignPrivCreds SignDigestSha256 . SignPrivKeyRSA $ RSA.KeyPair privkey
        , SignCreds     SignDigestSha256 . SignKeyRSA     $ pubkey
+       , cert
        )
 
 

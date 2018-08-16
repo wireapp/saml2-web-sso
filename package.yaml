@@ -58,6 +58,7 @@ dependencies:
   - errors
   - exceptions
   - filepath
+  - hourglass
   - http-media
   - http-types
   - memory
