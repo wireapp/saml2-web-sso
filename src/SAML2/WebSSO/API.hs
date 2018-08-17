@@ -98,6 +98,10 @@ api appName handleVerdict =
 newtype AuthnResponseBody = AuthnResponseBody
   { fromAuthnResponseBody :: forall m err. SPStoreIdP (Error err) m => m AuthnResponse }
 
+renderAuthnResponseBody :: AuthnResponse -> LBS
+renderAuthnResponseBody = EL.encode . cs . encode
+
+-- | Implies verification, hence the constraint.
 parseAuthnResponseBody :: forall m err. SPStoreIdP (Error err) m => LBS -> m AuthnResponse
 parseAuthnResponseBody base64 = do
   xmltxt <-
@@ -177,6 +181,9 @@ instance MimeRender HTML ST where
         <p>
           #{msg}
     |]
+
+authnResponseBodyToMultipart :: AuthnResponse -> MultipartData tag
+authnResponseBodyToMultipart resp = MultipartData [Input "SAMLResponse" (cs $ renderAuthnResponseBody resp)] []
 
 instance FromMultipart Mem AuthnResponseBody where
   fromMultipart resp = Just (AuthnResponseBody eval)
