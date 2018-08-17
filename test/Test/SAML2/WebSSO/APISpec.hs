@@ -34,6 +34,7 @@ import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
 import qualified Data.Yaml as Yaml
 import qualified Hedgehog
+import qualified Text.XML.Cursor as XMLC
 
 
 ----------------------------------------------------------------------
@@ -300,8 +301,10 @@ spec = describe "API" $ do
       ioFromTestSP ctx $ do
         idpcfg    <- liftIO mkmyidp
         authnreq  <- createAuthnRequest 3600
-        authnresp <- liftIO $ do
-          SignedAuthnResponse resp <- mkAuthnResponse creds idpcfg authnreq True
-          either (error . show) pure $ parseFromDocument @AuthnResponse resp
-        simpleVerifyAuthnResponse (authnresp ^. rspIssuer) (cs $ encode authnresp)
+        SignedAuthnResponse authnrespDoc <- liftIO $ mkAuthnResponse creds idpcfg authnreq True
+        let authnrespLBS = renderLBS def authnrespDoc
+        issuer :: Issuer
+          <- case XMLC.fromDocument authnrespDoc XMLC.$// XMLC.element "{urn:oasis:names:tc:SAML:2.0:assertion}Issuer" of
+               ns -> either (error . ("no issuer in authnrespDoc" <>) . show) pure . parse . fmap XMLC.node $ ns
+        simpleVerifyAuthnResponse (Just issuer) authnrespLBS
       passes
