@@ -1,4 +1,5 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
 
 -- | Partial implementation of <https://www.w3.org/TR/xmldsig-core/>.  We use hsaml2, hxt, x509 and
 -- other dubious packages internally, but expose xml-types and cryptonite.
@@ -8,6 +9,7 @@ module Text.XML.DSig
   , verifySelfSignature, mkSignCreds, mkSignCredsWithCert
   , verify, verifyRoot, verifyIO
   , signRoot
+  , MonadSign(MonadSign), runMonadSign, signElementIO
   )
 where
 
@@ -324,3 +326,29 @@ newtype SignerIdentity = X509Certificate ST
   deriving (Eq, Show)
 
 -}
+
+
+----------------------------------------------------------------------
+-- testing
+
+newtype MonadSign a = MonadSign { runMonadSign' :: ExceptT String IO a }
+  deriving (Functor, Applicative, Monad)
+
+runMonadSign :: MonadSign a -> IO (Either String a)
+runMonadSign = runExceptT . runMonadSign'
+
+instance Crypto.MonadRandom MonadSign where
+  getRandomBytes l = MonadSign . ExceptT $ Right <$> Crypto.getRandomBytes l
+
+instance MonadError String MonadSign where
+  throwError = MonadSign . throwError
+  catchError (MonadSign m) handler = MonadSign $ m `catchError` (runMonadSign' . handler)
+
+signElementIO :: HasCallStack => SignPrivCreds -> [Node] -> IO [Node]
+signElementIO creds [NodeElement el] = do
+  let docToNodes :: Document -> [Node]
+      docToNodes (Document _ el' _) = [NodeElement el']
+  eNodes :: Either String [Node]
+    <- runMonadSign . fmap docToNodes . signRoot creds . mkDocument $ el
+  either error pure eNodes
+signElementIO _ bad = error $ show bad
