@@ -34,6 +34,9 @@ import qualified Data.Yaml as Yaml
 import qualified Hedgehog
 
 
+----------------------------------------------------------------------
+-- helpers
+
 newtype SomeSAMLRequest = SomeSAMLRequest { fromSomeSAMLRequest :: XML.Document }
   deriving (Eq, Show)
 
@@ -77,6 +80,44 @@ hedgehogTests = Hedgehog.Group "hedgehog tests" $
         \formRedirect -> Hedgehog.tripping formRedirect (mimeRender (Proxy @HTML)) (mimeUnrender (Proxy @HTML))
     )
   ]
+
+
+burnIdP :: FilePath -> FilePath -> ST -> ST -> Spec
+burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
+  let ctx :: IO Ctx
+      ctx = do
+        testCtx1 <- mkTestCtx1
+        reqstore <- newMVar $ Map.fromList
+          -- it would be probably better to also take this ID (and timeout?) as an argument(s).
+          [ (ID "idcf2299ac551b42f1aa9b88804ed308c2", unsafeReadTime "2019-04-14T10:53:57Z")
+          , (ID "idafecfcff5cc64345b6ddde7ee47b4838", unsafeReadTime "2019-04-14T10:53:57Z")
+          ]
+        getIdP <&> \idp -> testCtx1 & ctxConfig . cfgIdps .~ [idp]
+                                    & ctxNow .~ unsafeReadTime currentTime
+                                    & ctxConfig . cfgSPAppURI .~ unsafeParseURI audienceURI
+                                    & ctxRequestStore .~ reqstore
+
+      getIdP :: IO IdPConfig_
+      getIdP = Yaml.decodeThrow . cs =<< readSampleIO cfgPath
+
+  describe ("smoke tests: " <> show cfgPath) $ do
+    describe "authreq" . withapp (Proxy @APIAuthReq') authreq' ctx $ do
+      it "responds with 200" $ do
+        idp <- liftIO getIdP
+        get ("/authreq/" <> cs (idPIdToST (idp ^. idpId)))
+          `shouldRespondWith` 200 { matchBody = bodyContains "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" }
+
+    describe "authresp" . withapp (Proxy @APIAuthResp') (authresp (HandleVerdictRedirect simpleOnSuccess)) ctx $ do
+      it "responds with 303" $ do
+        sample <- liftIO $ cs <$> readSampleIO respXmlPath
+        let postresp = postHtmlForm "/authresp" body
+            body = [("SAMLResponse", sample)]
+        postresp
+          `shouldRespondWith` 303
+
+
+----------------------------------------------------------------------
+-- test cases
 
 spec :: Spec
 spec = describe "API" $ do
@@ -244,37 +285,3 @@ spec = describe "API" $ do
     burnIdP "okta-config.yaml" "okta-resp-1.base64" "2018-05-25T10:57:16.135Z" "https://zb2.zerobuzz.net:60443/"
     burnIdP "microsoft-idp-config.yaml" "microsoft-authnresponse-2.base64" "2018-04-14T10:53:57Z" "https://zb2.zerobuzz.net:60443/authresp"
     -- TODO: centrify
-
-
-burnIdP :: FilePath -> FilePath -> ST -> ST -> Spec
-burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
-  let ctx :: IO Ctx
-      ctx = do
-        testCtx1 <- mkTestCtx1
-        reqstore <- newMVar $ Map.fromList
-          -- it would be probably better to also take this ID (and timeout?) as an argument(s).
-          [ (ID "idcf2299ac551b42f1aa9b88804ed308c2", unsafeReadTime "2019-04-14T10:53:57Z")
-          , (ID "idafecfcff5cc64345b6ddde7ee47b4838", unsafeReadTime "2019-04-14T10:53:57Z")
-          ]
-        getIdP <&> \idp -> testCtx1 & ctxConfig . cfgIdps .~ [idp]
-                                    & ctxNow .~ unsafeReadTime currentTime
-                                    & ctxConfig . cfgSPAppURI .~ unsafeParseURI audienceURI
-                                    & ctxRequestStore .~ reqstore
-
-      getIdP :: IO IdPConfig_
-      getIdP = Yaml.decodeThrow . cs =<< readSampleIO cfgPath
-
-  describe ("smoke tests: " <> show cfgPath) $ do
-    describe "authreq" . withapp (Proxy @APIAuthReq') authreq' ctx $ do
-      it "responds with 200" $ do
-        idp <- liftIO getIdP
-        get ("/authreq/" <> cs (idPIdToST (idp ^. idpId)))
-          `shouldRespondWith` 200 { matchBody = bodyContains "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" }
-
-    describe "authresp" . withapp (Proxy @APIAuthResp') (authresp (HandleVerdictRedirect simpleOnSuccess)) ctx $ do
-      it "responds with 303" $ do
-        sample <- liftIO $ cs <$> readSampleIO respXmlPath
-        let postresp = postHtmlForm "/authresp" body
-            body = [("SAMLResponse", sample)]
-        postresp
-          `shouldRespondWith` 303

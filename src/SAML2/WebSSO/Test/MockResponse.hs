@@ -16,7 +16,7 @@ import Text.XML.DSig
 import Text.XML.Util
 
 
-newtype SignedAuthnResponse = SignedAuthnResponse Document
+newtype SignedAuthnResponse = SignedAuthnResponse { fromSignedAuthnResponse :: Document }
   deriving (Eq, Show)
 
 mkAuthnResponse :: HasCallStack => SignPrivCreds -> IdPConfig extra -> AuthnRequest -> Bool -> IO SignedAuthnResponse
