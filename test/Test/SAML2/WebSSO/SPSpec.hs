@@ -7,6 +7,7 @@ module Test.SAML2.WebSSO.SPSpec (spec) where
 import Control.Concurrent.MVar
 import Lens.Micro
 import SAML2.WebSSO
+import SAML2.WebSSO.API.Example
 import Test.Hspec
 import TestSP
 import URI.ByteString.QQ

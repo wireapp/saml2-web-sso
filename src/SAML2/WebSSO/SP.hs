@@ -1,16 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-
-{-# OPTIONS_GHC -Wno-orphans #-}
 
 module SAML2.WebSSO.SP where
 
-import Control.Arrow ((&&&))
-import Control.Concurrent.MVar
 import Control.Monad.Except
-import Control.Monad.Reader
 import Control.Monad.Writer
-import Data.EitherR (fmapL)
 import Data.Foldable (toList)
 import Data.List
 import Data.Maybe
@@ -22,14 +15,12 @@ import Lens.Micro
 import Servant.Server
 import URI.ByteString
 
-import qualified Data.Map as Map
 import qualified Data.Semigroup
 import qualified Data.Text as ST
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
 
 import SAML2.WebSSO.Config
-import SAML2.WebSSO.Error
 import SAML2.WebSSO.Types
 import Text.XML.Util
 
@@ -73,83 +64,6 @@ class (MonadError err m) => SPStoreIdP err m where
 class (SP m, SPStore m, SPStoreIdP err m, MonadError err m) => SPHandler err m where
   type NTCTX m :: *
   nt :: forall x. NTCTX m -> m x -> Handler x
-
-
-----------------------------------------------------------------------
--- default instance
-
-newtype SimpleSP a = SimpleSP (ReaderT SimpleSPCtx (ExceptT SimpleError IO) a)
-  deriving (Functor, Applicative, Monad, MonadError SimpleError)
-
-type SimpleSPCtx = (Config_, MVar RequestStore, MVar AssertionStore)
-type RequestStore = Map.Map (ID AuthnRequest) Time
-type AssertionStore = Map.Map (ID Assertion) Time
-
--- | If you read the 'Config' initially in 'IO' and then pass it into the monad via 'Reader', you
--- safe disk load and redundant debug logs.
-instance SPHandler SimpleError SimpleSP where
-  type NTCTX SimpleSP = SimpleSPCtx
-  nt ctx (SimpleSP m) = Handler . ExceptT . fmap (fmapL toServantErr) . runExceptT $ m `runReaderT` ctx
-
-mkSimpleSPCtx :: Config_ -> IO SimpleSPCtx
-mkSimpleSPCtx cfg = (,,) cfg <$> newMVar mempty <*> newMVar mempty
-
-instance SP SimpleSP where
-  logger level msg = getConfig >>= \cfg -> SimpleSP (loggerIO (cfg ^. cfgLogLevel) level msg)
-  createUUID       = SimpleSP $ createUUIDIO
-  getNow           = SimpleSP $ getNowIO
-
-instance SPStore SimpleSP where
-  storeRequest req keepAroundUntil = do
-    store <- (^. _2) <$> SimpleSP ask
-    SimpleSP $ simpleStoreRequest store req keepAroundUntil
-
-  checkAgainstRequest req = do
-    store <- (^. _2) <$> SimpleSP ask
-    now <- getNow
-    SimpleSP $ simpleCheckAgainstRequest store req now
-
-  storeAssertion aid tim = do
-    store <- (^. _3) <$> SimpleSP ask
-    now <- getNow
-    SimpleSP $ simpleStoreAssertion store now aid tim
-
-instance HasConfig SimpleSP where
-  type ConfigExtra SimpleSP = ()
-  getConfig = (^. _1) <$> SimpleSP ask
-
-instance SPStoreIdP SimpleError SimpleSP where
-  storeIdPConfig _ = pure ()
-  getIdPConfig = simpleGetIdPConfigBy (^. idpId)
-  getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpIssuer)
-
-simpleGetIdPConfigBy :: (MonadError (Error err) m, HasConfig m, Show a, Ord a)
-                     => (IdPConfig (ConfigExtra m) -> a) -> a -> m (IdPConfig (ConfigExtra m))
-simpleGetIdPConfigBy mkkey idpname = maybe crash pure . Map.lookup idpname . mkmap . (^. cfgIdps) =<< getConfig
-  where
-    crash = throwError (UnknownIdP . cs . show $ idpname)
-    mkmap = Map.fromList . fmap (mkkey &&& id)
-
-simpleStoreRequest :: MonadIO m => MVar RequestStore -> ID AuthnRequest -> Time -> m ()
-simpleStoreRequest store req keepAroundUntil =
-  liftIO $ modifyMVar_ store (pure . Map.insert req keepAroundUntil)
-
-simpleCheckAgainstRequest :: MonadIO m => MVar RequestStore -> ID AuthnRequest -> Time -> m Bool
-simpleCheckAgainstRequest store req now =
-  (> Just now) . Map.lookup req <$> liftIO (readMVar store)
-
-simpleStoreAssertion :: MonadIO m => MVar AssertionStore -> Time -> ID Assertion -> Time -> m Bool
-simpleStoreAssertion store now aid time = do
-  let go :: AssertionStore -> (AssertionStore, Bool)
-      go = (_2 %~ null) . runWriter . Map.alterF go' aid
-
-      go' :: Maybe Time -> Writer [()] (Maybe Time)
-      go' (Just time') = if time' < now
-        then pure $ Just time
-        else tell [()] >> pure (Just (maximum [time, time']))
-      go' Nothing = pure $ Just time
-
-  liftIO $ modifyMVar store (pure . go)
 
 
 ----------------------------------------------------------------------

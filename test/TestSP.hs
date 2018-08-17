@@ -15,6 +15,7 @@ import Data.Yaml
 import Lens.Micro
 import Lens.Micro.TH
 import SAML2.WebSSO
+import SAML2.WebSSO.API.Example
 import Servant.Server
 import URI.ByteString.QQ
 import Util
