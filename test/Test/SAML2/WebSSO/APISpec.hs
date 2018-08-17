@@ -12,8 +12,10 @@ import Data.Either
 import Data.EitherR
 import Data.String.Conversions
 import Lens.Micro
+import Samples
 import SAML2.WebSSO
 import SAML2.WebSSO.Test.Arbitrary (genFormRedirect, genAuthnRequest)
+import SAML2.WebSSO.Test.MockResponse
 import Servant
 #if !MIN_VERSION_servant_server(0,12,0)
 import Servant.Utils.Enter
@@ -36,6 +38,10 @@ import qualified Hedgehog
 
 ----------------------------------------------------------------------
 -- helpers
+
+passes :: Expectation
+passes = True `shouldBe` True
+
 
 newtype SomeSAMLRequest = SomeSAMLRequest { fromSomeSAMLRequest :: XML.Document }
   deriving (Eq, Show)
@@ -285,3 +291,17 @@ spec = describe "API" $ do
     burnIdP "okta-config.yaml" "okta-resp-1.base64" "2018-05-25T10:57:16.135Z" "https://zb2.zerobuzz.net:60443/"
     burnIdP "microsoft-idp-config.yaml" "microsoft-authnresponse-2.base64" "2018-04-14T10:53:57Z" "https://zb2.zerobuzz.net:60443/authresp"
     -- TODO: centrify
+
+
+  describe "mkAuthnResponse" $ do
+    it "Produces output that passes 'simpleVerifyAuthnResponse'" $ do
+      let creds  = Samples.privA
+      ctx <- mkTestCtx1
+      ioFromTestSP ctx $ do
+        idpcfg    <- liftIO mkmyidp
+        authnreq  <- createAuthnRequest 3600
+        authnresp <- liftIO $ do
+          SignedAuthnResponse resp <- mkAuthnResponse creds idpcfg authnreq True
+          either (error . show) pure $ parseFromDocument @AuthnResponse resp
+        simpleVerifyAuthnResponse (authnresp ^. rspIssuer) (cs $ encode authnresp)
+      passes
