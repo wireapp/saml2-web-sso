@@ -21,8 +21,9 @@ newtype SignedAuthnResponse = SignedAuthnResponse { fromSignedAuthnResponse :: D
 
 mkAuthnResponse :: HasCallStack => SignPrivCreds -> IdPConfig extra -> AuthnRequest -> Bool -> IO SignedAuthnResponse
 mkAuthnResponse creds idp authnreq grantAccess = do
-  assertionUuid <- UUID.toText <$> UUID.nextRandom
-  respUuid      <- UUID.toText <$> UUID.nextRandom
+  let freshNCName = ("_" <>) . UUID.toText <$> UUID.nextRandom
+  assertionUuid <- freshNCName
+  respUuid      <- freshNCName
   now           <- Time <$> getCurrentTime
 
   let issueInstant    = renderTime now
@@ -73,10 +74,10 @@ mkAuthnResponse creds idp authnreq grantAccess = do
             Destination="#{destination}"
             InResponseTo="#{inResponseTo}"
             IssueInstant="#{issueInstant}">
+              <Issuer xmlns="urn:oasis:names:tc:SAML:2.0:assertion">
+                  #{issuer}
               <samlp:Status>
                   <samlp:StatusCode Value="#{status}">
-              <Issuer>
-                  #{issuer}
               ^{assertion}
         |]
 
