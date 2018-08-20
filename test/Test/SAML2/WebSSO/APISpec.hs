@@ -12,9 +12,9 @@ import Data.Either
 import Data.EitherR
 import Data.String.Conversions
 import Lens.Micro
-import Samples
 import SAML2.WebSSO
 import SAML2.WebSSO.Test.Arbitrary (genFormRedirect, genAuthnRequest)
+import SAML2.WebSSO.Test.Credentials
 import SAML2.WebSSO.Test.MockResponse
 import Servant
 #if !MIN_VERSION_servant_server(0,12,0)
@@ -34,7 +34,6 @@ import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
 import qualified Data.Yaml as Yaml
 import qualified Hedgehog
-import qualified Text.XML.Cursor as XMLC
 
 
 ----------------------------------------------------------------------
@@ -296,15 +295,14 @@ spec = describe "API" $ do
 
   describe "mkAuthnResponse" $ do
     it "Produces output that passes 'simpleVerifyAuthnResponse'" $ do
-      let creds  = Samples.privA
-      ctx <- mkTestCtx1
+      idpcfg <- mkmyidp <&> idpPublicKey .~ sampleIdPCert
+      let issuer = idpcfg ^. idpIssuer
+          creds  = sampleIdPPrivkey
+      ctx <- mkTestCtx1 <&> ctxConfig . cfgIdps .~ [idpcfg]
       ioFromTestSP ctx $ do
-        idpcfg    <- liftIO mkmyidp
         authnreq  <- createAuthnRequest 3600
         SignedAuthnResponse authnrespDoc <- liftIO $ mkAuthnResponse creds idpcfg authnreq True
         let authnrespLBS = renderLBS def authnrespDoc
-        issuer :: Issuer
-          <- case XMLC.fromDocument authnrespDoc XMLC.$// XMLC.element "{urn:oasis:names:tc:SAML:2.0:assertion}Issuer" of
-               ns -> either (error . ("no issuer in authnrespDoc" <>) . show) pure . parse . fmap XMLC.node $ ns
-        simpleVerifyAuthnResponse (Just issuer) authnrespLBS
+        () <- simpleVerifyAuthnResponse (Just issuer) authnrespLBS
+        pure ()
       passes

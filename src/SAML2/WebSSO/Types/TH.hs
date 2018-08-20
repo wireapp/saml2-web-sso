@@ -1,4 +1,4 @@
-module SAML2.WebSSO.Config.TH (deriveJSONOptions) where
+module SAML2.WebSSO.Types.TH (deriveJSONOptions) where
 
 import Data.Aeson
 import Data.Char

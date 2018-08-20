@@ -7,7 +7,7 @@ module Test.Text.XML.DSigSpec (spec) where
 import Control.Monad ((>=>))
 import Data.Either
 import Data.String.Conversions
-import Samples (pubA, privA, pubB)
+import SAML2.WebSSO.Test.Credentials
 import Test.Hspec
 import Text.Hamlet.XML (xml)
 import Text.XML
@@ -66,8 +66,8 @@ spec = describe "xml:dsig" $ do
         keysize = 192  -- not long enough for security, but hopefully long enough for swift testing
 
         _mkcrdsCached = pure . \case
-          True  -> (privA, pubA)
-          False -> (privA, pubB)
+          True  -> (sampleIdPPrivkey, sampleIdPPubkey)
+          False -> (sampleIdPPrivkey, sampleIdPPubkeyWrong)
 
         someID withID = Map.fromList [("ID", UUID.toText UUID.nil) | withID]
         doc withID = Document (Prologue [] Nothing []) (Element "root" (someID withID) root) []

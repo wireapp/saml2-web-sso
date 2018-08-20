@@ -27,6 +27,7 @@ default-extensions:
   - KindSignatures
   - LambdaCase
   - MultiParamTypeClasses
+  - NoMonomorphismRestriction
   - PolyKinds
   - QuasiQuotes
   - RankNTypes
