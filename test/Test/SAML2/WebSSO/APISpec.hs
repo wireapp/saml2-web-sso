@@ -6,7 +6,7 @@
 module Test.SAML2.WebSSO.APISpec (spec) where
 
 import Control.Concurrent.MVar (newMVar)
-import Control.Exception
+import Control.Exception (SomeException, try)
 import Control.Monad.Reader
 import Control.Monad.Except
 import Data.Either
