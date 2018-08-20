@@ -9,6 +9,7 @@ import Data.Default (Default(..))
 import Data.Map as Map
 import Data.String.Conversions
 import Data.Typeable
+import GHC.Stack
 import Text.XML
 import URI.ByteString
 
@@ -44,6 +45,10 @@ fmapFlipM f = sequence . fmap f
 
 type Attrs = Map.Map Name ST
 
+
+nodesToDoc :: HasCallStack => [Node] -> Document
+nodesToDoc [NodeElement el] = mkDocument el
+nodesToDoc bad = error $ show bad
 
 mkDocument :: Element -> Document
 mkDocument el = Document defPrologue el defMiscellaneous
