@@ -17,14 +17,15 @@ import GHC.Stack
 import Prelude hiding (head)
 import SAML2.WebSSO as SAML
 import Text.XML.DSig as SAML
+import URI.ByteString
 import URI.ByteString.QQ
 
 
-sampleIdP :: HasCallStack => NewIdP
-sampleIdP = NewIdP
-  { _nidpMetadata        = [uri|http://idp.net/meta|]
-  , _nidpIssuer          = SAML.Issuer [uri|http://idp.net/|]
-  , _nidpRequestUri      = [uri|http://idp.net/sso/request|]
+sampleIdP :: HasCallStack => URI -> URI -> NewIdP
+sampleIdP metaURI reqURI = NewIdP
+  { _nidpMetadata        = metaURI
+  , _nidpIssuer          = SAML.Issuer [uri|https://idp.net/|]
+  , _nidpRequestUri      = reqURI
   , _nidpPublicKey       = sampleIdPCert
   }
 
