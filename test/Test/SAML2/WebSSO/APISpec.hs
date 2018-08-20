@@ -6,6 +6,7 @@
 module Test.SAML2.WebSSO.APISpec (spec) where
 
 import Control.Concurrent.MVar (newMVar)
+import Control.Exception
 import Control.Monad.Reader
 import Control.Monad.Except
 import Data.Either
@@ -32,6 +33,7 @@ import Util
 
 import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
+import qualified Data.X509 as X509
 import qualified Data.Yaml as Yaml
 import qualified Hedgehog
 
@@ -294,15 +296,20 @@ spec = describe "API" $ do
 
 
   describe "mkAuthnResponse" $ do
+    let check :: X509.SignedCertificate -> (Either SomeException () -> Bool) -> IO ()
+        check cert expectation = do
+          idpcfg <- mkmyidp <&> idpPublicKey .~ cert
+          let issuer = idpcfg ^. idpIssuer
+          ctx <- mkTestCtx1 <&> ctxConfig . cfgIdps .~ [idpcfg]
+          result :: Either SomeException () <- try . ioFromTestSP ctx $ do
+            authnreq  <- createAuthnRequest 3600
+            SignedAuthnResponse authnrespDoc <- liftIO $ mkAuthnResponse sampleIdPPrivkey idpcfg authnreq True
+            let authnrespLBS = renderLBS def authnrespDoc
+            simpleVerifyAuthnResponse (Just issuer) authnrespLBS
+          result `shouldSatisfy` expectation
+
     it "Produces output that passes 'simpleVerifyAuthnResponse'" $ do
-      idpcfg <- mkmyidp <&> idpPublicKey .~ sampleIdPCert
-      let issuer = idpcfg ^. idpIssuer
-          creds  = sampleIdPPrivkey
-      ctx <- mkTestCtx1 <&> ctxConfig . cfgIdps .~ [idpcfg]
-      ioFromTestSP ctx $ do
-        authnreq  <- createAuthnRequest 3600
-        SignedAuthnResponse authnrespDoc <- liftIO $ mkAuthnResponse creds idpcfg authnreq True
-        let authnrespLBS = renderLBS def authnrespDoc
-        () <- simpleVerifyAuthnResponse (Just issuer) authnrespLBS
-        pure ()
-      passes
+      check sampleIdPCert isRight
+
+    it "Produces output that is rejected by 'simpleVerifyAuthnResponse' if the signature is wrong" $ do
+      check sampleIdPCertWrong isLeft
