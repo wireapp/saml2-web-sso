@@ -37,7 +37,7 @@ mkAuthnResponse creds idp authnreq grantAccess = do
         | otherwise   = "urn:oasis:names:tc:SAML:2.0:status:AuthnFailed"
 
   assertion :: [Node]
-    <- signElementIO creds
+    <- signElementIOAt 1 creds
       [xml|
         <Assertion
           xmlns="urn:oasis:names:tc:SAML:2.0:assertion"

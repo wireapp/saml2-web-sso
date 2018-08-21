@@ -8,8 +8,8 @@ module Text.XML.DSig
   , parseKeyInfo, renderKeyInfo, certToCreds, certToPublicKey
   , verifySelfSignature, mkSignCreds, mkSignCredsWithCert
   , verify, verifyRoot, verifyIO
-  , signRoot
-  , MonadSign(MonadSign), runMonadSign, signElementIO
+  , signRoot, signRootAt
+  , MonadSign(MonadSign), runMonadSign, signElementIO, signElementIOAt
   )
 where
 
@@ -180,9 +180,14 @@ verifyIO (SignCreds SignDigestSha256 (SignKeyRSA key)) el signedID = do
 -- signature creation
 
 -- | Make sure that root node node has ID attribute and sign it.  This is similar to the more
--- primitive 'HS.generateSignature'.
+-- primitive 'HS.generateSignature'.  Cons signature to the children list (left-most position).
 signRoot :: (Crypto.MonadRandom m, MonadError String m) => SignPrivCreds -> XML.Document -> m XML.Document
-signRoot (SignPrivCreds hashAlg (SignPrivKeyRSA keypair)) doc
+signRoot = signRootAt 0
+
+-- | Like 'signRoot', but insert signature at any given position in the children list.  If the list
+-- is too short for this position, throw an error.
+signRootAt :: (Crypto.MonadRandom m, MonadError String m) => Int -> SignPrivCreds -> XML.Document -> m XML.Document
+signRootAt sigPos (SignPrivCreds hashAlg (SignPrivKeyRSA keypair)) doc
   = do
     (docWithID :: XML.Document, reference) <- addRootIDIfMissing doc
     docInHXT <- conduitToHxt docWithID
@@ -245,7 +250,7 @@ signRoot (SignPrivCreds hashAlg (SignPrivKeyRSA keypair)) doc
     unless (RSA.verify (Just Crypto.SHA256) (RSA.toPublicKey keypair) signedInfoSBS sigval) $
       throwError "signRoot: internal error: failed to verify my own signature!"
 
-    injectSignedInfoAtRoot sig =<< hxtToConduit docInHXT
+    injectSignedInfoAtRoot sigPos sig =<< hxtToConduit docInHXT
 
 addRootIDIfMissing :: forall m. (MonadError String m, Crypto.MonadRandom m) => XML.Document -> m (XML.Document, URI)
 addRootIDIfMissing (XML.Document prol (Element tag attrs nodes) epil) = do
@@ -270,10 +275,15 @@ randomInteger = Crypto.getRandomBytes 8
             <&> fmap fromIntegral
             <&> foldl' (*) 1
 
-injectSignedInfoAtRoot :: MonadError String m => HS.Signature -> XML.Document -> m XML.Document
-injectSignedInfoAtRoot signedInfo (XML.Document prol (Element tag attrs nodes) epil) = do
+injectSignedInfoAtRoot :: MonadError String m => Int -> HS.Signature -> XML.Document -> m XML.Document
+injectSignedInfoAtRoot sigPos signedInfo (XML.Document prol (Element tag attrs nodes) epil) = do
+  when (sigPos > Prelude.length nodes) $ do
+    throwError ("child list too short: is " <> show (Prelude.length nodes) <> ", need " <> show sigPos)
   XML.Document _ signedInfoXML _ <- samlToConduit signedInfo
-  pure $ XML.Document prol (Element tag attrs (XML.NodeElement signedInfoXML : nodes)) epil
+  pure $ XML.Document prol (Element tag attrs (insertAt sigPos (XML.NodeElement signedInfoXML) nodes)) epil
+  where
+    insertAt :: Int -> a -> [a] -> [a]
+    insertAt pos el els = case Prelude.splitAt pos els of (pre, post) -> pre <> [el] <> post
 
 
 
@@ -345,10 +355,13 @@ instance MonadError String MonadSign where
   catchError (MonadSign m) handler = MonadSign $ m `catchError` (runMonadSign' . handler)
 
 signElementIO :: HasCallStack => SignPrivCreds -> [Node] -> IO [Node]
-signElementIO creds [NodeElement el] = do
+signElementIO = signElementIOAt 0
+
+signElementIOAt :: HasCallStack => Int -> SignPrivCreds -> [Node] -> IO [Node]
+signElementIOAt sigPos creds [NodeElement el] = do
   let docToNodes :: Document -> [Node]
       docToNodes (Document _ el' _) = [NodeElement el']
   eNodes :: Either String [Node]
-    <- runMonadSign . fmap docToNodes . signRoot creds . mkDocument $ el
+    <- runMonadSign . fmap docToNodes . signRootAt sigPos creds . mkDocument $ el
   either error pure eNodes
-signElementIO _ bad = error $ show bad
+signElementIOAt _ _ bad = error $ show bad

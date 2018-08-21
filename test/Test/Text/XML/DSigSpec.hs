@@ -87,3 +87,22 @@ spec = describe "xml:dsig" $ do
       (privCreds, _pubCreds) <- mkcrds True
       Right outcome <- runMonadSign (cs . renderLBS def <$> signRoot privCreds (doc False))
       (outcome `shouldContain`) `mapM_` ["bloo", "ack", "hackach", "hackach"]
+
+    it "honors non-0 signature position." $ do
+      (privCreds, _pubCreds) <- mkcrds True
+      Right signed <- runMonadSign $ signRootAt 1 privCreds (doc False)
+      case signed of
+        Document
+          _
+          (Element "root" _
+            [ NodeElement (Element "bloo" _ _)
+            , NodeElement (Element "{http://www.w3.org/2000/09/xmldsig#}Signature" _ _)
+            ])
+          _
+          -> pure ()
+        bad -> error $ show bad
+
+    it "throws an error is signature position points outside the children list." $ do
+      (privCreds, _pubCreds) <- mkcrds True
+      outcome <- runMonadSign $ signRootAt 2 privCreds (doc False)
+      outcome `shouldSatisfy` isLeft
