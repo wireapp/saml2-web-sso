@@ -23,15 +23,18 @@ import qualified Text.XML.HXT.DOM.ShowXml
 
 
 die :: forall (a :: *) b c m. (Typeable a, Show b, MonadError String m) => Proxy a -> b -> m c
-die Proxy msg = throwError $
-  "HasXML: could not parse " <> show (typeOf @a undefined) <> ": " <> show msg
+die = die' Nothing
+
+die' :: forall (a :: *) b c m. (Typeable a, Show b, MonadError String m) => Maybe String -> Proxy a -> b -> m c
+die' mextra Proxy msg = throwError $
+  "HasXML: could not parse " <> show (typeOf @a undefined) <> ": " <> show msg <> maybe "" ("; " <>) mextra
 
 
 renderURI :: URI -> ST
 renderURI = cs . serializeURIRef'
 
 parseURI' :: MonadError String m => ST -> m URI
-parseURI' = either (die (Proxy @URI)) pure . parseURI laxURIParserOptions . cs . ST.strip
+parseURI' uri = either (die' (Just $ show uri) (Proxy @URI)) pure . parseURI laxURIParserOptions . cs . ST.strip $ uri
 
 -- | You probably should not use this.  If you have a string literal, consider "URI.ByteString.QQ".
 unsafeParseURI :: ST -> URI
