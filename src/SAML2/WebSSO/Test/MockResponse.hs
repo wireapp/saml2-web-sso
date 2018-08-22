@@ -34,7 +34,7 @@ mkAuthnResponse creds idp authnreq grantAccess = do
       inResponseTo    = renderID $ authnreq ^. rqID
       status
         | grantAccess = "urn:oasis:names:tc:SAML:2.0:status:Success"
-        | otherwise   = "urn:oasis:names:tc:SAML:2.0:status:AuthnFailed"
+        | otherwise   = "urn:oasis:names:tc:SAML:2.0:status:Requester"
 
   assertion :: [Node]
     <- signElementIOAt 1 creds
