@@ -46,22 +46,22 @@ mkAuthnResponse creds idp authnreq grantAccess = do
           IssueInstant="#{issueInstant}">
             <Issuer>
                 #{issuer}
-                <Subject>
-                    <NameID Format="urn:oasis:names:tc:SAML:2.0:nameid-format:persistent">
-                        E3hQDDZoObpyTDplO8Ax8uC8ObcQmREdfps3TMpaI84
-                    <SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">
-                        <SubjectConfirmationData
-                          InResponseTo="#{inResponseTo}"
-                          NotOnOrAfter="#{expires}"
-                          Recipient="#{recipient}">
-                <Conditions NotBefore="#{issueInstant}" NotOnOrAfter="#{expires}">
-                    <AudienceRestriction>
-                        <Audience>
-                            #{recipient}
-                <AuthnStatement AuthnInstant="#{issueInstant}" SessionIndex="_e9ae1025-bc03-4b5a-943c-c9fcb8730b21">
-                    <AuthnContext>
-                        <AuthnContextClassRef>
-                            urn:oasis:names:tc:SAML:2.0:ac:classes:Password
+            <Subject>
+                <NameID Format="urn:oasis:names:tc:SAML:2.0:nameid-format:persistent">
+                    E3hQDDZoObpyTDplO8Ax8uC8ObcQmREdfps3TMpaI84
+                <SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">
+                    <SubjectConfirmationData
+                      InResponseTo="#{inResponseTo}"
+                      NotOnOrAfter="#{expires}"
+                      Recipient="#{recipient}">
+            <Conditions NotBefore="#{issueInstant}" NotOnOrAfter="#{expires}">
+                <AudienceRestriction>
+                    <Audience>
+                        #{recipient}
+            <AuthnStatement AuthnInstant="#{issueInstant}" SessionIndex="_e9ae1025-bc03-4b5a-943c-c9fcb8730b21">
+                <AuthnContext>
+                    <AuthnContextClassRef>
+                        urn:oasis:names:tc:SAML:2.0:ac:classes:Password
       |]
 
   let authnResponse :: Element
