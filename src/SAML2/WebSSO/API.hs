@@ -48,7 +48,7 @@ import Text.Hamlet.XML
 import Text.Show.Pretty (ppShow)
 import Text.XML
 import Text.XML.Cursor
-import Text.XML.DSig (verify)
+import Text.XML.DSig (verify, certToCreds)
 import Text.XML.Util
 import URI.ByteString
 import Web.Cookie
@@ -98,6 +98,10 @@ api appName handleVerdict =
 newtype AuthnResponseBody = AuthnResponseBody
   { fromAuthnResponseBody :: forall m err. SPStoreIdP (Error err) m => m AuthnResponse }
 
+renderAuthnResponseBody :: AuthnResponse -> LBS
+renderAuthnResponseBody = EL.encode . cs . encode
+
+-- | Implies verification, hence the constraint.
 parseAuthnResponseBody :: forall m err. SPStoreIdP (Error err) m => LBS -> m AuthnResponse
 parseAuthnResponseBody base64 = do
   xmltxt <-
@@ -116,7 +120,11 @@ parseAuthnResponseBody base64 = do
 simpleVerifyAuthnResponse :: forall m err. SPStoreIdP (Error err) m => Maybe Issuer -> LBS -> m ()
 simpleVerifyAuthnResponse Nothing _ = throwError $ BadSamlResponse "missing issuer"
 simpleVerifyAuthnResponse (Just issuer) raw = do
-    creds <- (^. idpPublicKey) <$> getIdPConfigByIssuer issuer
+    creds <- do
+      cert <- (^. idpPublicKey) <$> getIdPConfigByIssuer issuer
+      certToCreds cert &
+        either (throwError . BadServerConfig . ((encodeElem issuer <> ": ") <>) . cs) pure
+
     doc :: Cursor <- either (throwError . BadSamlResponse . ("could not parse document: " <>) . cs . show)
                             (pure . fromDocument)
                             (parseLBS def raw)
@@ -173,6 +181,9 @@ instance MimeRender HTML ST where
         <p>
           #{msg}
     |]
+
+authnResponseBodyToMultipart :: AuthnResponse -> MultipartData tag
+authnResponseBodyToMultipart resp = MultipartData [Input "SAMLResponse" (cs $ renderAuthnResponseBody resp)] []
 
 instance FromMultipart Mem AuthnResponseBody where
   fromMultipart resp = Just (AuthnResponseBody eval)

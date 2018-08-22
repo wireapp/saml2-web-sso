@@ -7,11 +7,10 @@
 -- those depending tests as well.
 module Samples where
 
+import Crypto.PubKey.RSA as RSA
 import Data.List.NonEmpty (NonEmpty((:|)))
 import SAML2.WebSSO
 import URI.ByteString.QQ
-
-import qualified Crypto.PubKey.RSA as RSA
 
 
 azurewire :: IdPDesc

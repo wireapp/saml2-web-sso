@@ -3,18 +3,9 @@ resolver: lts-11.13
 packages:
 - .
 
-# Needs to have QuickCheck bumped: see
-# https://github.com/hedgehogqa/haskell-hedgehog/issues/213
-- location:
-    git: https://github.com/hedgehogqa/haskell-hedgehog
-    commit: 7516d04673563455a55cf69eb1c490fbbb7f2a5f
-  subdirs:
-  - hedgehog-quickcheck
-  extra-dep: true
-
 - location:
     git: https://github.com/wireapp/hsaml2
-    commit: 4548e90f34384d10e0186040492b2a652c1cb127
+    commit: 4e2167cbf158e90097993a6277b50915ce2eff60
   extra-dep: true
 
 - location:

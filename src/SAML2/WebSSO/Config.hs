@@ -2,35 +2,25 @@
 {-# LANGUAGE OverloadedStrings  #-}
 {-# LANGUAGE Strict, StrictData #-}
 
-{-# OPTIONS_GHC -fno-warn-orphans #-}
-
 -- FUTUREWORK: set `-XNoDeriveAnyClass`.
--- FUTUREWORK: disallow orphans.
 module SAML2.WebSSO.Config where
 
 import Control.Monad (when)
 import Data.Aeson
-import Data.Aeson.TH
 import Data.Maybe (fromMaybe)
 import Data.List.NonEmpty
 import Data.String.Conversions
 import GHC.Generics
-import Data.UUID as UUID
 import Lens.Micro
 import Lens.Micro.TH
-import SAML2.WebSSO.Config.TH (deriveJSONOptions)
 import SAML2.WebSSO.Types
 import System.Environment
 import System.FilePath
 import System.IO
-import Text.XML.DSig
-import Text.XML.Util (parseURI', renderURI)
 import URI.ByteString
 import URI.ByteString.QQ
 
-import qualified Data.X509 as X509
 import qualified Data.Yaml as Yaml
-import qualified Servant
 
 
 ----------------------------------------------------------------------
@@ -54,36 +44,11 @@ data Config extra = Config
 data Level = Trace | Debug | Info | Warn | Error | Fatal
   deriving (Eq, Ord, Show, Enum, Bounded, Generic, FromJSON, ToJSON)
 
-newtype IdPId = IdPId { fromIdPId :: UUID } deriving (Eq, Show, Generic, Ord)
-
-type IdPConfig_ = IdPConfig ()
-
-data IdPConfig extra = IdPConfig
-  { _idpId              :: IdPId
-  , _idpMetadata        :: URI
-  , _idpIssuer          :: Issuer  -- ^ can be found in metadata
-  , _idpRequestUri      :: URI  -- ^ can be found in metadata
-  , _idpPublicKey       :: X509.SignedCertificate  -- ^ can be found in metadata
-                           -- TODO: azure has 3 (three!) public keys that it signs the assertions
-                           -- with, so we need to maintain a list there!
-  , _idpExtraInfo       :: extra
-  }
-  deriving (Eq, Show, Generic)
-
 
 ----------------------------------------------------------------------
 -- instances
 
-idPIdToST :: IdPId -> ST
-idPIdToST = UUID.toText . fromIdPId
-
-instance Servant.FromHttpApiData IdPId where
-    parseUrlPiece piece = case UUID.fromText piece of
-      Nothing -> Left . cs $ "no valid UUID-piece " ++ show piece
-      Just uid -> return $ IdPId uid
-
 makeLenses ''Config
-makeLenses ''IdPConfig
 
 instance ToJSON a => ToJSON (Config a) where
   toJSON Config {..} = object $
@@ -108,38 +73,6 @@ instance FromJSON a => FromJSON (Config a) where
     _cfgContacts          <- obj .: "contacts"
     _cfgIdps              <- fromMaybe [] <$> obj .:? "idps"
     pure Config {..}
-
-
-deriveJSON deriveJSONOptions ''IdPConfig
-deriveJSON deriveJSONOptions ''ContactPerson
-deriveJSON deriveJSONOptions ''ContactType
-
-instance FromJSON IdPId where
-  parseJSON value = (>>= maybe unerror (pure . IdPId) . UUID.fromText) . parseJSON $ value
-    where unerror = fail ("could not parse config: " <> (show value))
-
-instance ToJSON IdPId where
-  toJSON = toJSON . UUID.toText . fromIdPId
-
-instance FromJSON URI where
-  parseJSON = (>>= either unerror pure . parseURI') . parseJSON
-    where unerror = fail . ("could not parse config: " <>) . show
-
-instance ToJSON URI where
-  toJSON = toJSON . renderURI
-
-instance FromJSON Version where
-  parseJSON (String "SAML2.0") = pure Version_2_0
-  parseJSON bad = fail $ "could not parse config: bad version string: " <> show bad
-
-instance ToJSON Version where
-  toJSON Version_2_0 = String "SAML2.0"
-
-instance FromJSON X509.SignedCertificate where
-  parseJSON = withText "KeyInfo element" $ either fail pure . parseKeyInfo . cs
-
-instance ToJSON X509.SignedCertificate where
-  toJSON = String . cs . renderKeyInfo
 
 
 ----------------------------------------------------------------------

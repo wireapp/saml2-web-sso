@@ -6,6 +6,7 @@
 module Test.SAML2.WebSSO.APISpec (spec) where
 
 import Control.Concurrent.MVar (newMVar)
+import Control.Exception (SomeException, try)
 import Control.Monad.Reader
 import Control.Monad.Except
 import Data.Either
@@ -14,6 +15,8 @@ import Data.String.Conversions
 import Lens.Micro
 import SAML2.WebSSO
 import SAML2.WebSSO.Test.Arbitrary (genFormRedirect, genAuthnRequest)
+import SAML2.WebSSO.Test.Credentials
+import SAML2.WebSSO.Test.MockResponse
 import Servant
 #if !MIN_VERSION_servant_server(0,12,0)
 import Servant.Utils.Enter
@@ -30,8 +33,16 @@ import Util
 
 import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
+import qualified Data.X509 as X509
 import qualified Data.Yaml as Yaml
 import qualified Hedgehog
+
+
+----------------------------------------------------------------------
+-- helpers
+
+passes :: Expectation
+passes = True `shouldBe` True
 
 
 newtype SomeSAMLRequest = SomeSAMLRequest { fromSomeSAMLRequest :: XML.Document }
@@ -77,6 +88,44 @@ hedgehogTests = Hedgehog.Group "hedgehog tests" $
         \formRedirect -> Hedgehog.tripping formRedirect (mimeRender (Proxy @HTML)) (mimeUnrender (Proxy @HTML))
     )
   ]
+
+
+burnIdP :: FilePath -> FilePath -> ST -> ST -> Spec
+burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
+  let ctx :: IO Ctx
+      ctx = do
+        testCtx1 <- mkTestCtx1
+        reqstore <- newMVar $ Map.fromList
+          -- it would be probably better to also take this ID (and timeout?) as an argument(s).
+          [ (ID "idcf2299ac551b42f1aa9b88804ed308c2", unsafeReadTime "2019-04-14T10:53:57Z")
+          , (ID "idafecfcff5cc64345b6ddde7ee47b4838", unsafeReadTime "2019-04-14T10:53:57Z")
+          ]
+        getIdP <&> \idp -> testCtx1 & ctxConfig . cfgIdps .~ [idp]
+                                    & ctxNow .~ unsafeReadTime currentTime
+                                    & ctxConfig . cfgSPAppURI .~ unsafeParseURI audienceURI
+                                    & ctxRequestStore .~ reqstore
+
+      getIdP :: IO IdPConfig_
+      getIdP = Yaml.decodeThrow . cs =<< readSampleIO cfgPath
+
+  describe ("smoke tests: " <> show cfgPath) $ do
+    describe "authreq" . withapp (Proxy @APIAuthReq') authreq' ctx $ do
+      it "responds with 200" $ do
+        idp <- liftIO getIdP
+        get ("/authreq/" <> cs (idPIdToST (idp ^. idpId)))
+          `shouldRespondWith` 200 { matchBody = bodyContains "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" }
+
+    describe "authresp" . withapp (Proxy @APIAuthResp') (authresp (HandleVerdictRedirect simpleOnSuccess)) ctx $ do
+      it "responds with 303" $ do
+        sample <- liftIO $ cs <$> readSampleIO respXmlPath
+        let postresp = postHtmlForm "/authresp" body
+            body = [("SAMLResponse", sample)]
+        postresp
+          `shouldRespondWith` 303
+
+
+----------------------------------------------------------------------
+-- test cases
 
 spec :: Spec
 spec = describe "API" $ do
@@ -246,35 +295,21 @@ spec = describe "API" $ do
     -- TODO: centrify
 
 
-burnIdP :: FilePath -> FilePath -> ST -> ST -> Spec
-burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
-  let ctx :: IO Ctx
-      ctx = do
-        testCtx1 <- mkTestCtx1
-        reqstore <- newMVar $ Map.fromList
-          -- it would be probably better to also take this ID (and timeout?) as an argument(s).
-          [ (ID "idcf2299ac551b42f1aa9b88804ed308c2", unsafeReadTime "2019-04-14T10:53:57Z")
-          , (ID "idafecfcff5cc64345b6ddde7ee47b4838", unsafeReadTime "2019-04-14T10:53:57Z")
-          ]
-        getIdP <&> \idp -> testCtx1 & ctxConfig . cfgIdps .~ [idp]
-                                    & ctxNow .~ unsafeReadTime currentTime
-                                    & ctxConfig . cfgSPAppURI .~ unsafeParseURI audienceURI
-                                    & ctxRequestStore .~ reqstore
+  describe "mkAuthnResponse" $ do
+    let check :: X509.SignedCertificate -> (Either SomeException () -> Bool) -> IO ()
+        check cert expectation = do
+          idpcfg <- mkmyidp <&> idpPublicKey .~ cert
+          let issuer = idpcfg ^. idpIssuer
+          ctx <- mkTestCtx1 <&> ctxConfig . cfgIdps .~ [idpcfg]
+          result :: Either SomeException () <- try . ioFromTestSP ctx $ do
+            authnreq  <- createAuthnRequest 3600
+            SignedAuthnResponse authnrespDoc <- liftIO $ mkAuthnResponse sampleIdPPrivkey idpcfg authnreq True
+            let authnrespLBS = renderLBS def authnrespDoc
+            simpleVerifyAuthnResponse (Just issuer) authnrespLBS
+          result `shouldSatisfy` expectation
 
-      getIdP :: IO IdPConfig_
-      getIdP = Yaml.decodeThrow . cs =<< readSampleIO cfgPath
+    it "Produces output that passes 'simpleVerifyAuthnResponse'" $ do
+      check sampleIdPCert isRight
 
-  describe ("smoke tests: " <> show cfgPath) $ do
-    describe "authreq" . withapp (Proxy @APIAuthReq') authreq' ctx $ do
-      it "responds with 200" $ do
-        idp <- liftIO getIdP
-        get ("/authreq/" <> cs (idPIdToST (idp ^. idpId)))
-          `shouldRespondWith` 200 { matchBody = bodyContains "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" }
-
-    describe "authresp" . withapp (Proxy @APIAuthResp') (authresp (HandleVerdictRedirect simpleOnSuccess)) ctx $ do
-      it "responds with 303" $ do
-        sample <- liftIO $ cs <$> readSampleIO respXmlPath
-        let postresp = postHtmlForm "/authresp" body
-            body = [("SAMLResponse", sample)]
-        postresp
-          `shouldRespondWith` 303
+    it "Produces output that is rejected by 'simpleVerifyAuthnResponse' if the signature is wrong" $ do
+      check sampleIdPCertWrong isLeft

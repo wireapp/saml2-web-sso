@@ -27,6 +27,7 @@ default-extensions:
   - KindSignatures
   - LambdaCase
   - MultiParamTypeClasses
+  - NoMonomorphismRestriction
   - PolyKinds
   - QuasiQuotes
   - RankNTypes
@@ -54,15 +55,19 @@ dependencies:
   - containers
   - cookie
   - cryptonite
+  - data-default
   - errors
   - exceptions
   - filepath
+  - hourglass
   - http-media
   - http-types
+  - memory
   - microlens
   - microlens-th
   - mtl
   - network-uri
+  - random
   - servant
   - servant-multipart
   - servant-server
@@ -85,6 +90,7 @@ dependencies:
   # for SAML2.WebSSO.Test.*; we should have a cabal flag that allows users to disable these deps.
   - hedgehog
   - hedgehog-quickcheck
+  - quickcheck-instances
   - QuickCheck
 
   # temporary, for debugging & dev
@@ -108,6 +114,7 @@ tests:
 
       - hedgehog
       - hspec
+      - hspec-core
       - hspec-discover
       - hspec-wai
       - pretty-show

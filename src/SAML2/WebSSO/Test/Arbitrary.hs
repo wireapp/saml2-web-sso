@@ -9,7 +9,8 @@ import Data.Maybe (catMaybes)
 import Data.String.Conversions
 import Hedgehog
 import SAML2.WebSSO
-import Test.QuickCheck (Arbitrary(arbitrary))
+import Test.QuickCheck (Arbitrary(arbitrary, shrink))
+import Test.QuickCheck.Instances ()
 import Text.XML
 import URI.ByteString
 import URI.ByteString.QQ
@@ -234,6 +235,9 @@ genAttribute = Gen.choice
 genAttributeValue :: Gen AttributeValue
 genAttributeValue = undefined
 
+genXMLDocument :: Gen Document
+genXMLDocument = Document (Prologue [] Nothing []) <$> genXMLElement <*> pure []
+
 genXMLNode :: Gen Node
 genXMLNode = Gen.choice
   [ NodeElement <$> genXMLElement
@@ -250,12 +254,15 @@ genXMLElement = Element
 
 genXMLName :: Gen Name
 genXMLName = Name
-  <$> genNiceText (Range.linear 1 2)
-  <*> Gen.maybe (genNiceText (Range.linear 1 3))
+  <$> genNiceWord
   <*> Gen.maybe genNiceWord
+  <*> pure Nothing -- @Gen.maybe genNiceWord@, but in documents that use the same prefix for two
+                   -- different spaces, this breaks the test suite.  (FUTUREWORK: arguably the
+                   -- parser libraries (either HXT or xml-conduit) should catch this and throw an
+                   -- error.  current behavior is unspecified result of the name space lookup.)
 
 genXMLAttrs :: Gen (Map.Map Name ST)
-genXMLAttrs = Map.fromList <$> Gen.list (Range.linear 1 100) genXMLAttr
+genXMLAttrs = Map.fromList <$> Gen.list (Range.linear 1 7) genXMLAttr
 
 genXMLAttr :: Gen (Name, ST)
 genXMLAttr = (,) <$> genXMLName <*> genNiceWord
@@ -329,9 +336,6 @@ instance Arbitrary Locality where
 instance Arbitrary NameID where
   arbitrary = TQH.hedgehog genNameID
 
-instance Arbitrary a => Arbitrary (NonEmpty a) where
-  arbitrary = TQH.hedgehog (genNonEmpty (Range.linear 1 100) $ THQ.quickcheck arbitrary)
-
 instance Arbitrary payload => Arbitrary (Response payload) where
   arbitrary = TQH.hedgehog (genResponse $ THQ.quickcheck arbitrary)
 
@@ -353,9 +357,6 @@ instance Arbitrary URI where
 instance Arbitrary Version where
   arbitrary = TQH.hedgehog genVersion
 
-instance Arbitrary UUID.UUID where
-  arbitrary = TQH.hedgehog genUUID
-
 instance Arbitrary IdPId where
   arbitrary = TQH.hedgehog genIdPId
 
@@ -367,3 +368,37 @@ instance Arbitrary a => Arbitrary (IdPConfig a) where
 
 instance Arbitrary a => Arbitrary (FormRedirect a) where
   arbitrary = TQH.hedgehog (genFormRedirect (THQ.quickcheck arbitrary))
+
+instance Arbitrary Document where
+  arbitrary = TQH.hedgehog genXMLDocument
+  shrink (Document pro el epi) = (\el' -> Document pro el' epi) <$> shrinkElement el
+
+instance Arbitrary Node where
+  arbitrary = TQH.hedgehog genXMLNode
+  shrink = shrinkNode
+
+instance Arbitrary Name where
+  arbitrary = TQH.hedgehog genXMLName
+
+shrinkElement :: Element -> [Element]
+shrinkElement (Element tag attrs nodes) = case (shrinkAttrs attrs, shrink nodes) of
+  ([], []) -> []
+  (attrs', []) -> (\shrunk -> Element tag shrunk nodes) <$> attrs'
+  ([], nodes') -> (\shrunk -> Element tag attrs shrunk) <$> nodes'
+  (attrs', nodes') -> Element tag <$> attrs' <*> nodes'
+
+shrinkAttrs :: Map.Map Name ST.Text -> [Map.Map Name ST.Text]
+shrinkAttrs = fmap Map.fromList . shallowShrinkList . Map.toList
+
+shrinkNode :: Node -> [Node]
+shrinkNode (NodeElement el) = NodeElement <$> shrinkElement el
+shrinkNode (NodeInstruction _) = []
+shrinkNode (NodeContent "") = []
+shrinkNode (NodeContent _) = [NodeContent ""]
+shrinkNode (NodeComment "") = []
+shrinkNode (NodeComment _) = [NodeComment ""]
+
+shallowShrinkList :: Eq a => [a] -> [[a]]
+shallowShrinkList [] = []
+shallowShrinkList [_] = []
+shallowShrinkList xs@(_:_:_) = [] : ((:[]) <$> xs)

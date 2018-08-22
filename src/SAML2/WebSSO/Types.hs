@@ -6,16 +6,19 @@ module SAML2.WebSSO.Types where
 import Control.Lens (makePrisms)  -- FUTUREWORK: this is missing in microlens-th
 import Control.Monad.Except
 import Data.Aeson
+import Data.Aeson.TH
 import Data.List.NonEmpty
 import Data.Maybe
 import Data.Monoid ((<>))
-import Data.String.Conversions (ST)
+import Data.String.Conversions (ST, cs)
 import Data.Time (UTCTime(..), NominalDiffTime, formatTime, defaultTimeLocale, addUTCTime)
 import Data.UUID as UUID
 import GHC.Generics (Generic)
 import GHC.Stack
 import Lens.Micro
 import Lens.Micro.TH
+import SAML2.WebSSO.Orphans ()
+import SAML2.WebSSO.Types.TH (deriveJSONOptions)
 import Text.XML.Util
 import URI.ByteString  -- FUTUREWORK: should saml2-web-sso also use the URI from http-types?  we already
                        -- depend on that via xml-conduit anyway.  (is it a problem though that it is
@@ -23,6 +26,7 @@ import URI.ByteString  -- FUTUREWORK: should saml2-web-sso also use the URI from
 
 import qualified Data.Text as ST
 import qualified Data.X509 as X509
+import qualified Servant
 import qualified Text.XML as XML
 
 
@@ -98,6 +102,36 @@ data IdPDesc = IdPDesc
   { _edIssuer      :: Issuer
   , _edRequestURI  :: URI
   , _edPublicKeys  :: [X509.SignedCertificate]
+  }
+  deriving (Eq, Show, Generic)
+
+
+----------------------------------------------------------------------
+-- idp info
+
+newtype IdPId = IdPId { fromIdPId :: UUID } deriving (Eq, Show, Generic, Ord)
+
+type IdPConfig_ = IdPConfig ()
+
+data IdPConfig extra = IdPConfig
+  { _idpId              :: IdPId
+  , _idpMetadata        :: URI
+  , _idpIssuer          :: Issuer  -- ^ can be found in metadata
+  , _idpRequestUri      :: URI  -- ^ can be found in metadata
+  , _idpPublicKey       :: X509.SignedCertificate  -- ^ can be found in metadata
+                           -- TODO: azure has 3 (three!) public keys that it signs the assertions
+                           -- with, so we need to maintain a list there!
+  , _idpExtraInfo       :: extra
+  }
+  deriving (Eq, Show, Generic)
+
+-- | 'IdPConfig' contains some info that will be filled in by the server when processing the
+-- creation request.  'NewIdP' is the type of the data provided by the client in this request.
+data NewIdP = NewIdP
+  { _nidpMetadata        :: URI
+  , _nidpIssuer          :: Issuer  -- TODO: remove this field, it's redundant.  (this will also shorten the list of possible errors in the UI.)
+  , _nidpRequestUri      :: URI     -- TODO: dito.
+  , _nidpPublicKey       :: X509.SignedCertificate
   }
   deriving (Eq, Show, Generic)
 
@@ -404,12 +438,14 @@ makeLenses ''Comparison
 makeLenses ''Conditions
 makeLenses ''ContactPerson
 makeLenses ''Duration
-makeLenses ''IdPDesc
 makeLenses ''ID
+makeLenses ''IdPConfig
+makeLenses ''IdPDesc
 makeLenses ''Issuer
 makeLenses ''Locality
 makeLenses ''NameID
 makeLenses ''NameIdPolicy
+makeLenses ''NewIdP
 makeLenses ''RequestedAuthnContext
 makeLenses ''Response
 makeLenses ''SPDescPre
@@ -426,6 +462,34 @@ makeLenses ''Version
 
 makePrisms ''Statement
 makePrisms ''UnqualifiedNameID
+
+deriveJSON deriveJSONOptions ''IdPConfig
+deriveJSON deriveJSONOptions ''NewIdP
+
+instance FromJSON IdPId where
+  parseJSON value = (>>= maybe unerror (pure . IdPId) . UUID.fromText) . parseJSON $ value
+    where unerror = fail ("could not parse config: " <> (show value))
+
+instance ToJSON IdPId where
+  toJSON = toJSON . UUID.toText . fromIdPId
+
+idPIdToST :: IdPId -> ST
+idPIdToST = UUID.toText . fromIdPId
+
+instance Servant.FromHttpApiData IdPId where
+    parseUrlPiece piece = case UUID.fromText piece of
+      Nothing -> Left . cs $ "no valid UUID-piece " ++ show piece
+      Just uid -> return $ IdPId uid
+
+deriveJSON deriveJSONOptions ''ContactPerson
+deriveJSON deriveJSONOptions ''ContactType
+
+instance FromJSON Version where
+  parseJSON (String "SAML2.0") = pure Version_2_0
+  parseJSON bad = fail $ "could not parse config: bad version string: " <> show bad
+
+instance ToJSON Version where
+  toJSON Version_2_0 = String "SAML2.0"
 
 
 ----------------------------------------------------------------------
