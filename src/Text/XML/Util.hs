@@ -49,9 +49,12 @@ fmapFlipM f = sequence . fmap f
 type Attrs = Map.Map Name ST
 
 
+nodesToElem :: HasCallStack => [Node] -> Element
+nodesToElem [NodeElement el] = el
+nodesToElem bad = error $ show bad
+
 nodesToDoc :: HasCallStack => [Node] -> Document
-nodesToDoc [NodeElement el] = mkDocument el
-nodesToDoc bad = error $ show bad
+nodesToDoc = mkDocument . nodesToElem
 
 mkDocument :: Element -> Document
 mkDocument el = Document defPrologue el defMiscellaneous
