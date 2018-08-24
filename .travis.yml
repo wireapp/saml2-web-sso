@@ -6,10 +6,15 @@ language: generic
 cache:
   directories:
   - $HOME/.stack
+
 addons:
   apt:
     packages:
       - libgmp-dev
+
+env:
+- RESOLVER=lts-10.3
+- RESOLVER=lts-11.13
 
 before_install:
 - mkdir -p ~/.local/bin
@@ -17,11 +22,11 @@ before_install:
 - travis_retry curl -L https://get.haskellstack.org/stable/linux-x86_64.tar.gz | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
 
 install:
-- stack --no-terminal --install-ghc test --fast --only-dependencies
+- stack --resolver=$RESOLVER --no-terminal --install-ghc test --fast --only-dependencies
 
 script:
 - export SAML2_WEB_SSO_ROOT=`pwd`
-- stack --no-terminal test --fast --haddock --no-haddock-deps
+- stack --resolver=$RESOLVER --no-terminal test --fast --haddock --no-haddock-deps
 
 notifications:  # see https://docs.travis-ci.com/user/notifications
   email: false
