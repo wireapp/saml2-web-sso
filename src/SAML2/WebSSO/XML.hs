@@ -168,7 +168,8 @@ instance HasXML Issuer where
 nameIDToST :: NameID -> ST
 nameIDToST (NameID (NameIDFUnspecified txt) Nothing Nothing Nothing) = txt
 nameIDToST (NameID (NameIDFEmail txt) Nothing Nothing Nothing) = txt
-nameIDToST other = cs $ encodeElem other
+nameIDToST (NameID (NameIDFEntity uri) Nothing Nothing Nothing) = renderURI uri
+nameIDToST other = cs $ encodeElem other  -- TODO: some of the others may have more reasonable serialization.
 
 userRefToST :: UserRef -> ST
 userRefToST (UserRef (Issuer tenant) subject) = "{" <> renderURI tenant <> "}" <> nameIDToST subject
@@ -293,12 +294,11 @@ importSubject :: (HasCallStack, MonadError String m) => HS.Subject -> m Subject
 importSubject (HS.Subject Nothing _) = die (Proxy @Subject) ("need to provide a subject" :: String)
 importSubject (HS.Subject (Just (HS.SoEncrypted _)) _) = die (Proxy @Subject) ("encrypted subjects not supported" :: String)
 importSubject (HS.Subject (Just (HS.NotEncrypted sid)) scs) = case sid of
-  HS.IdentifierName HS.NameID
-    { HS.nameBaseID = importBaseIDasNameID -> nameid
-    , HS.nameIDFormat = ((`elem` [HS.Identified HS.NameIDFormatPersistent, HS.Identified HS.NameIDFormatUnspecified]) -> True)
-    , HS.nameSPProvidedID = Nothing
-    } -> Subject nameid <$> importSubjectConfirmation nameid `mapM` scs
-  bad -> die (Proxy @Subject) ("unsupported subject identifier: " <> show bad)
+  HS.IdentifierName nameid -> do
+    nameid' <- importNameID nameid
+    Subject nameid' <$> importSubjectConfirmation nameid' `mapM` scs
+  bad@(HS.IdentifierBase _baseid) -> do
+    die (Proxy @Subject) ("unsupported subject identifier: " <> show bad)
 
 importSubjectConfirmation :: (HasCallStack, MonadError String m) => NameID -> HS.SubjectConfirmation -> m SubjectConfirmation
 importSubjectConfirmation = go
