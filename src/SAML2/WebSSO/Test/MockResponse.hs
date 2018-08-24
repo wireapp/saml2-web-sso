@@ -3,6 +3,7 @@
 
 module SAML2.WebSSO.Test.MockResponse where
 
+import Control.Exception
 import Data.String.Conversions
 import Data.Time (getCurrentTime)
 import Data.UUID as UUID
@@ -21,6 +22,16 @@ newtype SignedAuthnResponse = SignedAuthnResponse { fromSignedAuthnResponse :: D
 
 mkAuthnResponse :: HasCallStack => SignPrivCreds -> IdPConfig extra -> AuthnRequest -> Bool -> IO SignedAuthnResponse
 mkAuthnResponse creds idp authnreq grantAccess = do
+  subj <- either (throwIO . ErrorCall) pure $ parse
+    [xml|
+      <NameID xmlns="urn:oasis:names:tc:SAML:2.0:assertion"
+              Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress">
+          #{"emil@email.com"}
+    |]
+  mkAuthnResponse' subj creds idp authnreq grantAccess
+
+mkAuthnResponse' :: HasCallStack => NameID -> SignPrivCreds -> IdPConfig extra -> AuthnRequest -> Bool -> IO SignedAuthnResponse
+mkAuthnResponse' subj creds idp authnreq grantAccess = do
   let freshNCName = ("_" <>) . UUID.toText <$> UUID.nextRandom
   assertionUuid <- freshNCName
   respUuid      <- freshNCName
@@ -47,8 +58,7 @@ mkAuthnResponse creds idp authnreq grantAccess = do
             <Issuer>
                 #{issuer}
             <Subject>
-                <NameID Format="urn:oasis:names:tc:SAML:2.0:nameid-format:persistent">
-                    E3hQDDZoObpyTDplO8Ax8uC8ObcQmREdfps3TMpaI84
+                ^{render subj}
                 <SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">
                     <SubjectConfirmationData
                       InResponseTo="#{inResponseTo}"

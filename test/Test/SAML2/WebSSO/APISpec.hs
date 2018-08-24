@@ -296,6 +296,13 @@ spec = describe "API" $ do
 
 
   describe "mkAuthnResponse" $ do
+    it "Produces output that decodes into 'AuthnResponse'" $ do
+      idpcfg <- mkmyidp <&> idpPublicKey .~ sampleIdPCert
+      ctx <- mkTestCtx1 <&> ctxConfig . cfgIdps .~ [idpcfg]
+      Right authnreq :: Either SomeException AuthnRequest <- try . ioFromTestSP ctx $ createAuthnRequest 3600
+      SignedAuthnResponse authnrespDoc <- mkAuthnResponse sampleIdPPrivkey idpcfg authnreq True
+      parseFromDocument @AuthnResponse authnrespDoc `shouldSatisfy` isRight
+
     let check :: X509.SignedCertificate -> (Either SomeException () -> Bool) -> IO ()
         check cert expectation = do
           idpcfg <- mkmyidp <&> idpPublicKey .~ cert
