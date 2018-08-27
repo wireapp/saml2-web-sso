@@ -1,13 +1,5 @@
 {-# LANGUAGE OverloadedStrings   #-}
-{-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 
--- | Two (weak) reasons why I implemented the clients without the help of servant-client: (1) I
--- wanted smooth integration in 'HttpMonad'; (2) I wanted the choice of receiving the unparsed
--- 'ResponseLBS' rather than the parsed result (or a hard-to examine error).  this is important for
--- testing for expected failures.  See also: https://github.com/haskell-servant/servant/issues/1004
---
--- FUTUREWORK: this is all copied from /services/galley/test/integration/API/Util.hs and some other
--- places; should we make this a new library?  (@tiago-loureiro says no that's fine.)
 module SAML2.WebSSO.Test.Credentials where
 
 import Crypto.PubKey.RSA.Types
