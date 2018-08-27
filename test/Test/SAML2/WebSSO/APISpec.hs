@@ -319,4 +319,4 @@ spec = describe "API" $ do
       check sampleIdPCert isRight
 
     it "Produces output that is rejected by 'simpleVerifyAuthnResponse' if the signature is wrong" $ do
-      check sampleIdPCertWrong isLeft
+      check sampleIdPCert2 isLeft
