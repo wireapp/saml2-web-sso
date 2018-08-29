@@ -3,7 +3,7 @@
 
 module SAML2.WebSSO.Test.MockResponse where
 
-import Control.Exception
+import Data.Generics.Uniplate.Data
 import Data.String.Conversions
 import Data.Time (getCurrentTime)
 import Data.UUID as UUID
@@ -20,18 +20,29 @@ import Text.XML.Util
 newtype SignedAuthnResponse = SignedAuthnResponse { fromSignedAuthnResponse :: Document }
   deriving (Eq, Show)
 
-mkAuthnResponse :: HasCallStack => SignPrivCreds -> IdPConfig extra -> AuthnRequest -> Bool -> IO SignedAuthnResponse
-mkAuthnResponse creds idp authnreq grantAccess = do
-  subj <- either (throwIO . ErrorCall) pure $ parse
-    [xml|
-      <NameID xmlns="urn:oasis:names:tc:SAML:2.0:assertion"
-              Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress">
-          #{"emil@email.com"}
-    |]
-  mkAuthnResponse' subj creds idp authnreq grantAccess
+mkAuthnResponse
+  :: HasCallStack
+  => SignPrivCreds -> IdPConfig extra -> AuthnRequest -> Bool -> IO SignedAuthnResponse
+mkAuthnResponse = mkAuthnResponseWithModif id id
 
-mkAuthnResponse' :: HasCallStack => NameID -> SignPrivCreds -> IdPConfig extra -> AuthnRequest -> Bool -> IO SignedAuthnResponse
-mkAuthnResponse' subj creds idp authnreq grantAccess = do
+mkAuthnResponseWithSubj
+  :: HasCallStack
+  => NameID
+  -> SignPrivCreds -> IdPConfig extra -> AuthnRequest -> Bool -> IO SignedAuthnResponse
+mkAuthnResponseWithSubj subj = mkAuthnResponseWithModif modif id
+  where
+    modif = transformBis
+      [ [ transformer $ \case
+            (Element nm@"Subject" attrs nodes) -> Element nm attrs (render subj <> nodes)
+            other -> other
+        ]
+      ]
+
+mkAuthnResponseWithModif
+  :: HasCallStack
+  => ([Node] -> [Node]) -> ([Node] -> [Node])
+  -> SignPrivCreds -> IdPConfig extra -> AuthnRequest -> Bool -> IO SignedAuthnResponse
+mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp authnreq grantAccess = do
   let freshNCName = ("_" <>) . UUID.toText <$> UUID.nextRandom
   assertionUuid <- freshNCName
   respUuid      <- freshNCName
@@ -48,7 +59,7 @@ mkAuthnResponse' subj creds idp authnreq grantAccess = do
         | otherwise   = "urn:oasis:names:tc:SAML:2.0:status:Requester"
 
   assertion :: [Node]
-    <- signElementIOAt 1 creds
+    <- signElementIOAt 1 creds $ modifUnsignedAssertion
       [xml|
         <Assertion
           xmlns="urn:oasis:names:tc:SAML:2.0:assertion"
@@ -58,7 +69,8 @@ mkAuthnResponse' subj creds idp authnreq grantAccess = do
             <Issuer>
                 #{issuer}
             <Subject>
-                ^{render subj}
+                <NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress">
+                    #{"emil@email.com"}
                 <SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">
                     <SubjectConfirmationData
                       InResponseTo="#{inResponseTo}"
@@ -75,7 +87,7 @@ mkAuthnResponse' subj creds idp authnreq grantAccess = do
       |]
 
   let authnResponse :: Element
-      [NodeElement authnResponse] =
+      [NodeElement authnResponse] = modifAll
         [xml|
           <samlp:Response
             xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"
