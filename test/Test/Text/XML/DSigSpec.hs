@@ -67,7 +67,7 @@ spec = describe "xml:dsig" $ do
 
         _mkcrdsCached = pure . \case
           True  -> (sampleIdPPrivkey, sampleIdPPubkey)
-          False -> (sampleIdPPrivkey, sampleIdPPubkeyWrong)
+          False -> (sampleIdPPrivkey, sampleIdPPubkey2)
 
         someID withID = Map.fromList [("ID", UUID.toText UUID.nil) | withID]
         doc withID = Document (Prologue [] Nothing []) (Element "root" (someID withID) root) []
