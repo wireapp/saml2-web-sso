@@ -15,10 +15,11 @@ where
 
 import Control.Exception (throwIO, try, ErrorCall(ErrorCall), SomeException)
 import Control.Monad.Except
+import Data.Either (isLeft)
 import Data.EitherR (fmapL)
 import Data.Functor (($>))
 import Data.List (foldl')
-import Data.List.NonEmpty
+import Data.List.NonEmpty (NonEmpty((:|)), toList)
 import Data.Monoid ((<>))
 import Data.String.Conversions
 import Data.UUID as UUID
@@ -154,11 +155,16 @@ mkSignCredsWithCert mValidSince size = do
 ----------------------------------------------------------------------
 -- signature verification
 
-verify :: forall m. (MonadError String m) => SignCreds -> LBS -> String -> m ()
-verify creds el signedID = either (throwError . show) pure . unsafePerformIO
-                         $ verifyIO creds el signedID
+-- | We sometimes get XML documents that are underspecific about which credentials they are going to
+-- use later.  As longs as all credentials are from the same authoritative source, it may be ok to
+-- ask for *any* of them to match a signature.  So here is an @or@ over 'verify' and a non-empty
+-- list of 'SignCred's.
+verify :: forall m. (MonadError String m) => NonEmpty SignCreds -> LBS -> String -> m ()
+verify (toList -> creds) el signedID = case filter isLeft . unsafePerformIO $ (\cred -> verifyIO cred el signedID) `mapM` creds of
+  [] -> pure ()
+  errs@(_:_) -> throwError . show $ zip creds errs
 
-verifyRoot :: forall m. (MonadError String m) => SignCreds -> LBS -> m ()
+verifyRoot :: forall m. (MonadError String m) => NonEmpty SignCreds -> LBS -> m ()
 verifyRoot creds el = do
   signedID <- do
     XML.Document _ (XML.Element _ attrs _) _

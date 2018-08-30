@@ -10,15 +10,12 @@ import Prelude hiding (head)
 import SAML2.WebSSO as SAML
 import Text.XML.DSig as SAML
 import URI.ByteString
-import URI.ByteString.QQ
 
 
-sampleIdP :: HasCallStack => URI -> URI -> NewIdP
-sampleIdP metaURI reqURI = NewIdP
-  { _nidpMetadata        = metaURI
-  , _nidpIssuer          = SAML.Issuer [uri|https://idp.net/|]
-  , _nidpRequestUri      = reqURI
-  , _nidpPublicKey       = sampleIdPCert
+sampleIdP :: HasCallStack => URI -> NewIdP
+sampleIdP metaURI = NewIdP
+  { _nidpMetadata  = metaURI
+  , _nidpPublicKey = sampleIdPCert
   }
 
 -- to generate more certs, call `mkSignCredsWithCert Nothing 192` in ghci with this module in

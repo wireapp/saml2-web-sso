@@ -11,6 +11,7 @@ import Control.Monad.Reader
 import Control.Monad.Except
 import Data.Either
 import Data.EitherR
+import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.String.Conversions
 import Lens.Micro
 import SAML2.WebSSO
@@ -204,7 +205,8 @@ spec = describe "API" $ do
                   else "microsoft-authnresponse-2-badsig.xml"
 
             resp :: LBS <- cs <$> readSampleIO respfile
-            Right (cfg :: IdPConfig_) <- Yaml.decodeEither' . cs <$> readSampleIO "microsoft-idp-config.yaml"
+            (cfg :: IdPConfig_) <- either (error . show) pure
+                                   =<< (Yaml.decodeEither' . cs <$> readSampleIO "microsoft-idp-config.yaml")
 
             let rungo :: TestSPStoreIdP a -> Either ServantErr a
                 rungo (TestSPStoreIdP action) = fmapL toServantErr $ runExceptT action `runReader` mcfg
@@ -297,7 +299,7 @@ spec = describe "API" $ do
 
   describe "mkAuthnResponse" $ do
     it "Produces output that decodes into 'AuthnResponse'" $ do
-      idpcfg <- mkmyidp <&> idpPublicKey .~ sampleIdPCert
+      idpcfg <- mkmyidp <&> idpPublicKeys .~ (sampleIdPCert :| [])
       ctx <- mkTestCtx1 <&> ctxConfig . cfgIdps .~ [idpcfg]
       Right authnreq :: Either SomeException AuthnRequest <- try . ioFromTestSP ctx $ createAuthnRequest 3600
       SignedAuthnResponse authnrespDoc <- mkAuthnResponse sampleIdPPrivkey idpcfg authnreq True
@@ -305,7 +307,7 @@ spec = describe "API" $ do
 
     let check :: X509.SignedCertificate -> (Either SomeException () -> Bool) -> IO ()
         check cert expectation = do
-          idpcfg <- mkmyidp <&> idpPublicKey .~ cert
+          idpcfg <- mkmyidp <&> idpPublicKeys .~ (cert :| [])
           let issuer = idpcfg ^. idpIssuer
           ctx <- mkTestCtx1 <&> ctxConfig . cfgIdps .~ [idpcfg]
           result :: Either SomeException () <- try . ioFromTestSP ctx $ do

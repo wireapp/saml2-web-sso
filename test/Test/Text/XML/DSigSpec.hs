@@ -6,6 +6,7 @@ module Test.Text.XML.DSigSpec (spec) where
 
 import Control.Monad ((>=>))
 import Data.Either
+import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.String.Conversions
 import SAML2.WebSSO.Test.Credentials
 import Test.Hspec
@@ -41,13 +42,13 @@ spec = describe "xml:dsig" $ do
     it "works" $ do
       Right keyinfo <- (parseKeyInfo >=> certToCreds) <$> readSampleIO "microsoft-idp-keyinfo.xml"
       raw <- cs <$> readSampleIO "microsoft-authnresponse-2.xml"
-      verify keyinfo raw "_c79c3ec8-1c26-4752-9443-1f76eb7d5dd6" `shouldBe` Right ()
+      verify (keyinfo :| []) raw "_c79c3ec8-1c26-4752-9443-1f76eb7d5dd6" `shouldBe` Right ()
 
   describe "verifyRoot" $ do
     it "works" $ do
       Right keyinfo <- (parseKeyInfo >=> certToCreds) <$> readSampleIO "microsoft-idp-keyinfo.xml"
       raw <- cs <$> readSampleIO "microsoft-meta-2.xml"
-      verifyRoot keyinfo raw `shouldBe` Right ()
+      verifyRoot (keyinfo :| []) raw `shouldBe` Right ()
 
   describe "verifyRoot vs. signRoot" $ do
     let check :: HasCallStack => Bool -> Bool -> (Either String () -> Bool) -> Spec
@@ -55,7 +56,7 @@ spec = describe "xml:dsig" $ do
           it (show (withMatchingCreds, withID)) $ do
             (privCreds, pubCreds) <- mkcrds withMatchingCreds
             signature <- runMonadSign $ renderLBS def <$> signRoot privCreds (doc withID)
-            (verifyRoot pubCreds =<< signature) `shouldSatisfy` expected
+            (verifyRoot (pubCreds :| []) =<< signature) `shouldSatisfy` expected
 
         mkcrds, _mkcrdsReal, _mkcrdsCached :: Bool -> IO (SignPrivCreds, SignCreds)
         mkcrds = _mkcrdsCached
