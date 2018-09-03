@@ -23,6 +23,9 @@ mkprop gen = property $ forAll gen >>= \v -> tripping v enc dec
 prop_tripNameID :: Property
 prop_tripNameID = mkprop genNameID
 
+prop_tripIdPMetadata :: Property
+prop_tripIdPMetadata = mkprop genIdPMetadata
+
 -- TODO: enable and fix
 -- prop_tripAuthnRequest :: Property
 -- prop_tripAuthnRequest = mkprop genAuthnRequest

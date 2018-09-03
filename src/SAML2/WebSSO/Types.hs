@@ -103,7 +103,6 @@ data ContactType
 data IdPMetadata = IdPMetadata
   { _edIssuer            :: Issuer
   , _edRequestURI        :: URI
-  , _edCertMetadata      :: X509.SignedCertificate
   , _edCertAuthnResponse :: NonEmpty X509.SignedCertificate
   }
   deriving (Eq, Show, Generic)
@@ -118,21 +117,8 @@ type IdPConfig_ = IdPConfig ()
 
 data IdPConfig extra = IdPConfig
   { _idpId              :: IdPId
-  , _idpMetadataURI     :: URI
   , _idpMetadata        :: IdPMetadata
   , _idpExtraInfo       :: extra
-  }
-  deriving (Eq, Show, Generic)
-
--- | Provided by the client for registering a new IdP.  Only two bits of information are important:
--- the location of the metadata ('nidpMetadataURI', not part of the actual metadata that can be
--- requested under that URI), and the certificate for verifying the metadata signature (contained in
--- 'nidpMetadata'; but we accept the entire metadata document because it is easier to export from
--- the IdP UI via cut & paste).  Signatures on metadata are optional in SAML, but required in this
--- implementation.
-data NewIdP = NewIdP
-  { _nidpMetadataURI  :: URI
-  , _nidpMetadata     :: IdPMetadata
   }
   deriving (Eq, Show, Generic)
 
@@ -446,7 +432,6 @@ makeLenses ''Issuer
 makeLenses ''Locality
 makeLenses ''NameID
 makeLenses ''NameIdPolicy
-makeLenses ''NewIdP
 makeLenses ''RequestedAuthnContext
 makeLenses ''Response
 makeLenses ''SPDescPre
@@ -466,7 +451,6 @@ makePrisms ''UnqualifiedNameID
 
 deriveJSON deriveJSONOptions ''IdPMetadata
 deriveJSON deriveJSONOptions ''IdPConfig
-deriveJSON deriveJSONOptions ''NewIdP
 
 instance FromJSON IdPId where
   parseJSON value = (>>= maybe unerror (pure . IdPId) . UUID.fromText) . parseJSON $ value
@@ -513,6 +497,8 @@ assEndOfLife = lens gt st
     st :: Assertion -> Time -> Assertion
     st ass tim = ass & assConditions . _Just . condNotOnOrAfter .~ Just tim
 
+
+-- TODO: remove the following three, they are more confusing than helpful!
 
 idpIssuer :: Lens' (IdPConfig extra) Issuer
 idpIssuer = idpMetadata . edIssuer

@@ -365,8 +365,6 @@ signElementIO = signElementIOAt 0
 
 signElementIOAt :: HasCallStack => Int -> SignPrivCreds -> [Node] -> IO [Node]
 signElementIOAt sigPos creds [NodeElement el] = do
-  let docToNodes :: Document -> [Node]
-      docToNodes (Document _ el' _) = [NodeElement el']
   eNodes :: Either String [Node]
     <- runMonadSign . fmap docToNodes . signRootAt sigPos creds . mkDocument $ el
   either error pure eNodes

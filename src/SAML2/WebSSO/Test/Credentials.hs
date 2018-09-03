@@ -13,17 +13,10 @@ import Text.XML.DSig as SAML
 import URI.ByteString
 
 
-sampleNewIdP :: HasCallStack => Issuer -> URI -> URI -> NewIdP
-sampleNewIdP issuer reqURI metaURI = NewIdP
-  { _nidpMetadataURI  = metaURI
-  , _nidpMetadata = sampleIdPMetadata issuer reqURI
-  }
-
 sampleIdPMetadata :: HasCallStack => Issuer -> URI -> IdPMetadata
 sampleIdPMetadata issuer reqURI = IdPMetadata
   { _edIssuer = issuer
   , _edRequestURI = reqURI
-  , _edCertMetadata = sampleIdPCert
   , _edCertAuthnResponse = sampleIdPCert :| []
   }
 
