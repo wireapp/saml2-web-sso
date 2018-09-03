@@ -13,7 +13,7 @@ module SAML2.WebSSO.XML.Meta
   , spDesc
   , spMeta
 
-  , parseIdPDesc
+  , parseIdPMetadata
   ) where
 
 import Control.Monad.Except
@@ -149,16 +149,16 @@ castContactType = \case
   ContactOther          -> HS.ContactTypeOther
 
 
-instance HasXML IdPDesc where
-  parse [NodeElement el] = parseIdPDesc el
-  parse bad = die (Proxy @IdPDesc) bad
+instance HasXML IdPMetadata where
+  parse [NodeElement el] = parseIdPMetadata el
+  parse bad = die (Proxy @IdPMetadata) bad
 
-instance HasXMLRoot IdPDesc where
+instance HasXMLRoot IdPMetadata where
   renderRoot _ = error "instance HasXMLRoot SPDesc: not implemented."
 
 
-parseIdPDesc :: MonadError String m => Element -> m IdPDesc
-parseIdPDesc el@(Element _ attrs _) = do
+parseIdPMetadata :: MonadError String m => Element -> m IdPMetadata
+parseIdPMetadata el@(Element _ attrs _) = do
   _edIssuer :: Issuer <- do
     issueruri :: ST <- maybe (throwError "no issuer") pure (Map.lookup "entityID" attrs)
     Issuer <$> parseURI' issueruri
@@ -176,16 +176,20 @@ parseIdPDesc el@(Element _ attrs _) = do
       [Left msg]  -> throwError $ "bad request uri: " <> msg
       _bad        -> throwError $ "no request uri"
 
-  _edPublicKeys :: [X509.SignedCertificate] <- do
+  -- some metadata documents really have more than one of these.  since there is no way of knowing
+  -- which one is correct, we accept all of them.
+  _edCertAuthnResponse :: NonEmpty X509.SignedCertificate <- do
     let cur = fromNode $ NodeElement el
         target :: [Cursor]
         target = cur $// element "{urn:oasis:names:tc:SAML:2.0:metadata}IDPSSODescriptor"
                      &/  element "{urn:oasis:names:tc:SAML:2.0:metadata}KeyDescriptor"
                      >=> attributeIs "use" "signing"
                      &/  element "{http://www.w3.org/2000/09/xmldsig#}KeyInfo"
-          -- TODO: is the public key for metadata verification located elsewhere in the metadata?
-    forM target $ \case
+    result <- forM target $ \case
       (node -> NodeElement key) -> parseKeyInfo . renderText def . mkDocument $ key
       bad -> throwError $ "unexpected: could not parse x509 cert: " <> show bad
+    case result of
+      [] -> throwError $ "could not find any signature certificates."
+      (x:xs) -> pure $ x :| xs
 
-  pure IdPDesc {..}
+  pure IdPMetadata {..}

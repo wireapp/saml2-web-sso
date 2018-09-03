@@ -24,6 +24,7 @@ import Data.Binary.Builder (toLazyByteString)
 import Data.EitherR
 import Data.Function
 import Data.List
+import Data.List.NonEmpty (NonEmpty)
 import Data.Maybe (catMaybes)
 import Data.Proxy
 import Data.String.Conversions
@@ -48,7 +49,7 @@ import Text.Hamlet.XML
 import Text.Show.Pretty (ppShow)
 import Text.XML
 import Text.XML.Cursor
-import Text.XML.DSig (verify, certToCreds)
+import Text.XML.DSig
 import Text.XML.Util
 import URI.ByteString
 import Web.Cookie
@@ -120,9 +121,9 @@ parseAuthnResponseBody base64 = do
 simpleVerifyAuthnResponse :: forall m err. SPStoreIdP (Error err) m => Maybe Issuer -> LBS -> m ()
 simpleVerifyAuthnResponse Nothing _ = throwError $ BadSamlResponse "missing issuer"
 simpleVerifyAuthnResponse (Just issuer) raw = do
-    creds <- do
-      cert <- (^. idpPublicKey) <$> getIdPConfigByIssuer issuer
-      certToCreds cert &
+    creds :: NonEmpty SignCreds <- do
+      certs <- (^. idpPublicKeys) <$> getIdPConfigByIssuer issuer
+      forM certs $ \cert -> certToCreds cert &
         either (throwError . BadServerConfig . ((encodeElem issuer <> ": ") <>) . cs) pure
 
     doc :: Cursor <- either (throwError . BadSamlResponse . ("could not parse document: " <>) . cs . show)

@@ -98,10 +98,10 @@ data ContactType
   | ContactOther
   deriving (Eq, Enum, Bounded, Show, Generic)
 
-data IdPDesc = IdPDesc
-  { _edIssuer      :: Issuer
-  , _edRequestURI  :: URI
-  , _edPublicKeys  :: [X509.SignedCertificate]
+data IdPMetadata = IdPMetadata
+  { _edIssuer            :: Issuer
+  , _edRequestURI        :: URI
+  , _edCertAuthnResponse :: NonEmpty X509.SignedCertificate
   }
   deriving (Eq, Show, Generic)
 
@@ -115,22 +115,19 @@ type IdPConfig_ = IdPConfig ()
 
 data IdPConfig extra = IdPConfig
   { _idpId              :: IdPId
-  , _idpMetadata        :: URI
-  , _idpIssuer          :: Issuer  -- ^ can be found in metadata
-  , _idpRequestUri      :: URI  -- ^ can be found in metadata
-  , _idpPublicKey       :: X509.SignedCertificate  -- ^ can be found in metadata
-                           -- TODO: azure has 3 (three!) public keys that it signs the assertions
-                           -- with, so we need to maintain a list there!
+  , _idpMetadataURI     :: URI
+  , _idpMetadata        :: IdPMetadata
   , _idpExtraInfo       :: extra
   }
   deriving (Eq, Show, Generic)
 
 -- | 'IdPConfig' contains some info that will be filled in by the server when processing the
--- creation request.  'NewIdP' is the type of the data provided by the client in this request.
+-- creation request.  'NewIdP' is the type of the data provided by the client in this request.  Only
+-- two fields are important: the location of the metadata, and the certificate for verifying the
+-- metadata signature.  Signatures on metadata are optional in SAML, but required in this
+-- implementation.
 data NewIdP = NewIdP
   { _nidpMetadata        :: URI
-  , _nidpIssuer          :: Issuer  -- TODO: remove this field, it's redundant.  (this will also shorten the list of possible errors in the UI.)
-  , _nidpRequestUri      :: URI     -- TODO: dito.
   , _nidpPublicKey       :: X509.SignedCertificate
   }
   deriving (Eq, Show, Generic)
@@ -440,7 +437,7 @@ makeLenses ''ContactPerson
 makeLenses ''Duration
 makeLenses ''ID
 makeLenses ''IdPConfig
-makeLenses ''IdPDesc
+makeLenses ''IdPMetadata
 makeLenses ''Issuer
 makeLenses ''Locality
 makeLenses ''NameID
@@ -463,6 +460,7 @@ makeLenses ''Version
 makePrisms ''Statement
 makePrisms ''UnqualifiedNameID
 
+deriveJSON deriveJSONOptions ''IdPMetadata
 deriveJSON deriveJSONOptions ''IdPConfig
 deriveJSON deriveJSONOptions ''NewIdP
 
@@ -510,6 +508,16 @@ assEndOfLife = lens gt st
 
     st :: Assertion -> Time -> Assertion
     st ass tim = ass & assConditions . _Just . condNotOnOrAfter .~ Just tim
+
+
+idpIssuer :: Lens' (IdPConfig extra) Issuer
+idpIssuer = idpMetadata . edIssuer
+
+idpRequestUri :: Lens' (IdPConfig extra) URI
+idpRequestUri = idpMetadata . edRequestURI
+
+idpPublicKeys :: Lens' (IdPConfig extra) (NonEmpty X509.SignedCertificate)
+idpPublicKeys = idpMetadata . edCertAuthnResponse
 
 
 ----------------------------------------------------------------------
