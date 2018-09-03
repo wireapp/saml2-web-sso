@@ -176,6 +176,21 @@ parseIdPMetadata el@(Element _ attrs _) = do
       [Left msg]  -> throwError $ "bad request uri: " <> msg
       _bad        -> throwError $ "no request uri"
 
+  let cursorToKeyInfo :: MonadError String m => Cursor -> m X509.SignedCertificate
+      cursorToKeyInfo = \case
+        (node -> NodeElement key) -> parseKeyInfo . renderText def . mkDocument $ key
+        bad -> throwError $ "unexpected: could not parse x509 cert: " <> show bad
+
+  _edCertMetadata :: X509.SignedCertificate <- do
+    let cur = fromNode $ NodeElement el
+        target :: [Cursor]
+        target = cur $// element "{http://www.w3.org/2000/09/xmldsig#}Signature"
+                     &/  element "{http://www.w3.org/2000/09/xmldsig#}KeyInfo"
+    (cursorToKeyInfo `mapM` target) >>= \case
+      [x] -> pure x
+      [] -> throwError $ "could not find any metadata signature certificates."
+      (_:_:_) -> throwError $ "more than one metadata signature certificate."
+
   -- some metadata documents really have more than one of these.  since there is no way of knowing
   -- which one is correct, we accept all of them.
   _edCertAuthnResponse :: NonEmpty X509.SignedCertificate <- do
@@ -185,11 +200,8 @@ parseIdPMetadata el@(Element _ attrs _) = do
                      &/  element "{urn:oasis:names:tc:SAML:2.0:metadata}KeyDescriptor"
                      >=> attributeIs "use" "signing"
                      &/  element "{http://www.w3.org/2000/09/xmldsig#}KeyInfo"
-    result <- forM target $ \case
-      (node -> NodeElement key) -> parseKeyInfo . renderText def . mkDocument $ key
-      bad -> throwError $ "unexpected: could not parse x509 cert: " <> show bad
-    case result of
-      [] -> throwError $ "could not find any signature certificates."
+    (cursorToKeyInfo `mapM` target) >>= \case
+      [] -> throwError $ "could not find any AuthnResponse signature certificates."
       (x:xs) -> pure $ x :| xs
 
   pure IdPMetadata {..}

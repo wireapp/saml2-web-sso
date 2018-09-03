@@ -95,6 +95,7 @@ genIdPMetadata :: Gen IdPMetadata
 genIdPMetadata = IdPMetadata
   <$> genIssuer
   <*> genURI
+  <*> genX509SignedCertificate
   <*> (NL.fromList <$> Gen.list (Range.linear 1 3) genX509SignedCertificate)
 
 genX509SignedCertificate :: Gen X509.SignedCertificate

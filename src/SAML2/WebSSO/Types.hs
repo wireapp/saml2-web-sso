@@ -98,9 +98,12 @@ data ContactType
   | ContactOther
   deriving (Eq, Enum, Bounded, Show, Generic)
 
+-- | There can be lots of certs for one IdP.  In particular, azure offers more than one key for
+-- authentication response signing, with no indication in the metadata file which will be used.
 data IdPMetadata = IdPMetadata
   { _edIssuer            :: Issuer
   , _edRequestURI        :: URI
+  , _edCertMetadata      :: X509.SignedCertificate
   , _edCertAuthnResponse :: NonEmpty X509.SignedCertificate
   }
   deriving (Eq, Show, Generic)
@@ -121,14 +124,15 @@ data IdPConfig extra = IdPConfig
   }
   deriving (Eq, Show, Generic)
 
--- | 'IdPConfig' contains some info that will be filled in by the server when processing the
--- creation request.  'NewIdP' is the type of the data provided by the client in this request.  Only
--- two fields are important: the location of the metadata, and the certificate for verifying the
--- metadata signature.  Signatures on metadata are optional in SAML, but required in this
+-- | Provided by the client for registering a new IdP.  Only two bits of information are important:
+-- the location of the metadata ('nidpMetadataURI', not part of the actual metadata that can be
+-- requested under that URI), and the certificate for verifying the metadata signature (contained in
+-- 'nidpMetadata'; but we accept the entire metadata document because it is easier to export from
+-- the IdP UI via cut & paste).  Signatures on metadata are optional in SAML, but required in this
 -- implementation.
 data NewIdP = NewIdP
-  { _nidpMetadata        :: URI
-  , _nidpPublicKey       :: X509.SignedCertificate
+  { _nidpMetadataURI  :: URI
+  , _nidpMetadata     :: IdPMetadata
   }
   deriving (Eq, Show, Generic)
 
