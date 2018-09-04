@@ -98,6 +98,8 @@ data ContactType
   | ContactOther
   deriving (Eq, Enum, Bounded, Show, Generic)
 
+-- | There can be lots of certs for one IdP.  In particular, azure offers more than one key for
+-- authentication response signing, with no indication in the metadata file which will be used.
 data IdPMetadata = IdPMetadata
   { _edIssuer            :: Issuer
   , _edRequestURI        :: URI
@@ -115,20 +117,8 @@ type IdPConfig_ = IdPConfig ()
 
 data IdPConfig extra = IdPConfig
   { _idpId              :: IdPId
-  , _idpMetadataURI     :: URI
   , _idpMetadata        :: IdPMetadata
   , _idpExtraInfo       :: extra
-  }
-  deriving (Eq, Show, Generic)
-
--- | 'IdPConfig' contains some info that will be filled in by the server when processing the
--- creation request.  'NewIdP' is the type of the data provided by the client in this request.  Only
--- two fields are important: the location of the metadata, and the certificate for verifying the
--- metadata signature.  Signatures on metadata are optional in SAML, but required in this
--- implementation.
-data NewIdP = NewIdP
-  { _nidpMetadata        :: URI
-  , _nidpPublicKey       :: X509.SignedCertificate
   }
   deriving (Eq, Show, Generic)
 
@@ -442,7 +432,6 @@ makeLenses ''Issuer
 makeLenses ''Locality
 makeLenses ''NameID
 makeLenses ''NameIdPolicy
-makeLenses ''NewIdP
 makeLenses ''RequestedAuthnContext
 makeLenses ''Response
 makeLenses ''SPDescPre
@@ -462,7 +451,6 @@ makePrisms ''UnqualifiedNameID
 
 deriveJSON deriveJSONOptions ''IdPMetadata
 deriveJSON deriveJSONOptions ''IdPConfig
-deriveJSON deriveJSONOptions ''NewIdP
 
 instance FromJSON IdPId where
   parseJSON value = (>>= maybe unerror (pure . IdPId) . UUID.fromText) . parseJSON $ value
@@ -509,6 +497,8 @@ assEndOfLife = lens gt st
     st :: Assertion -> Time -> Assertion
     st ass tim = ass & assConditions . _Just . condNotOnOrAfter .~ Just tim
 
+
+-- TODO: remove the following three, they are more confusing than helpful!
 
 idpIssuer :: Lens' (IdPConfig extra) Issuer
 idpIssuer = idpMetadata . edIssuer

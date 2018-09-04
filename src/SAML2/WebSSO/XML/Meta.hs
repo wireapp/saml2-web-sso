@@ -17,7 +17,7 @@ module SAML2.WebSSO.XML.Meta
   ) where
 
 import Control.Monad.Except
-import Data.List.NonEmpty
+import Data.List.NonEmpty as NL
 import Data.Maybe
 import Data.Proxy
 import Data.String.Conversions
@@ -26,9 +26,10 @@ import Lens.Micro
 import SAML2.WebSSO.SP
 import SAML2.WebSSO.Types
 import SAML2.WebSSO.XML
+import Text.Hamlet.XML
 import Text.XML
 import Text.XML.Cursor
-import Text.XML.DSig (parseKeyInfo)
+import Text.XML.DSig (parseKeyInfo, renderKeyInfo)
 import Text.XML.Util
 import URI.ByteString
 
@@ -154,7 +155,7 @@ instance HasXML IdPMetadata where
   parse bad = die (Proxy @IdPMetadata) bad
 
 instance HasXMLRoot IdPMetadata where
-  renderRoot _ = error "instance HasXMLRoot SPDesc: not implemented."
+  renderRoot = renderIdPMetadata
 
 
 parseIdPMetadata :: MonadError String m => Element -> m IdPMetadata
@@ -176,6 +177,11 @@ parseIdPMetadata el@(Element _ attrs _) = do
       [Left msg]  -> throwError $ "bad request uri: " <> msg
       _bad        -> throwError $ "no request uri"
 
+  let cursorToKeyInfo :: MonadError String m => Cursor -> m X509.SignedCertificate
+      cursorToKeyInfo = \case
+        (node -> NodeElement key) -> parseKeyInfo . renderText def . mkDocument $ key
+        bad -> throwError $ "unexpected: could not parse x509 cert: " <> show bad
+
   -- some metadata documents really have more than one of these.  since there is no way of knowing
   -- which one is correct, we accept all of them.
   _edCertAuthnResponse :: NonEmpty X509.SignedCertificate <- do
@@ -185,11 +191,35 @@ parseIdPMetadata el@(Element _ attrs _) = do
                      &/  element "{urn:oasis:names:tc:SAML:2.0:metadata}KeyDescriptor"
                      >=> attributeIs "use" "signing"
                      &/  element "{http://www.w3.org/2000/09/xmldsig#}KeyInfo"
-    result <- forM target $ \case
-      (node -> NodeElement key) -> parseKeyInfo . renderText def . mkDocument $ key
-      bad -> throwError $ "unexpected: could not parse x509 cert: " <> show bad
-    case result of
-      [] -> throwError $ "could not find any signature certificates."
+    (cursorToKeyInfo `mapM` target) >>= \case
+      [] -> throwError $ "could not find any AuthnResponse signature certificates."
       (x:xs) -> pure $ x :| xs
 
   pure IdPMetadata {..}
+
+
+renderIdPMetadata :: HasCallStack => IdPMetadata -> Element
+renderIdPMetadata (IdPMetadata issuer requri (NL.toList -> certs)) = nodesToElem nodes
+  where
+    nodes = [xml|
+      <EntityDescriptor
+        ID="#{descID}"
+        entityID="#{entityID}"
+        xmlns="urn:oasis:names:tc:SAML:2.0:metadata">
+          <IDPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
+              <KeyDescriptor use="signing">
+                  ^{certNodes}
+              <SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" Location="#{authnUrl}">
+      |]
+
+    descID = "_0c29ba62-a541-11e8-8042-873ef87bdcba"
+    entityID = renderURI $ issuer ^. fromIssuer
+    authnUrl = renderURI $ requri
+    certNodes = mconcat $ mkCertNode <$> certs
+
+    mkCertNode
+      = either (error . show) id
+      . fmap docToNodes
+      . parseLBS def
+      . cs
+      . renderKeyInfo

@@ -4,6 +4,7 @@ module SAML2.WebSSO.Test.Credentials where
 
 import Crypto.PubKey.RSA.Types
 import Data.Either
+import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.X509 as X509
 import GHC.Stack
 import Prelude hiding (head)
@@ -12,11 +13,13 @@ import Text.XML.DSig as SAML
 import URI.ByteString
 
 
-sampleIdP :: HasCallStack => URI -> NewIdP
-sampleIdP metaURI = NewIdP
-  { _nidpMetadata  = metaURI
-  , _nidpPublicKey = sampleIdPCert
+sampleIdPMetadata :: HasCallStack => Issuer -> URI -> IdPMetadata
+sampleIdPMetadata issuer reqURI = IdPMetadata
+  { _edIssuer = issuer
+  , _edRequestURI = reqURI
+  , _edCertAuthnResponse = sampleIdPCert :| []
   }
+
 
 -- to generate more certs, call `mkSignCredsWithCert Nothing 192` in ghci with this module in
 -- context; then get the `encodeSignedObject` record field from the certificate, and pass it to
