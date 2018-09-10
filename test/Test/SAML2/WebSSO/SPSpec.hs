@@ -162,7 +162,7 @@ specJudgeT = do
 
     it "satisfy all conditions" $ do
       testCtx3 <- mkTestCtx3
-      pending
+      pendingWith "we may test this in spar already (need to check)"
       -- invalid InResponseTo field: ID {renderID = \"id05873dd012c44e6db0bd59f5aa2e6a0a\"}","
       -- Assertion IssueInstant in the future: \"2018-04-13T06:33:02.743Z\"",
       -- "bearer-confirmed assertions must be audience-restricted.",
@@ -179,7 +179,7 @@ specJudgeT = do
     it "status success" $ do
       testCtx2 <- mkTestCtx2
       verdict <- ioFromTestSP testCtx2 $ judge (resp & rspStatus .~ StatusSuccess)
-      pending
+      pendingWith "we may test this in spar already (need to check)"
       -- "invalid InResponseTo field: ID {renderID = \"id05873dd012c44e6db0bd59f5aa2e6a0a\"}"
       -- "Issuerinstant in the future: \"2018-03-11T17:13:13Z\""
       -- "Assertion IssueInstant in the future: \"2018-04-13T06:33:02.743Z\""
@@ -193,7 +193,7 @@ specJudgeT = do
       verdict <- ioFromTestSP testCtx2 $ judge (resp & rspStatus .~ StatusSuccess)
       let uid = UserRef (Issuer [uri|https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/|])
                        (opaqueNameID "E3hQDDZoObpyTDplO8Ax8uC8ObcQmREdfps3TMpaI84")
-      pending
+      pendingWith "we may test this in spar already (need to check)"
       -- "invalid InResponseTo field: ID {renderID = \"id05873dd012c44e6db0bd59f5aa2e6a0a\"}"
       -- "Issuer instant in the future: \"2018-03-11T17:13:13Z\""
       -- "Assertion IssueInstant in the future: \"2018-04-13T06:33:02.743Z\""
@@ -202,7 +202,7 @@ specJudgeT = do
 
       verdict `shouldBe` AccessGranted uid
 
-    -- check the rest of the AuthnResponse type: what do we have to take into account?  what can we
+    -- TODO: check the rest of the AuthnResponse type: what do we have to take into account?  what can we
     -- delete?  keeping values parsed and enforce some default where we don't need to do anything
     -- helps with future extensions.
 

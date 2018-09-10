@@ -3,12 +3,28 @@
 
 -- | Partial implementation of <https://www.w3.org/TR/xmldsig-core/>.  We use hsaml2, hxt, x509 and
 -- other dubious packages internally, but expose xml-types and cryptonite.
+--
+-- FUTUREWORK: other implementations that could be used for testing:
+-- https://www.aleksey.com/xmlsec/ (C);
+-- https://github.com/yaronn/xml-crypto (js)
 module Text.XML.DSig
-  ( SignCreds(..), SignDigest(..), SignKey(..), SignPrivCreds(..), SignPrivKey(..)
-  , parseKeyInfo, renderKeyInfo, certToCreds, certToPublicKey
-  , verifySelfSignature, mkSignCreds, mkSignCredsWithCert
+  ( -- * types
+    SignCreds(..), SignDigest(..), SignKey(..)
+  , SignPrivCreds(..), SignPrivKey(..)
+
+    -- * credential handling
+  , verifySelfSignature
+  , parseKeyInfo, renderKeyInfo
+  , certToCreds, certToPublicKey
+  , mkSignCreds, mkSignCredsWithCert
+
+    -- * signature verification
   , verify, verifyRoot, verifyIO
+
+    -- * signature creation
   , signRoot, signRootAt
+
+    -- * testing
   , MonadSign(MonadSign), runMonadSign, signElementIO, signElementIOAt
   )
 where
@@ -48,6 +64,9 @@ import qualified Text.XML.HXT.DOM.XmlNode as HXT
 import qualified Time.System as Hourglass
 
 
+----------------------------------------------------------------------
+-- types
+
 data SignCreds = SignCreds SignDigest SignKey
   deriving (Eq, Show)
 
@@ -65,7 +84,7 @@ data SignPrivKey = SignPrivKeyRSA RSA.KeyPair
 
 
 ----------------------------------------------------------------------
--- public keys and certificats
+-- credential handling
 
 verifySelfSignature :: (HasCallStack, MonadError String m) => X509.SignedCertificate -> m ()
 verifySelfSignature cert = do
@@ -301,58 +320,6 @@ injectSignedInfoAtRoot sigPos signedInfo (XML.Document prol (Element tag attrs n
   where
     insertAt :: Int -> a -> [a] -> [a]
     insertAt pos el els = case Prelude.splitAt pos els of (pre, post) -> pre <> [el] <> post
-
-
-
-{-
-
--- other implementations for testing:
-
-https://www.aleksey.com/xmlsec/ (C)
-https://github.com/yaronn/xml-crypto (js)
-
-
--- some data types from the xml:dsig standard
-
-data XMLDSig = XMLDSig
-  { _xmlsigReference              :: XMLNodeID
-  , _xmlsigCanonicalizationMethod :: CanonicalizationMethod
-  , _xmlsigDigestMethod           :: DigestMethod
-  , _xmlsigSignatureMethod        :: SignatureMethod
-  , _xmlsigTransforms             :: [Transform]
-  , _xmlsigDigestValue            :: DigestValue
-  , _xmlsigSignatureValue         :: SignatureValue
-  , _xmlsigKeyInfo                :: SignerIdentity
-  }
-  deriving (Eq, Show)
-
-newtype XMLNodeID = XMLNodeID ST
-  deriving (Eq, Show)
-
-data CanonicalizationMethod = ExcC14N
-  deriving (Eq, Show, Bounded, Enum)
-
-data SignatureMethod = SignatureRsaSha1
-  deriving (Eq, Show, Bounded, Enum)
-
-data DigestMethod = DigestSha1
-  deriving (Eq, Show, Bounded, Enum)
-
-data Transform =
-    TransformExcC14N
-  | TransformEnvelopedSignature
-  deriving (Eq, Show, Bounded, Enum)
-
-newtype DigestValue = DigestValue ST
-  deriving (Eq, Show)
-
-newtype SignatureValue = SignatureValue ST
-  deriving (Eq, Show)
-
-newtype SignerIdentity = X509Certificate ST
-  deriving (Eq, Show)
-
--}
 
 
 ----------------------------------------------------------------------
