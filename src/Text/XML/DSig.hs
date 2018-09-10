@@ -15,11 +15,11 @@ where
 
 import Control.Exception (throwIO, try, ErrorCall(ErrorCall), SomeException)
 import Control.Monad.Except
-import Data.Either (isLeft)
+import Data.Either (isRight)
 import Data.EitherR (fmapL)
 import Data.Functor (($>))
 import Data.List (foldl')
-import Data.List.NonEmpty (NonEmpty((:|)), toList)
+import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Monoid ((<>))
 import Data.String.Conversions
 import Data.UUID as UUID
@@ -38,6 +38,7 @@ import qualified Crypto.PubKey.RSA.Types as RSA
 import qualified Crypto.Random.Types as Crypto
 import qualified Data.ByteArray as ByteArray
 import qualified Data.Hourglass as Hourglass
+import qualified Data.List.NonEmpty as NL
 import qualified Data.Map as Map
 import qualified Data.X509 as X509
 import qualified SAML2.XML as HS hiding (URI, Node)
@@ -159,10 +160,11 @@ mkSignCredsWithCert mValidSince size = do
 -- use later.  As longs as all credentials are from the same authoritative source, it may be ok to
 -- ask for *any* of them to match a signature.  So here is an @or@ over 'verify' and a non-empty
 -- list of 'SignCred's.
+{-# NOINLINE verify #-}
 verify :: forall m. (MonadError String m) => NonEmpty SignCreds -> LBS -> String -> m ()
-verify (toList -> creds) el signedID = case filter isLeft . unsafePerformIO $ (\cred -> verifyIO cred el signedID) `mapM` creds of
-  [] -> pure ()
-  errs@(_:_) -> throwError . show $ zip creds errs
+verify creds el signedID = case unsafePerformIO (verifyIO creds el signedID) of
+  []   -> pure ()
+  errs -> throwError $ show (snd <$> errs)
 
 verifyRoot :: forall m. (MonadError String m) => NonEmpty SignCreds -> LBS -> m ()
 verifyRoot creds el = do
@@ -176,10 +178,19 @@ verifyRoot creds el = do
           (Map.lookup "ID" attrs)
   verify creds el signedID
 
-verifyIO :: SignCreds -> LBS -> String -> IO (Either HS.SignatureError ())
-verifyIO (SignCreds SignDigestSha256 (SignKeyRSA key)) el signedID = do
-  el' <- either (throwIO . ErrorCall) pure $ HS.xmlToDocE el
-  HS.verifySignature (HS.PublicKeys Nothing . Just $ key) signedID el'
+-- | Try a list of creds against a document.  If all fail, return a list of errors for each cert; if
+-- *any* succeed, return the empty list.
+verifyIO :: NonEmpty SignCreds -> LBS -> String -> IO [(SignCreds, Either HS.SignatureError ())]
+verifyIO creds el signedID = do
+  results <- NL.zip creds <$> forM creds (\cred -> verifyIO' cred el signedID)
+  case NL.filter (isRight . snd) results of
+    (_:_) -> pure []
+    []    -> pure $ NL.toList results
+
+verifyIO' :: SignCreds -> LBS -> String -> IO (Either HS.SignatureError ())
+verifyIO' (SignCreds SignDigestSha256 (SignKeyRSA key)) el signedID = runExceptT $ do
+  el' <- either (throwError . HS.SignatureParseError) pure $ HS.xmlToDocE el
+  ExceptT $ HS.verifySignature (HS.PublicKeys Nothing . Just $ key) signedID el'
 
 
 ----------------------------------------------------------------------
@@ -368,4 +379,4 @@ signElementIOAt sigPos creds [NodeElement el] = do
   eNodes :: Either String [Node]
     <- runMonadSign . fmap docToNodes . signRootAt sigPos creds . mkDocument $ el
   either error pure eNodes
-signElementIOAt _ _ bad = error $ show bad
+signElementIOAt _ _ bad = throwIO . ErrorCall . show $ bad
