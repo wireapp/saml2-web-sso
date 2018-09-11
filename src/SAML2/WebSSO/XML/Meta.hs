@@ -16,6 +16,15 @@ module SAML2.WebSSO.XML.Meta
   , parseIdPMetadata
   ) where
 
+import Debug.Trace
+import Text.Show.Pretty
+import Data.Conduit
+import Control.Monad.Catch
+import Control.Applicative
+import qualified Data.XML.Types as P
+import qualified Data.Conduit.Parser as P
+import qualified Data.Conduit.Parser.XML as P
+
 import Control.Monad.Except
 import Data.List.NonEmpty as NL
 import Data.Maybe
@@ -196,6 +205,80 @@ parseIdPMetadata el@(Element _ attrs _) = do
       (x:xs) -> pure $ x :| xs
 
   pure IdPMetadata {..}
+
+
+-- | Alternative implementation of 'parseIdPMetadata' based on the xml-conduit-parse package.
+_parseIdPMetadata'' :: forall m. MonadCatch m => ST -> m IdPMetadata
+_parseIdPMetadata'' raw = do
+  let events :: ConduitT i P.Event m ()
+      events = P.parseLBS @m def (cs raw)
+
+      parser :: P.ConduitParser P.Event m IdPMetadata
+      parser = P.tagName "{urn:oasis:names:tc:SAML:2.0:metadata}EntityDescriptor" pIssuer pChildren
+        where
+          pIssuer :: P.AttrParser Issuer
+          pIssuer = do
+            result <- pUri "entityID" =<< P.attr "entityID" Just
+            P.ignoreAttrs
+            pure (Issuer result)
+
+          pChildren :: Issuer -> P.ConduitParser P.Event m IdPMetadata
+          pChildren issuer = do
+            requri <- anyChild pReqUri
+
+      -- TODO: <|> doesn't appear to do what it's supposed to.  how can i implement anyChild?
+      -- TODO: the error messages of xml-conduit-parse are ridiculous.  is there an easy way to make them more readable?
+
+            trace (ppShow (issuer, requri)) $ pure undefined
+
+          pReqUri :: P.ConduitParser P.Event m URI
+          pReqUri = do
+            let attrs :: P.AttrParser URI
+                attrs = do
+                  pAttrIs "Binding" "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
+                  pUri "Location" =<< P.attr "Location" Just
+
+            P.tagName "{urn:oasis:names:tc:SAML:2.0:metadata}IDPSSODescriptor" P.ignoreAttrs $ \_ ->
+              P.tagName "{urn:oasis:names:tc:SAML:2.0:metadata}SingleSignOnService" attrs pure
+
+  runConduit $ events .| P.runConduitParser parser
+
+
+anyChild :: MonadCatch m => P.ConduitParser P.Event m a -> P.ConduitParser P.Event m a
+anyChild parser = parser <|> (P.anyTag (\_ _ -> pure ()) >> anyChild parser)  -- TODO: doesn't appear to work.
+
+-- (we'll need this one for the keyinfo children of the SingleSignOnService xml element.)
+_anyChildren :: MonadCatch m => P.ConduitParser P.Event m a -> P.ConduitParser P.Event m [a]
+_anyChildren _parser = undefined
+
+pAttrIs :: P.Name -> ST -> P.AttrParser ()
+pAttrIs key val = P.attr key $ \val' -> if val' == val then Just () else Nothing
+
+pUri :: String -> ST -> P.AttrParser URI
+pUri errmsg = either failure pure . parseURI'
+  where
+    failure err = throwM $ P.XmlException (errmsg <> ": " <> err) Nothing
+
+
+
+
+
+-- http://hackage.haskell.org/package/xeno (chris done)
+-- http://hackage.haskell.org/package/conduit-parse, http://hackage.haskell.org/package/xml-conduit-parse
+-- http://hackage.haskell.org/package/sax (?)
+-- http://hackage.haskell.org/package/xmlbf (?)
+-- http://hackage.haskell.org/package/xleb (?)
+
+-- not quite parsers:
+-- http://hackage.haskell.org/package/lens-xml
+-- http://hackage.haskell.org/package/xml-query
+
+-- criteria:
+-- is it only haskell, or is there C code underneath?
+-- last / first commit?
+-- maintainer?
+-- is it on stackage?
+
 
 
 renderIdPMetadata :: HasCallStack => IdPMetadata -> Element

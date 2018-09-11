@@ -17,3 +17,7 @@ extra-deps:
 - invertible-hxt-0.1  # for hsaml2
 - servant-multipart-0.11.2
 - yaml-0.9.0
+
+# why on earth would these not be in stackage?!
+- conduit-parse-0.2.1.0
+- xml-conduit-parse-0.3.1.2

@@ -45,6 +45,9 @@ default-extensions:
 dependencies:
   - base
 
+  - conduit-parse
+  - xml-conduit-parse
+  - conduit
   - aeson
   - asn1-encoding
   - asn1-parse
