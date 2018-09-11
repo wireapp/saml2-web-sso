@@ -158,6 +158,7 @@ type GetRedir = Verb 'GET 307
 type PostRedir = Verb 'POST 303
 
 
+-- TODO: use http://hackage.haskell.org/package/servant-xml instead?  might also help with swagger?
 data XML
 
 instance Accept XML where

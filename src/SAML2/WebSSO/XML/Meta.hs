@@ -13,7 +13,7 @@ module SAML2.WebSSO.XML.Meta
   , spDesc
   , spMeta
 
-  , parseIdPMetadata
+  , parseIdPMetadata, renderIdPMetadata
   ) where
 
 import Control.Monad.Except
@@ -175,7 +175,7 @@ parseIdPMetadata el@(Element _ attrs _) = do
     case parseURI' <$> target of
       [Right uri] -> pure uri
       [Left msg]  -> throwError $ "bad request uri: " <> msg
-      _bad        -> throwError $ "no request uri"
+      bad         -> throwError $ "unexpected request uri: " <> show (target, bad)
 
   let cursorToKeyInfo :: MonadError String m => Cursor -> m X509.SignedCertificate
       cursorToKeyInfo = \case
@@ -199,7 +199,8 @@ parseIdPMetadata el@(Element _ attrs _) = do
 
 
 renderIdPMetadata :: HasCallStack => IdPMetadata -> Element
-renderIdPMetadata (IdPMetadata issuer requri (NL.toList -> certs)) = nodesToElem nodes
+renderIdPMetadata (IdPMetadata issuer requri (NL.toList -> certs)) = error "renderIdPMetadata is broken: https://github.com/snoyberg/xml/issues/137"
+                                                                   $ nodesToElem nodes
   where
     nodes = [xml|
       <EntityDescriptor

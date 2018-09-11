@@ -378,6 +378,9 @@ instance Arbitrary Node where
 instance Arbitrary Name where
   arbitrary = TQH.hedgehog genXMLName
 
+instance Arbitrary IdPMetadata where
+  arbitrary = TQH.hedgehog genIdPMetadata
+
 shrinkElement :: Element -> [Element]
 shrinkElement (Element tag attrs nodes) = case (shrinkAttrs attrs, shrink nodes) of
   ([], []) -> []
