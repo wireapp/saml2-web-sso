@@ -158,7 +158,8 @@ type GetRedir = Verb 'GET 307
 type PostRedir = Verb 'POST 303
 
 
--- TODO: use http://hackage.haskell.org/package/servant-xml instead?  might also help with swagger?
+-- | There is a tiny package `servant-xml`, which does essentially what this type and its
+-- 'Mime{,Un}Render' instances do, but inlining this package seems easier.
 data XML
 
 instance Accept XML where
