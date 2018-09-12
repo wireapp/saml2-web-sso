@@ -165,10 +165,11 @@ instance HasXML Issuer where
   render = wrapRender exportIssuer
 
 nameIDToST :: NameID -> ST
-nameIDToST (NameID (NameIDFUnspecified txt) Nothing Nothing Nothing) = txt
-nameIDToST (NameID (NameIDFEmail txt) Nothing Nothing Nothing) = txt
-nameIDToST (NameID (NameIDFEntity uri) Nothing Nothing Nothing) = renderURI uri
-nameIDToST other = cs $ encodeElem other  -- TODO: some of the others may have more reasonable serialization.
+nameIDToST (NameID (UNameIDUnspecified txt) Nothing Nothing Nothing) = txt
+nameIDToST (NameID (UNameIDEmail txt) Nothing Nothing Nothing) = txt
+nameIDToST (NameID (UNameIDEntity uri) Nothing Nothing Nothing) = renderURI uri
+nameIDToST other = cs $ encodeElem other  -- (some of the others may also have obvious
+                                          -- serializations, but we don't need them for now.)
 
 userRefToST :: UserRef -> ST
 userRefToST (UserRef (Issuer tenant) subject) = "{" <> renderURI tenant <> "}" <> nameIDToST subject
@@ -382,7 +383,7 @@ importBaseID (HS.BaseID bidq bidspq bid) = BaseID (cs bid) (cs <$> bidq) (cs <$>
 
 importBaseIDasNameID :: (HasCallStack, ConvertibleStrings s ST) => HS.BaseID s -> NameID
 importBaseIDasNameID (importBaseID -> BaseID bid bidq bidspq) =
-  NameID (NameIDFUnspecified bid) bidq bidspq Nothing
+  NameID (UNameIDUnspecified bid) bidq bidspq Nothing
 
 importNameID :: (HasCallStack, MonadError String m) => HS.NameID -> m NameID
 importNameID bad@(HS.NameID (HS.BaseID _ _ _) (HS.Unidentified _) _)
@@ -392,14 +393,14 @@ importNameID (HS.NameID (HS.BaseID m1 m2 nid) (HS.Identified hsNameIDFormat) m3)
     form hsNameIDFormat (cs nid) >>= \nid' -> mkNameID nid' (cs <$> m1) (cs <$> m2) (cs <$> m3)
   where
     form :: MonadError String m => HS.NameIDFormat -> ST -> m UnqualifiedNameID
-    form HS.NameIDFormatUnspecified = pure . NameIDFUnspecified
-    form HS.NameIDFormatEmail       = pure . NameIDFEmail
-    form HS.NameIDFormatX509        = pure . NameIDFX509
-    form HS.NameIDFormatWindows     = pure . NameIDFWindows
-    form HS.NameIDFormatKerberos    = pure . NameIDFKerberos
-    form HS.NameIDFormatEntity      = fmap NameIDFEntity . parseURI'
-    form HS.NameIDFormatPersistent  = pure . NameIDFPersistent
-    form HS.NameIDFormatTransient   = pure . NameIDFTransient
+    form HS.NameIDFormatUnspecified = pure . UNameIDUnspecified
+    form HS.NameIDFormatEmail       = pure . UNameIDEmail
+    form HS.NameIDFormatX509        = pure . UNameIDX509
+    form HS.NameIDFormatWindows     = pure . UNameIDWindows
+    form HS.NameIDFormatKerberos    = pure . UNameIDKerberos
+    form HS.NameIDFormatEntity      = fmap UNameIDEntity . parseURI'
+    form HS.NameIDFormatPersistent  = pure . UNameIDPersistent
+    form HS.NameIDFormatTransient   = pure . UNameIDTransient
     form b@HS.NameIDFormatEncrypted = \_ -> die (Proxy @NameID) (show b)
 
 exportNameID :: NameID -> HS.NameID
@@ -412,14 +413,14 @@ exportNameID name = HS.NameID
     (fmt, nid) = unform (name ^. nameID)
 
     unform :: UnqualifiedNameID -> (HS.IdentifiedURI HS.NameIDFormat, ST)
-    unform (NameIDFUnspecified n) = (HS.Identified HS.NameIDFormatUnspecified, n)
-    unform (NameIDFEmail       n) = (HS.Identified HS.NameIDFormatEmail, n)
-    unform (NameIDFX509        n) = (HS.Identified HS.NameIDFormatX509, n)
-    unform (NameIDFWindows     n) = (HS.Identified HS.NameIDFormatWindows, n)
-    unform (NameIDFKerberos    n) = (HS.Identified HS.NameIDFormatKerberos, n)
-    unform (NameIDFEntity      n) = (HS.Identified HS.NameIDFormatEntity, renderURI n)
-    unform (NameIDFPersistent  n) = (HS.Identified HS.NameIDFormatPersistent, n)
-    unform (NameIDFTransient   n) = (HS.Identified HS.NameIDFormatTransient, n)
+    unform (UNameIDUnspecified n) = (HS.Identified HS.NameIDFormatUnspecified, n)
+    unform (UNameIDEmail       n) = (HS.Identified HS.NameIDFormatEmail, n)
+    unform (UNameIDX509        n) = (HS.Identified HS.NameIDFormatX509, n)
+    unform (UNameIDWindows     n) = (HS.Identified HS.NameIDFormatWindows, n)
+    unform (UNameIDKerberos    n) = (HS.Identified HS.NameIDFormatKerberos, n)
+    unform (UNameIDEntity      n) = (HS.Identified HS.NameIDFormatEntity, renderURI n)
+    unform (UNameIDPersistent  n) = (HS.Identified HS.NameIDFormatPersistent, n)
+    unform (UNameIDTransient   n) = (HS.Identified HS.NameIDFormatTransient, n)
 
 importVersion :: (HasCallStack, MonadError String m) => HS.SAMLVersion -> m Version
 importVersion HS.SAML20 = pure Version_2_0
@@ -452,7 +453,7 @@ exportStatus bad = error $ "not implemented: " <> show bad
 importIssuer :: (HasCallStack, MonadError String m) => HS.Issuer -> m Issuer
 importIssuer = fmap Issuer . (nameIDToURI <=< importNameID) . HS.issuer
   where
-    nameIDToURI (NameID (NameIDFEntity uri) Nothing Nothing Nothing) = pure uri
+    nameIDToURI (NameID (UNameIDEntity uri) Nothing Nothing Nothing) = pure uri
     nameIDToURI bad = die (Proxy @Issuer) bad
 
 exportIssuer :: HasCallStack => Issuer -> HS.Issuer

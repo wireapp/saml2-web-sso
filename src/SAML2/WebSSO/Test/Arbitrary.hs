@@ -121,7 +121,7 @@ genNameID :: Gen NameID
 genNameID = do
   unid <- genUnqualifiedNameID
   case unid of
-    NameIDFEntity enturi -> pure $ entityNameID enturi
+    UNameIDEntity enturi -> pure $ entityNameID enturi
     _ -> either (error . show) pure =<<
          (mkNameID unid <$> qualifier <*> qualifier <*> qualifier)
   where
@@ -129,14 +129,14 @@ genNameID = do
 
 genUnqualifiedNameID :: Gen UnqualifiedNameID
 genUnqualifiedNameID = Gen.choice
-  [ NameIDFUnspecified <$> mktxt 2000
-  , NameIDFEmail       <$> mktxt 2000
-  , NameIDFX509        <$> mktxt 2000
-  , NameIDFWindows     <$> mktxt 2000
-  , NameIDFKerberos    <$> mktxt 2000
-  , NameIDFEntity      <$> genURI' (Just (Range.linear 1 1024))
-  , NameIDFPersistent  <$> mktxt 1024
-  , NameIDFTransient   <$> mktxt 2000
+  [ UNameIDUnspecified <$> mktxt 2000
+  , UNameIDEmail       <$> mktxt 2000
+  , UNameIDX509        <$> mktxt 2000
+  , UNameIDWindows     <$> mktxt 2000
+  , UNameIDKerberos    <$> mktxt 2000
+  , UNameIDEntity      <$> genURI' (Just (Range.linear 1 1024))
+  , UNameIDPersistent  <$> mktxt 1024
+  , UNameIDTransient   <$> mktxt 2000
   ]
   where
     mktxt charlen = cs <$> Gen.text (Range.linear 1 charlen) Gen.alpha

@@ -221,19 +221,42 @@ data NameID = NameID
   deriving (Eq, Ord, Show, Generic)
 
 -- | [1/8.3]
+data NameIDFormat
+  = NameIDFUnspecified  -- ^ 'nameIDNameQ', 'nameIDSPNameQ' SHOULD be omitted.
+  | NameIDFEmail
+  | NameIDFX509
+  | NameIDFWindows
+  | NameIDFKerberos
+  | NameIDFEntity
+  | NameIDFPersistent   -- ^ use UUIDv4 where we have the choice.
+  | NameIDFTransient
+  deriving (Eq, Ord, Enum, Bounded, Show, Generic)
+
+-- | [1/8.3]
+type family NameIDReprFormat (t :: NameIDFormat) where
+  NameIDReprFormat 'NameIDFUnspecified = ST
+  NameIDReprFormat 'NameIDFEmail       = ST
+  NameIDReprFormat 'NameIDFX509        = ST
+  NameIDReprFormat 'NameIDFWindows     = ST
+  NameIDReprFormat 'NameIDFKerberos    = ST
+  NameIDReprFormat 'NameIDFEntity      = URI
+  NameIDReprFormat 'NameIDFPersistent  = ST
+  NameIDReprFormat 'NameIDFTransient   = ST
+
+-- | [1/8.3]  (FUTUREWORK: there may be a way to make this nicer by using 'NameIDFormat', 'NameIDReprFormat'.
 data UnqualifiedNameID
-  = NameIDFUnspecified ST  -- ^ 'nameIDNameQ', 'nameIDSPNameQ' SHOULD be omitted.
-  | NameIDFEmail       ST
-  | NameIDFX509        ST
-  | NameIDFWindows     ST
-  | NameIDFKerberos    ST
-  | NameIDFEntity      URI
-  | NameIDFPersistent  ST  -- ^ use UUIDv4 where we have the choice.
-  | NameIDFTransient   ST
+  = UNameIDUnspecified ST  -- ^ 'nameIDNameQ', 'nameIDSPNameQ' SHOULD be omitted.
+  | UNameIDEmail       ST
+  | UNameIDX509        ST
+  | UNameIDWindows     ST
+  | UNameIDKerberos    ST
+  | UNameIDEntity      URI
+  | UNameIDPersistent  ST  -- ^ use UUIDv4 where we have the choice.
+  | UNameIDTransient   ST
   deriving (Eq, Ord, Show, Generic)
 
 mkNameID :: MonadError String m => UnqualifiedNameID -> Maybe ST -> Maybe ST -> Maybe ST -> m NameID
-mkNameID nid@(NameIDFEntity uri) m1 m2 m3 = do
+mkNameID nid@(UNameIDEntity uri) m1 m2 m3 = do
   mapM_ throwError $
     [ "mkNameID: nameIDNameQ, nameIDSPNameQ, nameIDSPProvidedID MUST be omitted for entity NameIDs."
       <> show [m1, m2, m3]
@@ -244,7 +267,7 @@ mkNameID nid@(NameIDFEntity uri) m1 m2 m3 = do
     | uritxt <- [renderURI uri], ST.length uritxt > 1024
     ]
   pure $ NameID nid Nothing Nothing Nothing
-mkNameID nid@(NameIDFPersistent txt) m1 m2 m3 = do
+mkNameID nid@(UNameIDPersistent txt) m1 m2 m3 = do
   mapM_ throwError $
     [ "mkNameID: persistent text too long: "
       <> show (nid, ST.length txt)
@@ -255,35 +278,46 @@ mkNameID nid m1 m2 m3 = do
   pure $ NameID nid m1 m2 m3
 
 opaqueNameID :: ST -> NameID
-opaqueNameID raw = NameID (NameIDFUnspecified raw) Nothing Nothing Nothing
+opaqueNameID raw = NameID (UNameIDUnspecified raw) Nothing Nothing Nothing
 
 entityNameID :: URI -> NameID
-entityNameID uri = NameID (NameIDFEntity uri) Nothing Nothing Nothing
+entityNameID uri = NameID (UNameIDEntity uri) Nothing Nothing Nothing
 
-nameIDFormat :: HasCallStack => UnqualifiedNameID -> String
+nameIDFormat :: HasCallStack => NameIDFormat -> String
 nameIDFormat = \case
-  NameIDFUnspecified _ -> "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"
-  NameIDFEmail _       -> "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
-  NameIDFX509 _        -> "urn:oasis:names:tc:SAML:1.1:nameid-format:X509SubjectName"
-  NameIDFWindows _     -> "urn:oasis:names:tc:SAML:1.1:nameid-format:WindowsDomainQualifiedName"
-  NameIDFKerberos _    -> "urn:oasis:names:tc:SAML:2.0:nameid-format:kerberos"
-  NameIDFEntity _      -> "urn:oasis:names:tc:SAML:2.0:nameid-format:entity"
-  NameIDFPersistent _  -> "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
-  NameIDFTransient _   -> "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"
+  NameIDFUnspecified -> "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"
+  NameIDFEmail       -> "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
+  NameIDFX509        -> "urn:oasis:names:tc:SAML:1.1:nameid-format:X509SubjectName"
+  NameIDFWindows     -> "urn:oasis:names:tc:SAML:1.1:nameid-format:WindowsDomainQualifiedName"
+  NameIDFKerberos    -> "urn:oasis:names:tc:SAML:2.0:nameid-format:kerberos"
+  NameIDFEntity      -> "urn:oasis:names:tc:SAML:2.0:nameid-format:entity"
+  NameIDFPersistent  -> "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
+  NameIDFTransient   -> "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"
+
+unameIDFormat :: HasCallStack => UnqualifiedNameID -> String
+unameIDFormat = \case
+  UNameIDUnspecified _ -> "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"
+  UNameIDEmail _       -> "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
+  UNameIDX509 _        -> "urn:oasis:names:tc:SAML:1.1:nameid-format:X509SubjectName"
+  UNameIDWindows _     -> "urn:oasis:names:tc:SAML:1.1:nameid-format:WindowsDomainQualifiedName"
+  UNameIDKerberos _    -> "urn:oasis:names:tc:SAML:2.0:nameid-format:kerberos"
+  UNameIDEntity _      -> "urn:oasis:names:tc:SAML:2.0:nameid-format:entity"
+  UNameIDPersistent _  -> "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
+  UNameIDTransient _   -> "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"
 
 -- | Extract the 'UnqualifiedNameID' part from the input and render it to a 'ST'.  If there are any
 -- qualifiers, return 'Nothing' to prevent name clashes (where two inputs are different, but produce
 -- the same output).
 shortShowNameID :: NameID -> Maybe ST
 shortShowNameID (NameID uqn Nothing Nothing Nothing) = case uqn of
-  NameIDFUnspecified st  -> Just st
-  NameIDFEmail       st  -> Just st
-  NameIDFX509        st  -> Just st
-  NameIDFWindows     st  -> Just st
-  NameIDFKerberos    st  -> Just st
-  NameIDFEntity      uri -> Just $ renderURI uri
-  NameIDFPersistent  st  -> Just st
-  NameIDFTransient   st  -> Just st
+  UNameIDUnspecified st  -> Just st
+  UNameIDEmail       st  -> Just st
+  UNameIDX509        st  -> Just st
+  UNameIDWindows     st  -> Just st
+  UNameIDKerberos    st  -> Just st
+  UNameIDEntity      uri -> Just $ renderURI uri
+  UNameIDPersistent  st  -> Just st
+  UNameIDTransient   st  -> Just st
 shortShowNameID _ = Nothing
 
 
