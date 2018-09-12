@@ -5,6 +5,7 @@
 module Test.SAML2.WebSSO.SPSpec (spec) where
 
 import Control.Concurrent.MVar
+import Data.List.NonEmpty (NonEmpty((:|)))
 import Lens.Micro
 import SAML2.WebSSO
 import SAML2.WebSSO.API.Example
@@ -141,8 +142,11 @@ specJudgeT = do
   describe "judge" $ do
     let resp = Samples.microsoft_authnresponse_1
                & rspIssueInstant .~ timeNow
-               & rspPayload . ix 0 . assConditions . _Just . condNotBefore    .~ Just timeNow
-               & rspPayload . ix 0 . assConditions . _Just . condNotOnOrAfter .~ Just timeIn20minutes
+               & rspPayload . _nlhead . assConditions . _Just . condNotBefore    .~ Just timeNow
+               & rspPayload . _nlhead . assConditions . _Just . condNotOnOrAfter .~ Just timeIn20minutes
+
+        _nlhead :: Lens' (NonEmpty a) a
+        _nlhead f (a :| as) = (:| as) <$> f a
 
         isGranted :: HasCallStack => AccessVerdict -> Expectation
         isGranted = (`shouldSatisfy` (\case AccessGranted{} -> True; _ -> False))
@@ -173,12 +177,12 @@ specJudgeT = do
 
     it "status failure" $ do
       testCtx2 <- mkTestCtx2
-      verdict <- ioFromTestSP testCtx2 $ judge (resp & rspStatus .~ StatusFailure "donno")
+      verdict <- ioFromTestSP testCtx2 $ judge (resp & rspStatus .~ statusFailure)
       isDenied verdict
 
     it "status success" $ do
       testCtx2 <- mkTestCtx2
-      verdict <- ioFromTestSP testCtx2 $ judge (resp & rspStatus .~ StatusSuccess)
+      verdict <- ioFromTestSP testCtx2 $ judge (resp & rspStatus .~ statusSuccess)
       pendingWith "we may test this in spar already (need to check)"
       -- "invalid InResponseTo field: ID {renderID = \"id05873dd012c44e6db0bd59f5aa2e6a0a\"}"
       -- "Issuerinstant in the future: \"2018-03-11T17:13:13Z\""
@@ -190,7 +194,7 @@ specJudgeT = do
 
     it "status success yields name, nick" $ do
       testCtx2 <- mkTestCtx2
-      verdict <- ioFromTestSP testCtx2 $ judge (resp & rspStatus .~ StatusSuccess)
+      verdict <- ioFromTestSP testCtx2 $ judge (resp & rspStatus .~ statusSuccess)
       let uid = UserRef (Issuer [uri|https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/|])
                        (opaqueNameID "E3hQDDZoObpyTDplO8Ax8uC8ObcQmREdfps3TMpaI84")
       pendingWith "we may test this in spar already (need to check)"

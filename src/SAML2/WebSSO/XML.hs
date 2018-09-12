@@ -7,7 +7,7 @@ import Control.Exception (SomeException)
 import Control.Monad
 import Control.Monad.Except
 import Data.EitherR
-import Data.List.NonEmpty (NonEmpty((:|)))
+import Data.List.NonEmpty as NL (NonEmpty((:|)), nonEmpty)
 import Data.Maybe (fromMaybe, isNothing, maybeToList, catMaybes)
 import Data.Monoid ((<>))
 import Data.String.Conversions
@@ -182,6 +182,8 @@ importAuthnRequest req = do
   _rqVersion      <- importVersion $ HS.protocolVersion proto
   _rqIssueInstant <- importTime $ HS.protocolIssueInstant proto
   _rqIssuer       <- importRequiredIssuer $ HS.protocolIssuer proto
+  _rqNameIDPolicy <- fmapFlipM importNameIDPolicy $ HS.authnRequestNameIDPolicy req
+
   fmapFlipM importURI (HS.protocolDestination proto) >>= \case
     Nothing -> pure ()
     Just dest -> die (Proxy @AuthnRequest) ("protocol destination not allowed: " <> show dest)
@@ -191,7 +193,9 @@ importAuthnRequest req = do
   pure AuthnRequest {..}
 
 exportAuthnRequest :: AuthnRequest -> HS.AuthnRequest
-exportAuthnRequest req = defAuthnRequest proto
+exportAuthnRequest req = (defAuthnRequest proto)
+  { HS.authnRequestNameIDPolicy = exportNameIDPolicy <$> req ^. rqNameIDPolicy
+  }
   where
     proto = (defProtocolType (exportID $ req ^. rqID) (exportTime $ req ^. rqIssueInstant))
       { HS.protocolVersion = exportVersion $ req ^. rqVersion
@@ -228,6 +232,45 @@ defProtocolType pid iinst = HS.ProtocolType
   }
 
 
+importNameIDPolicy :: (HasCallStack, MonadError String m) => HS.NameIDPolicy -> m NameIdPolicy
+importNameIDPolicy nip = do
+  _nidFormat             <- importNameIDFormat $ HS.nameIDPolicyFormat nip
+  let _nidSpNameQualifier = cs <$> HS.nameIDPolicySPNameQualifier nip
+      _nidAllowCreate     = HS.nameIDPolicyAllowCreate nip
+  pure NameIdPolicy {..}
+
+exportNameIDPolicy :: HasCallStack => NameIdPolicy -> HS.NameIDPolicy
+exportNameIDPolicy nip = HS.NameIDPolicy
+  { HS.nameIDPolicyFormat          = exportNameIDFormat $ nip ^. nidFormat
+  , HS.nameIDPolicySPNameQualifier = cs <$> nip ^. nidSpNameQualifier
+  , HS.nameIDPolicyAllowCreate     = nip ^. nidAllowCreate
+  }
+
+importNameIDFormat :: (HasCallStack, MonadError String m) => HS.IdentifiedURI HS.NameIDFormat -> m NameIDFormat
+importNameIDFormat = \case
+  HS.Identified HS.NameIDFormatUnspecified     -> pure NameIDFUnspecified
+  HS.Identified HS.NameIDFormatEmail           -> pure NameIDFEmail
+  HS.Identified HS.NameIDFormatX509            -> pure NameIDFX509
+  HS.Identified HS.NameIDFormatWindows         -> pure NameIDFWindows
+  HS.Identified HS.NameIDFormatKerberos        -> pure NameIDFKerberos
+  HS.Identified HS.NameIDFormatEntity          -> pure NameIDFEntity
+  HS.Identified HS.NameIDFormatPersistent      -> pure NameIDFPersistent
+  HS.Identified HS.NameIDFormatTransient       -> pure NameIDFTransient
+  bad@(HS.Identified HS.NameIDFormatEncrypted) -> throwError $ "unsupported: " <> show bad
+  bad@(HS.Unidentified _)                      -> throwError $ "unsupported: " <> show bad
+
+exportNameIDFormat :: NameIDFormat -> HS.IdentifiedURI HS.NameIDFormat
+exportNameIDFormat = \case
+  NameIDFUnspecified -> HS.Identified HS.NameIDFormatUnspecified
+  NameIDFEmail       -> HS.Identified HS.NameIDFormatEmail
+  NameIDFX509        -> HS.Identified HS.NameIDFormatX509
+  NameIDFWindows     -> HS.Identified HS.NameIDFormatWindows
+  NameIDFKerberos    -> HS.Identified HS.NameIDFormatKerberos
+  NameIDFEntity      -> HS.Identified HS.NameIDFormatEntity
+  NameIDFPersistent  -> HS.Identified HS.NameIDFormatPersistent
+  NameIDFTransient   -> HS.Identified HS.NameIDFormatTransient
+
+
 importAuthnResponse :: (HasCallStack, MonadError String m) => HS.Response -> m AuthnResponse
 importAuthnResponse rsp = do
   let rsptyp :: HS.StatusResponseType = HS.response rsp
@@ -240,7 +283,7 @@ importAuthnResponse rsp = do
   _rspDestination  <- fmapFlipM importURI $ HS.protocolDestination proto
   _rspIssuer       <- importOptionalIssuer $ HS.protocolIssuer proto
   _rspStatus       <- importStatus $ HS.status rsptyp
-  _rspPayload      <- importAssertion `mapM` HS.responseAssertions rsp
+  _rspPayload      <- maybe (throwError "no assertions") pure . NL.nonEmpty =<< (importAssertion `mapM` HS.responseAssertions rsp)
 
   pure Response {..}
 
@@ -443,12 +486,10 @@ exportURI uri = fromMaybe err . HS.parseURIReference . cs . renderURI $ uri
   where err = error $ "internal error: " <> show uri
 
 importStatus :: (HasCallStack, MonadError String m) => HS.Status -> m Status
-importStatus (HS.Status (HS.StatusCode HS.StatusSuccess []) Nothing Nothing) = pure StatusSuccess
-importStatus status = pure . StatusFailure . cs . show $ status
+importStatus = pure
 
 exportStatus :: HasCallStack => Status -> HS.Status
-exportStatus StatusSuccess = HS.Status (HS.StatusCode HS.StatusSuccess []) Nothing Nothing
-exportStatus bad = error $ "not implemented: " <> show bad
+exportStatus = id
 
 importIssuer :: (HasCallStack, MonadError String m) => HS.Issuer -> m Issuer
 importIssuer = fmap Issuer . (nameIDToURI <=< importNameID) . HS.issuer

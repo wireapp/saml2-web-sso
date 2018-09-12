@@ -26,6 +26,7 @@ import URI.ByteString  -- FUTUREWORK: should saml2-web-sso also use the URI from
 
 import qualified Data.List as L
 import qualified Data.Text as ST
+import qualified SAML2.Core as HS
 import qualified Data.X509 as X509
 import qualified Servant
 import qualified Text.XML as XML
@@ -141,8 +142,9 @@ data AuthnRequest = AuthnRequest
   , _rqIssueInstant     :: Time
   , _rqIssuer           :: Issuer
 
-    -- extended xml type (attribute requests, ...)
-    -- ...
+    -- extended xml type
+  , _rqNameIDPolicy     :: Maybe NameIdPolicy
+  -- ...  (e.g. attribute requests)
   }
   deriving (Eq, Show, Generic)
 
@@ -157,13 +159,13 @@ data RequestedAuthnContext = RequestedAuthnContext
 
 -- | [1/3.4.1.1]
 data NameIdPolicy = NameIdPolicy
-  { _nidFormat          :: Maybe ST
+  { _nidFormat          :: NameIDFormat
   , _nidSpNameQualifier :: Maybe ST
-  , _nidAllowCreate     :: Maybe Bool
+  , _nidAllowCreate     :: Bool  -- ^ default: 'False'
   } deriving (Eq, Show, Generic)
 
 -- | [1/3.4]
-type AuthnResponse = Response [Assertion]
+type AuthnResponse = Response (NonEmpty Assertion)
 
 -- | [1/3.2.2]
 data Response payload = Response
@@ -325,10 +327,18 @@ data Version = Version_2_0
   deriving (Eq, Show, Bounded, Enum, Generic)
 
 -- | [1/3.2.2.1;3.2.2.2]
-data Status =
-    StatusSuccess
-  | StatusFailure ST
-  deriving (Eq, Show, Generic)
+type Status = HS.Status
+
+statusIsSuccess :: MonadError String m => Status -> m ()
+statusIsSuccess = \case
+  HS.Status (HS.StatusCode HS.StatusSuccess _) _ _ -> pure ()
+  bad -> throwError $ "status: " <> show bad
+
+statusSuccess :: Status
+statusSuccess = HS.Status (HS.StatusCode HS.StatusSuccess []) Nothing Nothing
+
+statusFailure :: Status
+statusFailure = HS.Status (HS.StatusCode HS.StatusRequester []) Nothing Nothing
 
 
 ----------------------------------------------------------------------
@@ -471,7 +481,6 @@ makeLenses ''RequestedAuthnContext
 makeLenses ''Response
 makeLenses ''SPDescPre
 makeLenses ''Statement
-makeLenses ''Status
 makeLenses ''Subject
 makeLenses ''SubjectAndStatements
 makeLenses ''SubjectConfirmation
@@ -547,7 +556,7 @@ rspInResponseTo aresp = case ids of
         . (^. scdInResponseTo)
       =<< (^. scData)
       =<< (^. assContents . sasSubject . subjectConfirmations)
-      =<< aresp ^. rspPayload
+      =<< toList (aresp ^. rspPayload)
 
 
 ----------------------------------------------------------------------

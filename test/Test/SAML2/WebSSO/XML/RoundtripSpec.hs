@@ -23,9 +23,8 @@ mkprop gen = property $ forAll gen >>= \v -> tripping v enc dec
 prop_tripNameID :: Property
 prop_tripNameID = mkprop genNameID
 
--- FUTUREWORK: https://github.com/snoyberg/xml/issues/137
--- prop_tripIdPMetadata :: Property
--- prop_tripIdPMetadata = mkprop genIdPMetadata
+prop_tripIdPMetadata :: Property
+prop_tripIdPMetadata = mkprop genIdPMetadata
 
 prop_tripAuthnRequest :: Property
 prop_tripAuthnRequest = mkprop genAuthnRequest

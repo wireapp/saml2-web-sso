@@ -6,6 +6,7 @@ import Control.Monad.Except
 import Control.Monad.Writer
 import Data.Foldable (toList)
 import Data.List
+import Data.List.NonEmpty (NonEmpty)
 import Data.Maybe
 import Data.String.Conversions
 import Data.Time
@@ -93,12 +94,27 @@ createID = ID . fixMSAD . UUID.toText <$> createUUID
     fixMSAD :: ST -> ST
     fixMSAD = cs . ("id" <>) . filter (/= '-') . cs
 
+-- | Allow the IdP to create unknown users implicitly by mentioning them by email (this happens in
+-- 'rqNameIDPolicy').
+--
+-- NB: Using email addresses as unique identifiers between IdP and SP causes problems, since email
+-- addresses can change over time.  The best option may be to use UUIDs instead, and provide email
+-- addresses in SAML 'AuthnResponse' attributes or via scim.
+--
+-- Quote from the specs:
+--
+-- [3/4.1.4.1] If the service provider wishes to permit the identity provider to establish a new
+-- identifier for the principal if none exists, it MUST include a NameIDPolicy element with the
+-- AllowCreate attribute set to "true". Otherwise, only a principal for whom the identity provider
+-- has previously established an identifier usable by the service provider can be authenticated
+-- successfully.
 createAuthnRequest :: (SP m, SPStore m) => NominalDiffTime -> m AuthnRequest
 createAuthnRequest lifeExpectancySecs = do
   _rqID           <- createID
   _rqVersion      <- (^. cfgVersion) <$> getConfig
   _rqIssueInstant <- getNow
   _rqIssuer       <- Issuer <$> getLandingURI
+  let _rqNameIDPolicy = Just $ NameIdPolicy NameIDFEmail Nothing True
   storeRequest _rqID (addTime lifeExpectancySecs _rqIssueInstant)
   pure AuthnRequest{..}
 
@@ -178,9 +194,7 @@ judge resp = runJudgeT (judge' resp)
 
 judge' :: (HasCallStack, MonadJudge m, SP m, SPStore m) => AuthnResponse -> m AccessVerdict
 judge' resp = do
-  case resp ^. rspStatus of
-    StatusSuccess -> pure ()
-    bad -> deny ["status: " <> show bad]
+  either (deny . (:[])) pure . statusIsSuccess $ resp ^. rspStatus
 
   checkInResponseTo `mapM_` (resp ^. rspInRespTo)
   checkNotInFuture "Issuer instant" $ resp ^. rspIssueInstant
@@ -211,9 +225,8 @@ checkDestination msg (renderURI -> haveDest) = do
 -- (or 'SubjectConfirmationData', to be more specific).  if that's not the case, can we crash with
 -- an error?
 
-checkAssertions :: (SP m, SPStore m, MonadJudge m) => Maybe Issuer -> [Assertion] -> m AccessVerdict
-checkAssertions _ [] = giveup ["no assertions"]
-checkAssertions missuer assertions = do
+checkAssertions :: (SP m, SPStore m, MonadJudge m) => Maybe Issuer -> NonEmpty Assertion -> m AccessVerdict
+checkAssertions missuer (toList -> assertions) = do
   forM_ assertions $ \ass -> do
     checkNotInFuture "Assertion IssueInstant" (ass ^. assIssueInstant)
     storeAssertion (ass ^. assID) (ass ^. assEndOfLife)

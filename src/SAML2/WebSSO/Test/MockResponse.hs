@@ -59,7 +59,7 @@ mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp authnreq gran
         | otherwise   = "urn:oasis:names:tc:SAML:2.0:status:Requester"
 
   assertion :: [Node]
-    <- signElementIOAt 1 creds $ modifUnsignedAssertion
+    <- signElementIOAt 1 creds . modifUnsignedAssertion . repairNamespaces $
       [xml|
         <Assertion
           xmlns="urn:oasis:names:tc:SAML:2.0:assertion"
@@ -87,7 +87,7 @@ mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp authnreq gran
       |]
 
   let authnResponse :: Element
-      [NodeElement authnResponse] = modifAll
+      [NodeElement authnResponse] = modifAll . repairNamespaces $
         [xml|
           <samlp:Response
             xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"

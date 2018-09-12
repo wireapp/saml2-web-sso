@@ -199,8 +199,7 @@ parseIdPMetadata el@(Element _ attrs _) = do
 
 
 renderIdPMetadata :: HasCallStack => IdPMetadata -> Element
-renderIdPMetadata (IdPMetadata issuer requri (NL.toList -> certs)) = error "renderIdPMetadata is broken: https://github.com/snoyberg/xml/issues/137"
-                                                                   $ nodesToElem nodes
+renderIdPMetadata (IdPMetadata issuer requri (NL.toList -> certs)) = nodesToElem $ repairNamespaces nodes
   where
     nodes = [xml|
       <EntityDescriptor

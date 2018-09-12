@@ -123,3 +123,17 @@ mergeContentSiblings = Uniplate.transformBis
 
 normalizeDoc :: Document -> Document
 normalizeDoc = stripWhitespace . mergeContentSiblings
+
+
+-- | https://github.com/snoyberg/xml/issues/137
+repairNamespaces :: HasCallStack => [Node] -> [Node]
+repairNamespaces = fmap $ \case
+  NodeElement el -> NodeElement $ repairNamespacesEl el
+  other -> other
+
+-- | https://github.com/snoyberg/xml/issues/137
+repairNamespacesEl :: HasCallStack => Element -> Element
+repairNamespacesEl el = unwrap . parseText def . renderText def . mkDocument $ el
+  where
+    unwrap (Right (Document _ el' _)) = el'
+    unwrap (Left msg) = error $ show msg

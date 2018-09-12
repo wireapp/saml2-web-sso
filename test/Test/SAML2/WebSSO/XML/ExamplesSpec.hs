@@ -62,6 +62,7 @@ spec = describe "XML serialization" $ do
             , _rqVersion = Version_2_0
             , _rqIssueInstant = unsafeReadTime "2013-03-18T07:33:56Z"
             , _rqIssuer = iss
+            , _rqNameIDPolicy = Nothing
             }
           iss = Issuer $ unsafeParseURI "http://wire.com"
       decodeElem @Issuer @(Either String) (encodeElem iss) `shouldBe` Right iss
