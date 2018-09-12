@@ -190,7 +190,7 @@ importAuthnRequest [fromNode -> cursor] = do
     Right iss -> pure $ Issuer iss
     Left msg -> die (Proxy @AuthnRequest) ("no valid Issuer: " <> show msg)
   pure AuthnRequest {..}
-importAuthnRequest bad = die (Proxy @AuthnRequest) ("unvalid input: " <> show bad)
+importAuthnRequest bad = die (Proxy @AuthnRequest) ("invalid input: " <> show bad)
 
 
 -- | TODO: this makes the test suite fail, not sure why hsaml2 is unhappy with its own rendering.
