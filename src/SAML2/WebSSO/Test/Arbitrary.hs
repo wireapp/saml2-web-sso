@@ -4,9 +4,11 @@
 
 module SAML2.WebSSO.Test.Arbitrary where
 
+import Control.Monad
 import Data.List.NonEmpty as NL
-import Data.Maybe (catMaybes)
 import Data.String.Conversions
+import Data.Word (Word32)
+import GHC.Stack
 import Hedgehog
 import SAML2.WebSSO
 import Test.QuickCheck (Arbitrary(arbitrary, shrink))
@@ -110,7 +112,7 @@ genDuration :: Gen Duration
 genDuration = pure Duration
 
 genID :: Gen (ID a)
-genID = ID <$> genNiceText (Range.singleton 2)
+genID = ID . ("_" <>) . UUID.toText <$> genUUID
 
 genIssuer :: Gen Issuer
 genIssuer = Issuer <$> genURI
@@ -270,17 +272,12 @@ genXMLAttr = (,) <$> genXMLName <*> genNiceWord
 genXMLInstruction :: Gen Instruction
 genXMLInstruction = Instruction <$> genNiceWord <*> genNiceWord
 
-genUUID :: Gen UUID.UUID
-genUUID = Gen.element someUUIDs
-  where
-    someUUIDs :: [UUID.UUID]
-    someUUIDs = catMaybes $ UUID.fromText <$>
-      [ "b83919ba-792c-11e8-87a6-5be4268de632"
-      , "b8fd2ad0-792c-11e8-9e90-8fed1fff12b4"
-      , "b924b6cc-792c-11e8-992c-4754ae6de3a2"
-      , "b9479610-792c-11e8-adf7-03c8d9d56542"
-      , "d20556a6-792c-11e8-8a98-47e39b3c575f"
-      ]
+genUUID :: HasCallStack => Gen UUID.UUID
+genUUID = do
+  ws :: [Word32] <- fmap fromIntegral <$> replicateM 4 (Gen.int (Range.linear 0 1000000))
+  case ws of
+    [w1, w2, w3, w4] -> pure $ UUID.fromWords w1 w2 w3 w4
+    _ -> error "impossible"
 
 genIdPId :: Gen IdPId
 genIdPId = IdPId <$> genUUID

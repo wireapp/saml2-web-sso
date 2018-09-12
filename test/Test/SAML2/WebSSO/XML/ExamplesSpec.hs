@@ -58,7 +58,7 @@ spec = describe "XML serialization" $ do
   describe "AuthnRequest" $ do
     it "works" $ do
       let req = AuthnRequest
-            { _rqID = ID "aiandama aiandama"
+            { _rqID = ID "_233f9cee-b6bc-11e8-87ff-97a7b126bf5a"
             , _rqVersion = Version_2_0
             , _rqIssueInstant = unsafeReadTime "2013-03-18T07:33:56Z"
             , _rqIssuer = iss
