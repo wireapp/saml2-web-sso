@@ -24,6 +24,7 @@ import URI.ByteString  -- FUTUREWORK: should saml2-web-sso also use the URI from
                        -- depend on that via xml-conduit anyway.  (is it a problem though that it is
                        -- string-based?  is it less of a problem because we need it anyway?)
 
+import qualified Data.List as L
 import qualified Data.Text as ST
 import qualified Data.X509 as X509
 import qualified Servant
@@ -496,6 +497,23 @@ assEndOfLife = lens gt st
 
     st :: Assertion -> Time -> Assertion
     st ass tim = ass & assConditions . _Just . condNotOnOrAfter .~ Just tim
+
+-- | [3/4.1.4.2] SubjectConfirmation [...] If the containing message is in response to an
+-- AuthnRequest, then the InResponseTo attribute MUST match the request's ID.
+rspInResponseTo :: MonadError String m => AuthnResponse -> m (ID AuthnRequest)
+rspInResponseTo aresp = case ids of
+  [] -> throwError "not found"
+  [i] -> pure i
+  is@(i:_:_) -> if L.nub is == [i]
+                then pure i
+                else throwError $ "contradictory InResponseTo values: " <> show is
+  where
+    ids :: [ID AuthnRequest]
+    ids = maybeToList
+        . (^. scdInResponseTo)
+      =<< (^. scData)
+      =<< (^. assContents . sasSubject . subjectConfirmations)
+      =<< aresp ^. rspPayload
 
 
 ----------------------------------------------------------------------
