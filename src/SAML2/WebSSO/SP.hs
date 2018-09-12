@@ -203,7 +203,7 @@ checkNotInFuture msg tim = do
 -- IdP is aiming for is out of our hands here, and having the app's sso root url should be safe.
 checkDestination :: (HasConfig m, MonadJudge m) => String -> URI -> m ()
 checkDestination msg (renderURI -> haveDest) = do
-  (renderURI . (^. cfgSPAppURI) <$> getConfig) >>= \wantDest -> do
+  (renderURI <$> getLandingURI) >>= \wantDest -> do
     unless (wantDest `ST.isPrefixOf` haveDest) $ do
       deny ["bad " <> msg <> ": expected " <> show wantDest <> ", got " <> show haveDest]
 
