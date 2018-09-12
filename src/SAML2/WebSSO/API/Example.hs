@@ -79,7 +79,7 @@ loginStatus cookie = do
   pure $ maybe (NotLoggedIn loginOpts) (LoggedInAs logoutPath . cs . setCookieValue) cookie
 
 mkLoginOption :: SP m => IdPConfig a -> m (ST, ST)
-mkLoginOption icfg = (renderURI $ icfg ^. idpIssuer . fromIssuer,) <$> getPath' (SsoPathAuthnReq (icfg ^. idpId))
+mkLoginOption icfg = (renderURI $ icfg ^. idpMetadata . edIssuer . fromIssuer,) <$> getPath' (SsoPathAuthnReq (icfg ^. idpId))
 
 -- | only logout on this SP.
 localLogout :: SPHandler SimpleError m => m (WithCookieAndLocation ST)
@@ -174,7 +174,7 @@ instance HasConfig SimpleSP where
 instance SPStoreIdP SimpleError SimpleSP where
   storeIdPConfig _ = pure ()
   getIdPConfig = simpleGetIdPConfigBy (^. idpId)
-  getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpIssuer)
+  getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpMetadata . edIssuer)
 
 simpleGetIdPConfigBy :: (MonadError (Error err) m, HasConfig m, Show a, Ord a)
                      => (IdPConfig (ConfigExtra m) -> a) -> a -> m (IdPConfig (ConfigExtra m))

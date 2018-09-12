@@ -50,7 +50,7 @@ mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp authnreq gran
 
   let issueInstant    = renderTime now
       expires         = renderTime $ 3600 `addTime` now
-      issuer    :: ST = idp ^. idpIssuer . fromIssuer . to renderURI
+      issuer    :: ST = idp ^. idpMetadata . edIssuer . fromIssuer . to renderURI
       recipient :: ST = authnreq ^. rqIssuer . fromIssuer . to renderURI
       destination     = recipient
       inResponseTo    = renderID $ authnreq ^. rqID

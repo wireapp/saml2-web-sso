@@ -498,18 +498,6 @@ assEndOfLife = lens gt st
     st ass tim = ass & assConditions . _Just . condNotOnOrAfter .~ Just tim
 
 
--- TODO: remove the following three, they are more confusing than helpful!
-
-idpIssuer :: Lens' (IdPConfig extra) Issuer
-idpIssuer = idpMetadata . edIssuer
-
-idpRequestUri :: Lens' (IdPConfig extra) URI
-idpRequestUri = idpMetadata . edRequestURI
-
-idpPublicKeys :: Lens' (IdPConfig extra) (NonEmpty X509.SignedCertificate)
-idpPublicKeys = idpMetadata . edCertAuthnResponse
-
-
 ----------------------------------------------------------------------
 -- why is this not in the resp. packages?
 

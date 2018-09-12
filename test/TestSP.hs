@@ -105,7 +105,7 @@ instance SPStore TestSP where
 instance SPStoreIdP SimpleError TestSP where
   storeIdPConfig _ = pure ()
   getIdPConfig = simpleGetIdPConfigBy (^. idpId)
-  getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpIssuer)
+  getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpMetadata . edIssuer)
 
 instance SPHandler SimpleError TestSP where
   type NTCTX TestSP = Ctx

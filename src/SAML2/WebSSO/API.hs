@@ -122,7 +122,7 @@ simpleVerifyAuthnResponse :: forall m err. SPStoreIdP (Error err) m => Maybe Iss
 simpleVerifyAuthnResponse Nothing _ = throwError $ BadSamlResponse "missing issuer"
 simpleVerifyAuthnResponse (Just issuer) raw = do
     creds :: NonEmpty SignCreds <- do
-      certs <- (^. idpPublicKeys) <$> getIdPConfigByIssuer issuer
+      certs <- (^. idpMetadata . edCertAuthnResponse) <$> getIdPConfigByIssuer issuer
       forM certs $ \cert -> certToCreds cert &
         either (throwError . BadServerConfig . ((encodeElem issuer <> ": ") <>) . cs) pure
 
@@ -321,7 +321,7 @@ meta appName proxyAPI proxyAPIAuthResp = do
 authreq :: (SPHandler (Error err) m) => NominalDiffTime -> IdPId -> m (FormRedirect AuthnRequest)
 authreq lifeExpectancySecs idpname = do
   enterH "authreq"
-  uri <- (^. idpRequestUri) <$> getIdPConfig idpname
+  uri <- (^. idpMetadata . edRequestURI) <$> getIdPConfig idpname
   logger Debug $ "authreq uri: " <> cs (renderURI uri)
   req <- createAuthnRequest lifeExpectancySecs
   logger Debug $ "authreq req: " <> show req

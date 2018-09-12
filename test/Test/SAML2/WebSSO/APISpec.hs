@@ -260,7 +260,7 @@ spec = describe "API" $ do
       it "responds with a body that contains the IdPs response URL" $ do
         myidp <- liftIO mkmyidp
         get "/authreq/eafd1654-754d-11e8-9438-00163e5e6c14" `shouldRespondWith` 200
-          { matchBody = bodyContains . cs . renderURI $ myidp ^. idpRequestUri }
+          { matchBody = bodyContains . cs . renderURI $ myidp ^. idpMetadata . edRequestURI }
 
 
   describe "authresp" $ do
@@ -299,7 +299,7 @@ spec = describe "API" $ do
 
   describe "mkAuthnResponse" $ do
     it "Produces output that decodes into 'AuthnResponse'" $ do
-      idpcfg <- mkmyidp <&> idpPublicKeys .~ (sampleIdPCert :| [])
+      idpcfg <- mkmyidp <&> idpMetadata . edCertAuthnResponse .~ (sampleIdPCert :| [])
       ctx <- mkTestCtx1 <&> ctxConfig . cfgIdps .~ [idpcfg]
       Right authnreq :: Either SomeException AuthnRequest <- try . ioFromTestSP ctx $ createAuthnRequest 3600
       SignedAuthnResponse authnrespDoc <- mkAuthnResponse sampleIdPPrivkey idpcfg authnreq True
@@ -307,8 +307,8 @@ spec = describe "API" $ do
 
     let check :: X509.SignedCertificate -> (Either SomeException () -> Bool) -> IO ()
         check cert expectation = do
-          idpcfg <- mkmyidp <&> idpPublicKeys .~ (cert :| [])
-          let issuer = idpcfg ^. idpIssuer
+          idpcfg <- mkmyidp <&> idpMetadata . edCertAuthnResponse .~ (cert :| [])
+          let issuer = idpcfg ^. idpMetadata . edIssuer
           ctx <- mkTestCtx1 <&> ctxConfig . cfgIdps .~ [idpcfg]
           result :: Either SomeException () <- try . ioFromTestSP ctx $ do
             authnreq  <- createAuthnRequest 3600
