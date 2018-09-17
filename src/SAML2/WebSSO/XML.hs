@@ -491,6 +491,10 @@ importStatus = pure
 exportStatus :: HasCallStack => Status -> HS.Status
 exportStatus = id
 
+instance HasXML Status where
+  parse = wrapParse importStatus
+  render = wrapRender exportStatus
+
 importIssuer :: (HasCallStack, MonadError String m) => HS.Issuer -> m Issuer
 importIssuer = fmap Issuer . (nameIDToURI <=< importNameID) . HS.issuer
   where
