@@ -33,7 +33,6 @@ import Control.Exception (throwIO, try, ErrorCall(ErrorCall), SomeException)
 import Control.Monad.Except
 import Data.Either (isRight)
 import Data.EitherR (fmapL)
-import Data.Functor (($>))
 import Data.List (foldl')
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Monoid ((<>))
@@ -96,13 +95,16 @@ verifySelfSignature cert = do
         throwError "verifySelfSignature: invalid signature."
 
 -- | Read the KeyInfo element of a meta file's IDPSSODescriptor into a public key that can be used
--- for signing.  Tested for KeyInfo elements that contain an x509 certificate with a self-signed
--- signing RSA key.
+-- for signing.  Tested for KeyInfo elements that contain an x509 certificate.
+--
+-- Self-signatures are *not* verified.  The reason is that some IdPs (e.g. centrify) sign their
+-- certificates with external CAs.  If you need to authenticate 'KeyInfo' data, either call
+-- 'verifySelfSignature' yourself, or verify it with the approriate external cert.
 parseKeyInfo :: (HasCallStack, MonadError String m) => LT -> m X509.SignedCertificate
 parseKeyInfo (cs @LT @LBS -> lbs) = case HS.xmlToSAML @HS.KeyInfo =<< stripWhitespaceLBS lbs of
   Right keyinf -> case HS.keyInfoElements keyinf of
     HS.X509Data (HS.X509Certificate cert :| []) :| []
-      -> verifySelfSignature cert $> cert
+      -> {- verifySelfSignature cert >> -} pure cert
     HS.X509Data (HS.X509Certificate _ :| bad) :| bad'
       -> throwError $ "unreadable trailing data or noise: " <> show (bad, bad')
     unsupported
