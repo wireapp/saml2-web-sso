@@ -38,14 +38,13 @@ import qualified Data.UUID as UUID
 import qualified Data.X509 as X509
 import qualified Network.URI as OldURI
 import qualified SAML2.Bindings.Identifiers as HS
-import qualified SAML2.Core.Datatypes as HS hiding (AnyURI)
 import qualified SAML2.Core.Identifiers as HS
 import qualified SAML2.Core.Namespaces as HS
 import qualified SAML2.Core.Versioning as HS
 import qualified SAML2.Metadata.Metadata as HS
-import qualified SAML2.XML as HX hiding (AnyURI)
-import qualified SAML2.XML.Schema.Datatypes as HX
-import qualified SAML2.XML.Signature.Types as HX
+import qualified SAML2.XML as HX
+import qualified SAML2.XML.Schema.Datatypes as HX (Duration, UnsignedShort, Boolean)
+import qualified SAML2.XML.Signature.Types as HX (Signature)
 
 
 instance HasXML SPDesc where
@@ -57,10 +56,13 @@ instance HasXMLRoot SPDesc where
 
 
 spDesc :: SP m => ST -> URI -> URI -> NonEmpty ContactPerson -> m SPDescPre
-spDesc nick org resp contact = createUUID >>= \uuid -> spDesc' uuid nick org resp contact
+spDesc nick org resp contact = do
+  uuid <- createUUID
+  now <- getNow
+  pure $ spDesc' uuid now nick org resp contact
 
-spDesc' :: SP m => UUID.UUID -> ST -> URI -> URI -> NonEmpty ContactPerson -> m SPDescPre
-spDesc' uuid nick org resp contact = do
+spDesc' :: UUID.UUID -> Time -> ST -> URI -> URI -> NonEmpty ContactPerson -> SPDescPre
+spDesc' uuid now nick org resp contact =
   let _spdID             = uuid
       _spdCacheDuration  = months 1
       _spdOrgName        = nick
@@ -73,20 +75,35 @@ spDesc' uuid nick org resp contact = do
       months n = days n * 30
       days   n = n * 60 * 60 * 24
 
-  Time _spdValidUntil <- addTime (years 1) <$> getNow
-  pure SPDescPre {..}
+      Time _spdValidUntil = addTime (years 1) now
+  in SPDescPre {..}
 
 
 -- | FUTUREWORK: this can throw async errors!  this shouldn't be necessary!
 spMeta :: HasCallStack => SPDescPre -> SPDesc
-spMeta spdesc = either (error . show) SPDesc . parseLBS def . HX.samlToXML $ spMeta' spdesc
+spMeta spdesc = either (error . show) SPDesc . parseLBS def . HX.samlToXML $ spMetaEntityDesc spdesc
+
+spMetaEntityDesc :: HasCallStack => SPDescPre -> HS.Metadata
+spMetaEntityDesc spdesc = HS.EntityDescriptor
+    { HS.entityID                        = castURL (spdesc ^. spdOrgURL) :: HS.EntityID
+    , HS.metadataID                      = Nothing :: Maybe HX.ID
+    , HS.metadataValidUntil              = Nothing :: Maybe HX.DateTime
+    , HS.metadataCacheDuration           = Nothing :: Maybe HX.Duration
+    , HS.entityAttrs                     = mempty  :: HX.Nodes
+    , HS.metadataSignature               = Nothing :: Maybe HX.Signature
+    , HS.metadataExtensions              = mempty  :: HS.Extensions
+    , HS.entityDescriptors               = HS.Descriptors (spMetaSSODesc spdesc :| [])
+    , HS.entityOrganization              = Nothing :: Maybe HS.Organization
+    , HS.entityContactPerson             = mempty  :: [HS.Contact]
+    , HS.entityAditionalMetadataLocation = mempty  :: [HS.AdditionalMetadataLocation]
+    }
 
 -- | [4/2.6], [4/2]
-spMeta' :: HasCallStack => SPDescPre -> HS.Descriptor
-spMeta' spdesc = HS.SPSSODescriptor
+spMetaSSODesc :: HasCallStack => SPDescPre -> HS.Descriptor
+spMetaSSODesc spdesc = HS.SPSSODescriptor
     { HS.descriptorRole = HS.RoleDescriptor
-      { HS.roleDescriptorID = Just (UUID.toString $ spdesc ^. spdID) :: Maybe HS.ID
-      , HS.roleDescriptorValidUntil = Just (spdesc ^. spdValidUntil) :: Maybe HS.DateTime
+      { HS.roleDescriptorID = Just (UUID.toString $ spdesc ^. spdID) :: Maybe HX.ID
+      , HS.roleDescriptorValidUntil = Just (spdesc ^. spdValidUntil) :: Maybe HX.DateTime
       , HS.roleDescriptorCacheDuration = Just (spdesc ^. spdCacheDuration) :: Maybe HX.Duration
       , HS.roleDescriptorProtocolSupportEnumeration = [HS.samlURN HS.SAML20 ["protocol"]] :: [HX.AnyURI]
       , HS.roleDescriptorErrorURL = Nothing :: Maybe HX.AnyURI
