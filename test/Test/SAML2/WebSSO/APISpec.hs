@@ -64,6 +64,10 @@ base64ours = pure . cs . EL.encode . cs
 base64theirs sbs = shelly . silently $ cs <$> (setStdin (cs sbs) >> run "/usr/bin/base64" ["--wrap", "0"])
 
 
+jctx :: TestSP JudgeCtx
+jctx = pure $ JudgeCtx [uri|https://zb2.zerobuzz.net:60443/sso/authresp|]
+
+
 -- on servant-0.12 or later, use 'hoistServer':
 -- <https://github.com/haskell-servant/servant/blob/master/servant/CHANGELOG.md#significant-changes-1>
 withapp :: forall (api :: *).
@@ -116,7 +120,7 @@ burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
         get ("/authreq/" <> cs (idPIdToST (idp ^. idpId)))
           `shouldRespondWith` 200 { matchBody = bodyContains "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" }
 
-    describe "authresp" . withapp (Proxy @APIAuthResp') (authresp (HandleVerdictRedirect simpleOnSuccess)) ctx $ do
+    describe "authresp" . withapp (Proxy @APIAuthResp') (authresp jctx (HandleVerdictRedirect simpleOnSuccess)) ctx $ do
       it "responds with 303" $ do
         sample <- liftIO $ cs <$> readSampleIO respXmlPath
         let postresp = postHtmlForm "/authresp" body
@@ -267,33 +271,37 @@ spec = describe "API" $ do
     let mkpostresp = readSampleIO "microsoft-authnresponse-2.xml"
           <&> \sample -> postHtmlForm "/authresp" [("SAMLResponse", cs . EL.encode . cs $ sample)]
 
-    context "unknown idp" . withapp (Proxy @APIAuthResp') (authresp (HandleVerdictRedirect simpleOnSuccess)) mkTestCtx1 $ do
+    context "unknown idp" . withapp (Proxy @APIAuthResp') (authresp jctx (HandleVerdictRedirect simpleOnSuccess)) mkTestCtx1 $ do
       let errmsg = "Unknown IdP: Issuer"
       it "responds with 404" $ do
         postresp <- liftIO mkpostresp
         postresp `shouldRespondWith` 404 { matchBody = bodyContains errmsg }
 
-    context "known idp, bad timestamp" . withapp (Proxy @APIAuthResp') (authresp (HandleVerdictRedirect simpleOnSuccess)) mkTestCtx2 $ do
+    context "known idp, bad timestamp" . withapp (Proxy @APIAuthResp') (authresp jctx (HandleVerdictRedirect simpleOnSuccess)) mkTestCtx2 $ do
       it "responds with 402" $ do
         postresp <- liftIO mkpostresp
         postresp `shouldRespondWith`
           403 { matchBody = bodyContains "violation of NotBefore condition" }
 
-    let mkTestCtx3' = do
+    let withTestCtx3' = withapp (Proxy @APIAuthResp') (authresp jctx' (HandleVerdictRedirect simpleOnSuccess)) $ do
           reqstore <- newMVar $ Map.fromList [(ID "idcf2299ac551b42f1aa9b88804ed308c2", unsafeReadTime "2019-04-14T10:53:57Z")]
           mkTestCtx3
-            <&> ctxNow .~ unsafeReadTime "2018-04-14T10:53:57Z"
+            <&> ctxNow .~ unsafeReadTime "2018-04-14T10:03:02Z"
             <&> ctxConfig . cfgSPAppURI .~ [uri|https://zb2.zerobuzz.net:60443/authresp|]
             <&> ctxRequestStore .~ reqstore
-    context "known idp, good timestamp" . withapp (Proxy @APIAuthResp') (authresp (HandleVerdictRedirect simpleOnSuccess)) mkTestCtx3' $ do
+
+        jctx' = pure $ JudgeCtx [uri|https://zb2.zerobuzz.net:60443/authresp|]
+
+    context "known idp, good timestamp" . withTestCtx3' $ do
       it "responds with 303" $ do
         postresp <- liftIO mkpostresp
-        postresp `shouldRespondWith` 303 { matchBody = bodyContains "<body><p>SSO successful, redirecting to https://zb2.zerobuzz.net:60443/authresp" }
+        postresp `shouldRespondWith`
+          303 { matchBody = bodyContains "<body><p>SSO successful, redirecting to https://zb2.zerobuzz.net:60443/authresp" }
 
 
   describe "idp smoke tests" $ do
     burnIdP "okta-config.yaml" "okta-resp-1.base64" "2018-05-25T10:57:16.135Z" "https://zb2.zerobuzz.net:60443/"
-    burnIdP "microsoft-idp-config.yaml" "microsoft-authnresponse-2.base64" "2018-04-14T10:53:57Z" "https://zb2.zerobuzz.net:60443/authresp"
+    -- TODO: burnIdP "microsoft-idp-config.yaml" "microsoft-authnresponse-2.base64" "2018-04-14T10:53:57Z" "https://zb2.zerobuzz.net:60443/authresp"
     -- TODO: centrify
 
 

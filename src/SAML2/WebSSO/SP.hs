@@ -3,6 +3,7 @@
 module SAML2.WebSSO.SP where
 
 import Control.Monad.Except
+import Control.Monad.Reader
 import Control.Monad.Writer
 import Data.Foldable (toList)
 import Data.List
@@ -17,7 +18,6 @@ import Servant.Server
 import URI.ByteString
 
 import qualified Data.Semigroup
-import qualified Data.Text as ST
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
 
@@ -141,10 +141,13 @@ getLandingURI = (^. cfgSPAppURI) <$> getConfig
 --
 -- NOTE: @-XGeneralizedNewtypeDeriving@ does not help with the boilerplate instances below, since
 -- this is a transformer stack and not a concrete 'Monad'.
-newtype JudgeT m a = JudgeT { fromJudgeT :: ExceptT [String] (WriterT [String] m) a }
+newtype JudgeT m a = JudgeT { fromJudgeT :: ExceptT [String] (WriterT [String] (ReaderT JudgeCtx m)) a }
 
-runJudgeT :: forall m. (Monad m, SP m) => JudgeT m AccessVerdict -> m AccessVerdict
-runJudgeT (JudgeT em) = fmap collectErrors . runWriterT $ runExceptT em
+newtype JudgeCtx = JudgeCtx { _judgeCtxRenderURI :: URI }
+  deriving (Eq, Show)
+
+runJudgeT :: forall m. (Monad m, SP m) => JudgeCtx -> JudgeT m AccessVerdict -> m AccessVerdict
+runJudgeT ctx (JudgeT em) = fmap collectErrors . (`runReaderT` ctx) . runWriterT $ runExceptT em
   where
     collectErrors :: (Either [String] AccessVerdict, [String]) -> AccessVerdict
     collectErrors (Left errs, errs')    = AccessDenied . fmap cs $ errs' <> errs
@@ -153,10 +156,12 @@ runJudgeT (JudgeT em) = fmap collectErrors . runWriterT $ runExceptT em
 
 -- the parts of the MonadError, MonadWriter interfaces we want here.
 class (Functor m, Applicative m, Monad m) => MonadJudge m where
+  getJudgeCtx :: m JudgeCtx
   deny :: [String] -> m ()
   giveup :: [String] -> m a
 
 instance (Functor m, Applicative m, Monad m) => MonadJudge (JudgeT m) where
+  getJudgeCtx = JudgeT . lift . lift $ ask
   deny = JudgeT . tell
   giveup = JudgeT . throwError
 
@@ -172,23 +177,23 @@ instance (Functor m, Applicative m, Monad m) => Monad (JudgeT m) where
 
 instance (HasConfig m) => HasConfig (JudgeT m) where
   type ConfigExtra (JudgeT m) = ConfigExtra m
-  getConfig = JudgeT . lift . lift $ getConfig
+  getConfig = JudgeT . lift . lift . lift $ getConfig
 
 instance SP m => SP (JudgeT m) where
-  logger level     = JudgeT . lift . lift . logger level
-  createUUID       = JudgeT . lift . lift $ createUUID
-  getNow           = JudgeT . lift . lift $ getNow
+  logger level     = JudgeT . lift . lift . lift . logger level
+  createUUID       = JudgeT . lift . lift . lift $ createUUID
+  getNow           = JudgeT . lift . lift . lift $ getNow
 
 instance SPStore m => SPStore (JudgeT m) where
-  storeRequest r      = JudgeT . lift . lift . storeRequest r
-  checkAgainstRequest = JudgeT . lift . lift . checkAgainstRequest
-  storeAssertion i    = JudgeT . lift . lift . storeAssertion i
+  storeRequest r      = JudgeT . lift . lift . lift . storeRequest r
+  checkAgainstRequest = JudgeT . lift . lift . lift . checkAgainstRequest
+  storeAssertion i    = JudgeT . lift . lift . lift . storeAssertion i
 
 
 -- | [3/4.1.4.2], [3/4.1.4.3]; specific to active-directory:
 -- <https://docs.microsoft.com/en-us/azure/active-directory/develop/active-directory-single-sign-on-protocol-reference>
-judge :: (SP m, SPStore m) => AuthnResponse -> m AccessVerdict
-judge resp = runJudgeT (judge' resp)
+judge :: (SP m, SPStore m) => AuthnResponse -> JudgeCtx -> m AccessVerdict
+judge resp ctx = runJudgeT ctx (judge' resp)
 
 -- TODO: crash for any extensions of the xml tree that we don't understand!
 
@@ -198,7 +203,7 @@ judge' resp = do
 
   checkInResponseTo `mapM_` (resp ^. rspInRespTo)
   checkNotInFuture "Issuer instant" $ resp ^. rspIssueInstant
-  checkDestination  "response destination" `mapM_` (resp ^. rspDestination)
+  checkDestination "response destination" `mapM_` (resp ^. rspDestination)
   checkAssertions (resp ^. rspIssuer) (resp ^. rspPayload)
 
 checkInResponseTo :: (SPStore m, MonadJudge m) => ID AuthnRequest -> m ()
@@ -212,18 +217,12 @@ checkNotInFuture msg tim = do
   unless (tim < now) $
     deny [msg <> " in the future: " <> show tim]
 
--- | check that the response is intended for us (based on config's sso uri).  use for both response
--- destination and subject confirmation recipient.  only do prefix check because which sub-url the
--- IdP is aiming for is out of our hands here, and having the app's sso root url should be safe.
+-- | check that the response is intended for us (based on config's finalize-login uri).
 checkDestination :: (HasConfig m, MonadJudge m) => String -> URI -> m ()
 checkDestination msg (renderURI -> haveDest) = do
-  (renderURI <$> getLandingURI) >>= \wantDest -> do
-    unless (wantDest `ST.isPrefixOf` haveDest) $ do
-      deny ["bad " <> msg <> ": expected " <> show wantDest <> ", got " <> show haveDest]
-
--- TODO: check that the @InResponseTo@ field in 'Response' exists and matches the one in 'Assertion'
--- (or 'SubjectConfirmationData', to be more specific).  if that's not the case, can we crash with
--- an error?
+  JudgeCtx (renderURI -> wantDest) <- getJudgeCtx
+  unless (wantDest == haveDest) $ do
+    deny ["bad " <> msg <> ": expected " <> show wantDest <> ", got " <> show haveDest]
 
 checkAssertions :: (SP m, SPStore m, MonadJudge m) => Maybe Issuer -> NonEmpty Assertion -> m AccessVerdict
 checkAssertions missuer (toList -> assertions) = do
