@@ -143,7 +143,8 @@ getLandingURI = (^. cfgSPAppURI) <$> getConfig
 -- this is a transformer stack and not a concrete 'Monad'.
 newtype JudgeT m a = JudgeT { fromJudgeT :: ExceptT [String] (WriterT [String] (ReaderT JudgeCtx m)) a }
 
-newtype JudgeCtx = JudgeCtx SPDescPre
+newtype JudgeCtx = JudgeCtx { _judgeCtxRenderURI :: URI }
+  deriving (Eq, Show)
 
 runJudgeT :: forall m. (Monad m, SP m) => JudgeCtx -> JudgeT m AccessVerdict -> m AccessVerdict
 runJudgeT ctx (JudgeT em) = fmap collectErrors . (`runReaderT` ctx) . runWriterT $ runExceptT em
@@ -191,8 +192,8 @@ instance SPStore m => SPStore (JudgeT m) where
 
 -- | [3/4.1.4.2], [3/4.1.4.3]; specific to active-directory:
 -- <https://docs.microsoft.com/en-us/azure/active-directory/develop/active-directory-single-sign-on-protocol-reference>
-judge :: (SP m, SPStore m) => JudgeCtx -> AuthnResponse -> m AccessVerdict
-judge ctx resp = runJudgeT ctx (judge' resp)
+judge :: (SP m, SPStore m) => AuthnResponse -> JudgeCtx -> m AccessVerdict
+judge resp ctx = runJudgeT ctx (judge' resp)
 
 -- TODO: crash for any extensions of the xml tree that we don't understand!
 
@@ -219,8 +220,7 @@ checkNotInFuture msg tim = do
 -- | check that the response is intended for us (based on config's finalize-login uri).
 checkDestination :: (HasConfig m, MonadJudge m) => String -> URI -> m ()
 checkDestination msg (renderURI -> haveDest) = do
-  JudgeCtx spdesc <- getJudgeCtx
-  let wantDest = spdesc ^. spdResponseURL . to renderURI
+  JudgeCtx (renderURI -> wantDest) <- getJudgeCtx
   unless (wantDest == haveDest) $ do
     deny ["bad " <> msg <> ": expected " <> show wantDest <> ", got " <> show haveDest]
 

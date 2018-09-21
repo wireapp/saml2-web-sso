@@ -88,7 +88,7 @@ api :: forall err m. SPHandler (Error err) m => ST -> HandleVerdict m -> ServerT
 api appName handleVerdict =
        meta appName (Proxy @API) (Proxy @APIAuthResp')
   :<|> authreq'
-  :<|> authresp handleVerdict
+  :<|> authresp (JudgeCtx <$> getResponseURI (Proxy @API) (Proxy @APIAuthResp')) handleVerdict
 
 
 ----------------------------------------------------------------------
@@ -332,12 +332,12 @@ authreq' :: (SPHandler (Error err) m) => IdPId -> m (FormRedirect AuthnRequest)
 authreq' = authreq (8 * 60 * 60)
 
 -- | parse and validate response, and pass the verdict to a user-provided verdict handler.
-authresp :: SPHandler (Error err) m => HandleVerdict m -> AuthnResponseBody -> m (WithCookieAndLocation ST)
-authresp handleVerdict body = do
+authresp :: SPHandler (Error err) m => m JudgeCtx -> HandleVerdict m -> AuthnResponseBody -> m (WithCookieAndLocation ST)
+authresp jctx handleVerdict body = do
   enterH "authresp: entering"
   resp :: AuthnResponse <- fromAuthnResponseBody body
   logger Debug $ "authresp: " <> ppShow resp
-  verdict <- judge resp
+  verdict <- judge resp =<< jctx
   logger Debug $ "authresp: " <> show verdict
   case handleVerdict of
     HandleVerdictRedirect onsuccess -> simpleHandleVerdict onsuccess verdict
