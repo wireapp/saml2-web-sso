@@ -307,6 +307,8 @@ checkSubjectConfirmation ass conf = do
       deny ["bearer-confirmed assertions must be audience-restricted."]
       -- (the actual validation of the field, given it is Just, happens in 'judgeConditions'.)
 
+  checkSubjectConfirmationData bearer `mapM_` (conf ^. scData)
+
   pure bearer
 
 checkSubjectConfirmationData :: (HasConfig m, SP m, SPStore m, MonadJudge m)
