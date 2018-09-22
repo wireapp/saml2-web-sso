@@ -6,6 +6,8 @@ where
 import Control.Monad.Except
 import Data.String.Conversions
 import Data.Typeable
+import GHC.Stack
+import Lens.Micro
 import Text.XML.Util
 import URI.ByteString
 
@@ -29,6 +31,31 @@ parseURI' uri = either (die' (Just $ show uri) (Proxy @URI)) pure . parseURI lax
 -- | You probably should not use this.  If you have a string literal, consider "URI.ByteString.QQ".
 unsafeParseURI :: ST -> URI
 unsafeParseURI = either (error . ("could not parse config: " <>) . show) id . parseURI'
+
+-- | @uriSegments "/one/two" == uriSegments "one/two/" == uriSegments "///one//two///" == ["one", "two"]@
+uriSegments :: ST -> [ST]
+uriSegments = filter (not . ST.null) . ST.splitOn "/"
+
+uriUnSegments :: [ST] -> ST
+uriUnSegments = ("/" <>) . ST.intercalate "/"
+
+(-/) :: HasCallStack => ST -> ST -> ST
+oldpath -/ pathext = uriUnSegments . uriSegments $ oldpath <> "/" <> pathext
+
+(=/) :: HasCallStack => URI -> ST -> URI
+uri =/ pathext = normURI $ uri & pathL %~ (<> "/" <> cs pathext)
+
+normURI :: URI -> URI
+normURI = unsafeParseURI . cs . normalizeURIRef' URINormalizationOptions
+  { unoDowncaseScheme    = True
+  , unoDowncaseHost      = True
+  , unoDropDefPort       = False
+  , unoSlashEmptyPath    = True
+  , unoDropExtraSlashes  = True
+  , unoSortParameters    = True
+  , unoRemoveDotSegments = True
+  , unoDefaultPorts      = mempty
+  }
 
 -- | fmap an outer computation into an inner computation that may fail, then flip inner @n@ and
 -- outer @m@.  (except for the flip, this is just 'fmap'.)
