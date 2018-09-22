@@ -65,7 +65,7 @@ import qualified SAML2.WebSSO.XML.Meta as Meta
 -- saml web-sso api
 
 
-type APIMeta     = Get '[XML] SPDesc
+type APIMeta     = Get '[XML] SPMetadata
 type APIAuthReq  = Capture "idp" IdPId :> Get '[HTML] (FormRedirect AuthnRequest)
 type APIAuthResp = MultipartForm Mem AuthnResponseBody :> PostRedir '[HTML] (WithCookieAndLocation ST)
 
@@ -301,13 +301,13 @@ meta :: ( SPHandler (Error err) m
         , ToHttpApiData (MkLink endpoint)
 #endif
         )
-     => ST -> Proxy api -> Proxy endpoint -> m SPDesc
+     => ST -> Proxy api -> Proxy endpoint -> m SPMetadata
 meta appName proxyAPI proxyAPIAuthResp = do
   enterH "meta"
   landing <- getLandingURI
   resp <- getSsoURI proxyAPI proxyAPIAuthResp
   contacts <- (^. cfgContacts) <$> getConfig
-  Meta.spMeta <$> Meta.spDesc appName landing resp contacts
+  Meta.mkSPMetadata appName landing resp contacts
 
 -- | Create authnreq, store it for comparison against assertions later, and return it in an HTTP
 -- redirect together with the IdP's URI.

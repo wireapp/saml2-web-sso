@@ -7,7 +7,9 @@ import Control.Monad.Except
 import Data.Char (isSpace)
 import Data.Default (Default(..))
 import Data.Map as Map
+import Data.Proxy
 import Data.String.Conversions
+import Data.Typeable
 import GHC.Stack
 import Text.XML
 
@@ -18,6 +20,14 @@ import qualified SAML2.XML as HS
 import qualified Text.XML.HXT.Core as HXT
 import qualified Data.Tree.NTree.TypeDefs as HXT
 import qualified Text.XML.HXT.DOM.ShowXml
+
+
+die :: forall (a :: *) b c m. (Typeable a, Show b, MonadError String m) => Proxy a -> b -> m c
+die = die' Nothing
+
+die' :: forall (a :: *) b c m. (Typeable a, Show b, MonadError String m) => Maybe String -> Proxy a -> b -> m c
+die' mextra Proxy msg = throwError $
+  "HasXML: could not parse " <> show (typeOf @a undefined) <> ": " <> show msg <> maybe "" ("; " <>) mextra
 
 
 type Attrs = Map.Map Name ST
