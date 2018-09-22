@@ -10,6 +10,7 @@ import Control.Monad.IO.Class (liftIO)
 import Data.Either
 import Data.List.NonEmpty as NL
 import Data.String.Conversions
+import SAML2.Util
 import SAML2.WebSSO
 import System.Environment (setEnv)
 import System.IO.Unsafe (unsafePerformIO)
@@ -17,7 +18,6 @@ import Test.Hspec
 import Text.Show.Pretty (ppShow)
 import Text.XML
 import Text.XML.DSig as DSig
-import Text.XML.Util
 import URI.ByteString
 import Util
 

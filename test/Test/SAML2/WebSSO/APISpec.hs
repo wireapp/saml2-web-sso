@@ -14,6 +14,7 @@ import Data.EitherR
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.String.Conversions
 import Lens.Micro
+import SAML2.Util
 import SAML2.WebSSO
 import SAML2.WebSSO.Test.Arbitrary (genFormRedirect, genAuthnRequest)
 import SAML2.WebSSO.Test.Credentials
@@ -28,7 +29,6 @@ import Test.Hspec.Wai
 import Test.Hspec.Wai.Matcher
 import TestSP
 import Text.XML as XML
-import Text.XML.Util
 import URI.ByteString.QQ
 import Util
 

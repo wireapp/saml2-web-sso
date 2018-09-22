@@ -16,10 +16,10 @@ import Data.Typeable (Proxy(Proxy), Typeable)
 import GHC.Stack
 import Lens.Micro
 import Prelude hiding ((.), id)
+import SAML2.Util
 import SAML2.WebSSO.Types
 import Text.Show.Pretty (ppShow)
 import Text.XML hiding (renderText)
-import Text.XML.Util
 import URI.ByteString
 
 import qualified Data.List as List

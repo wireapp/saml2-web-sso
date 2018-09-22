@@ -36,12 +36,12 @@ import Network.HTTP.Media ((//))
 import Network.HTTP.Types
 import Network.Wai hiding (Response)
 import Network.Wai.Internal as Wai
+import SAML2.Util
 import SAML2.WebSSO.Config
 import SAML2.WebSSO.Error as SamlErr
 import SAML2.WebSSO.SP
 import SAML2.WebSSO.Types
 import SAML2.WebSSO.XML
-import Servant.API.ContentTypes as Servant
 import Servant.API as Servant hiding (URI(..))
 import Servant.Multipart
 import Servant.Server
@@ -50,7 +50,6 @@ import Text.Show.Pretty (ppShow)
 import Text.XML
 import Text.XML.Cursor
 import Text.XML.DSig
-import Text.XML.Util
 import URI.ByteString
 import Web.Cookie
 

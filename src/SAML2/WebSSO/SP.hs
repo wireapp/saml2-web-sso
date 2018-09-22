@@ -14,16 +14,15 @@ import Data.Time
 import Data.UUID (UUID)
 import GHC.Stack
 import Lens.Micro
+import SAML2.Util
+import SAML2.WebSSO.Config
+import SAML2.WebSSO.Types
 import Servant.Server
 import URI.ByteString
 
 import qualified Data.Semigroup
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
-
-import SAML2.WebSSO.Config
-import SAML2.WebSSO.Types
-import Text.XML.Util
 
 
 ----------------------------------------------------------------------

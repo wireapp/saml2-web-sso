@@ -15,6 +15,7 @@ Relevant parts of the standard are referenced throughout the code, using the not
 -}
 module SAML2.WebSSO (module X) where
 
+import SAML2.Util as X
 import SAML2.WebSSO.API as X
 import SAML2.WebSSO.Config as X
 import SAML2.WebSSO.Error as X

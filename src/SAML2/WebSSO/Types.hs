@@ -17,9 +17,9 @@ import GHC.Generics (Generic)
 import GHC.Stack
 import Lens.Micro
 import Lens.Micro.TH
+import SAML2.Util
 import SAML2.WebSSO.Orphans ()
 import SAML2.WebSSO.Types.TH (deriveJSONOptions)
-import Text.XML.Util
 import URI.ByteString  -- FUTUREWORK: should saml2-web-sso also use the URI from http-types?  we already
                        -- depend on that via xml-conduit anyway.  (is it a problem though that it is
                        -- string-based?  is it less of a problem because we need it anyway?)
