@@ -29,7 +29,6 @@ import qualified Data.Text as ST
 import qualified SAML2.Core as HS
 import qualified Data.X509 as X509
 import qualified Servant
-import qualified Text.XML as XML
 
 
 ----------------------------------------------------------------------
@@ -63,21 +62,17 @@ instance ToJSON Issuer where
 ----------------------------------------------------------------------
 -- meta [4/2.3.2]
 
--- | 'HS.Descriptor', but without exposing the use of hsaml2.
-newtype SPDesc = SPDesc XML.Document
-  deriving (Eq, Show, Generic)
-
 -- | high-level, condensed data uesd for constructing an 'SPDesc'.  what is not in here is set to
 -- some constant default.
-data SPDescPre = SPDescPre
-  { _spdID             :: UUID.UUID
-  , _spdValidUntil     :: UTCTime          -- FUTUREWORK: Time
-  , _spdCacheDuration  :: NominalDiffTime  -- FUTUREWORK: Duration
-  , _spdOrgName        :: ST
-  , _spdOrgDisplayName :: ST
-  , _spdOrgURL         :: URI
-  , _spdResponseURL    :: URI
-  , _spdContacts       :: NonEmpty ContactPerson
+data SPMetadata = SPMetadata
+  { _spID             :: UUID.UUID
+  , _spValidUntil     :: UTCTime          -- FUTUREWORK: Time
+  , _spCacheDuration  :: NominalDiffTime  -- FUTUREWORK: Duration
+  , _spOrgName        :: ST
+  , _spOrgDisplayName :: ST
+  , _spOrgURL         :: URI
+  , _spResponseURL    :: URI
+  , _spContacts       :: NonEmpty ContactPerson
   }
   deriving (Eq, Show, Generic)
 
@@ -479,7 +474,7 @@ makeLenses ''NameID
 makeLenses ''NameIdPolicy
 makeLenses ''RequestedAuthnContext
 makeLenses ''Response
-makeLenses ''SPDescPre
+makeLenses ''SPMetadata
 makeLenses ''Statement
 makeLenses ''Subject
 makeLenses ''SubjectAndStatements

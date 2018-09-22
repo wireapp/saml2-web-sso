@@ -2,18 +2,16 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module SAML2.WebSSO.XML.Meta
-  ( spdID
-  , spdValidUntil
-  , spdCacheDuration
-  , spdOrgName
-  , spdOrgDisplayName
-  , spdOrgURL
-  , spdResponseURL
-
-  , spDesc
-  , spMeta
-
-  , parseIdPMetadata, renderIdPMetadata
+  ( spID
+  , spValidUntil
+  , spCacheDuration
+  , spOrgName
+  , spOrgDisplayName
+  , spOrgURL
+  , spResponseURL
+  , mkSPMetadata
+  , parseIdPMetadata
+  , renderIdPMetadata
   ) where
 
 import Control.Monad.Except
@@ -47,45 +45,47 @@ import qualified SAML2.XML.Schema.Datatypes as HX (Duration, UnsignedShort, Bool
 import qualified SAML2.XML.Signature.Types as HX (Signature)
 
 
-instance HasXML SPDesc where
-  parse [NodeElement el] = pure . SPDesc $ Document defPrologue el defMiscellaneous
-  parse bad = die (Proxy @SPDesc) bad
+instance HasXML SPMetadata where
+  parse bad = die (Proxy @SPMetadata) bad  -- not implemented
 
-instance HasXMLRoot SPDesc where
-  renderRoot (SPDesc (Document _ el _)) = el
+instance HasXMLRoot SPMetadata where
+  renderRoot = unwrap . parseLBS def . HX.samlToXML . spMetaEntityDesc
+    where
+      unwrap = \case
+        Right (Document _ el _) -> el
+        bad -> error $ "HasXMLRoot SPMetadata: internal error: " <> show bad
 
 
-spDesc :: SP m => ST -> URI -> URI -> NonEmpty ContactPerson -> m SPDescPre
-spDesc nick org resp contact = do
+-- | Construct SP metadata with a new UUID and current time stamp.
+--
+-- TODO: what are the arguments 'org' and 'resp' used for by whom exactly?
+mkSPMetadata :: SP m => ST -> URI -> URI -> NonEmpty ContactPerson -> m SPMetadata
+mkSPMetadata nick org resp contact = do
   uuid <- createUUID
   now <- getNow
-  pure $ spDesc' uuid now nick org resp contact
+  pure $ mkSPMetadata' uuid now nick org resp contact
 
-spDesc' :: UUID.UUID -> Time -> ST -> URI -> URI -> NonEmpty ContactPerson -> SPDescPre
-spDesc' uuid now nick org resp contact =
-  let _spdID             = uuid
-      _spdCacheDuration  = months 1
-      _spdOrgName        = nick
-      _spdOrgDisplayName = nick
-      _spdOrgURL         = org
-      _spdResponseURL    = resp
-      _spdContacts       = contact
+mkSPMetadata' :: UUID.UUID -> Time -> ST -> URI -> URI -> NonEmpty ContactPerson -> SPMetadata
+mkSPMetadata' uuid now nick org resp contact =
+  let _spID             = uuid
+      _spCacheDuration  = months 1
+      _spOrgName        = nick
+      _spOrgDisplayName = nick
+      _spOrgURL         = org
+      _spResponseURL    = resp
+      _spContacts       = contact
 
       years  n = days n * 365
       months n = days n * 30
       days   n = n * 60 * 60 * 24
 
-      Time _spdValidUntil = addTime (years 1) now
-  in SPDescPre {..}
+      Time _spValidUntil = addTime (years 1) now
+  in SPMetadata {..}
 
 
--- | FUTUREWORK: this can throw async errors!  this shouldn't be necessary!
-spMeta :: HasCallStack => SPDescPre -> SPDesc
-spMeta spdesc = either (error . show) SPDesc . parseLBS def . HX.samlToXML $ spMetaEntityDesc spdesc
-
-spMetaEntityDesc :: HasCallStack => SPDescPre -> HS.Metadata
+spMetaEntityDesc :: HasCallStack => SPMetadata -> HS.Metadata
 spMetaEntityDesc spdesc = HS.EntityDescriptor
-    { HS.entityID                        = castURL (spdesc ^. spdOrgURL) :: HS.EntityID
+    { HS.entityID                        = castURL (spdesc ^. spOrgURL) :: HS.EntityID
     , HS.metadataID                      = Nothing :: Maybe HX.ID
     , HS.metadataValidUntil              = Nothing :: Maybe HX.DateTime
     , HS.metadataCacheDuration           = Nothing :: Maybe HX.Duration
@@ -99,12 +99,12 @@ spMetaEntityDesc spdesc = HS.EntityDescriptor
     }
 
 -- | [4/2.6], [4/2]
-spMetaSSODesc :: HasCallStack => SPDescPre -> HS.Descriptor
+spMetaSSODesc :: HasCallStack => SPMetadata -> HS.Descriptor
 spMetaSSODesc spdesc = HS.SPSSODescriptor
     { HS.descriptorRole = HS.RoleDescriptor
-      { HS.roleDescriptorID = Just (UUID.toString $ spdesc ^. spdID) :: Maybe HX.ID
-      , HS.roleDescriptorValidUntil = Just (spdesc ^. spdValidUntil) :: Maybe HX.DateTime
-      , HS.roleDescriptorCacheDuration = Just (spdesc ^. spdCacheDuration) :: Maybe HX.Duration
+      { HS.roleDescriptorID = Just (UUID.toString $ spdesc ^. spID) :: Maybe HX.ID
+      , HS.roleDescriptorValidUntil = Just (spdesc ^. spValidUntil) :: Maybe HX.DateTime
+      , HS.roleDescriptorCacheDuration = Just (spdesc ^. spCacheDuration) :: Maybe HX.Duration
       , HS.roleDescriptorProtocolSupportEnumeration = [HS.samlURN HS.SAML20 ["protocol"]] :: [HX.AnyURI]
       , HS.roleDescriptorErrorURL = Nothing :: Maybe HX.AnyURI
       , HS.roleDescriptorAttrs = [] :: HX.Nodes
@@ -114,11 +114,11 @@ spMetaSSODesc spdesc = HS.SPSSODescriptor
       , HS.roleDescriptorOrganization = Just HS.Organization
         { HS.organizationAttrs = []
         , HS.organizationExtensions = HS.Extensions []
-        , HS.organizationName = HS.Localized "EN" (cs $ spdesc ^. spdOrgName) :| []
-        , HS.organizationDisplayName = HS.Localized "EN" (cs $ spdesc ^. spdOrgDisplayName) :| []
-        , HS.organizationURL = HS.Localized "EN" (castURL $ spdesc ^. spdOrgURL) :| [] :: HX.List1 HS.LocalizedURI
+        , HS.organizationName = HS.Localized "EN" (cs $ spdesc ^. spOrgName) :| []
+        , HS.organizationDisplayName = HS.Localized "EN" (cs $ spdesc ^. spOrgDisplayName) :| []
+        , HS.organizationURL = HS.Localized "EN" (castURL $ spdesc ^. spOrgURL) :| [] :: HX.List1 HS.LocalizedURI
         }
-      , HS.roleDescriptorContactPerson = toList (spdesc ^. spdContacts) <&> \contact ->
+      , HS.roleDescriptorContactPerson = toList (spdesc ^. spContacts) <&> \contact ->
           HS.ContactPerson
             { HS.contactType = castContactType $ contact ^. cntType
             , HS.contactAttrs = []
@@ -141,7 +141,7 @@ spMetaSSODesc spdesc = HS.SPSSODescriptor
     , HS.descriptorAssertionConsumerService = HS.IndexedEndpoint
       { HS.indexedEndpoint = HS.Endpoint
         { HS.endpointBinding = HX.Identified HS.BindingHTTPPOST :: HX.IdentifiedURI HS.Binding
-        , HS.endpointLocation = castURL $ spdesc ^. spdResponseURL :: HX.AnyURI
+        , HS.endpointLocation = castURL $ spdesc ^. spResponseURL :: HX.AnyURI
         , HS.endpointResponseLocation = Nothing :: Maybe HX.AnyURI
         , HS.endpointAttrs = [] :: HX.Nodes
         , HS.endpointXML = [] :: HX.Nodes

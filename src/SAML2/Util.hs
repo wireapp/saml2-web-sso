@@ -14,14 +14,6 @@ import URI.ByteString
 import qualified Data.Text as ST
 
 
-die :: forall (a :: *) b c m. (Typeable a, Show b, MonadError String m) => Proxy a -> b -> m c
-die = die' Nothing
-
-die' :: forall (a :: *) b c m. (Typeable a, Show b, MonadError String m) => Maybe String -> Proxy a -> b -> m c
-die' mextra Proxy msg = throwError $
-  "HasXML: could not parse " <> show (typeOf @a undefined) <> ": " <> show msg <> maybe "" ("; " <>) mextra
-
-
 renderURI :: URI -> ST
 renderURI = cs . serializeURIRef'
 
