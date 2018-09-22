@@ -213,18 +213,24 @@ data Path = SpPathHome | SpPathLocalLogout | SpPathSingleLogout
   deriving (Eq, Show)
 
 
-getPath :: (HasConfig m, HasCallStack) => Path -> m URI
-getPath = fmap unsafeParseURI . getPath'
-
 getPath' :: forall m. (HasConfig m) => Path -> m ST
-getPath' = fmap cs . \case
-  SpPathHome         -> sp  ""
-  SpPathLocalLogout  -> sp  "/logout/local"
-  SpPathSingleLogout -> sp  "/logout/single"
-  SsoPathMeta        -> sso "/meta"
-  SsoPathAuthnReq ip -> sso "/authreq" <&> withidp ip
-  SsoPathAuthnResp   -> sso "/authresp"
-  where
-    sp  p = appendURI p . (^. cfgSPAppURI) <$> getConfig
-    sso p = appendURI p . (^. cfgSPSsoURI) <$> getConfig
-    withidp (IdPId uuid) = (<> ("/" <> cs (UUID.toString uuid)))
+getPath' = fmap renderURI . getPath
+
+getPath :: forall m. (HasConfig m) => Path -> m URI
+getPath path = do
+  cfg <- getConfig
+
+  let sp, sso :: ST -> URI
+      sp = ((cfg ^. cfgSPAppURI) -/)
+      sso = ((cfg ^. cfgSPSsoURI) -/)
+
+      withidp :: IdPId -> URI -> URI
+      withidp (IdPId uuid) = (-/ UUID.toText uuid)
+
+  pure $ case path of
+    SpPathHome         -> sp  ""
+    SpPathLocalLogout  -> sp  "/logout/local"
+    SpPathSingleLogout -> sp  "/logout/single"
+    SsoPathMeta        -> sso "/meta"
+    SsoPathAuthnReq ip -> withidp ip $ sso "/authreq"
+    SsoPathAuthnResp   -> sso "/authresp"

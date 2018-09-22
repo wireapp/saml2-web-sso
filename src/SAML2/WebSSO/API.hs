@@ -87,7 +87,7 @@ api :: forall err m. SPHandler (Error err) m => ST -> HandleVerdict m -> ServerT
 api appName handleVerdict =
        meta appName (Proxy @API) (Proxy @APIAuthResp')
   :<|> authreq'
-  :<|> authresp (JudgeCtx <$> getResponseURI (Proxy @API) (Proxy @APIAuthResp')) handleVerdict
+  :<|> authresp (JudgeCtx <$> getSsoURI (Proxy @API) (Proxy @APIAuthResp')) handleVerdict
 
 
 ----------------------------------------------------------------------
@@ -271,7 +271,7 @@ setHttpCachePolicy ap rq respond = ap rq $ respond . addHeadersToResponse httpCa
 ----------------------------------------------------------------------
 -- paths
 
-getResponseURI :: forall m endpoint api err.
+getSsoURI :: forall m endpoint api err.
                   ( HasCallStack, SP m
                   , MonadError (Error err) m
                   , IsElem endpoint api
@@ -283,16 +283,10 @@ getResponseURI :: forall m endpoint api err.
 #endif
                   )
                => Proxy api -> Proxy endpoint -> m URI
-getResponseURI proxyAPI proxyAPIAuthResp = resp =<< (^. cfgSPSsoURI) <$> getConfig
+getSsoURI proxyAPI proxyAPIAuthResp = extpath . (^. cfgSPSsoURI) <$> getConfig
   where
-    resp :: URI -> m URI
-    resp uri = either showmsg pure (parseURI' uri')
-      where
-        uri' :: ST
-        uri' = cs $ appendURI (cs . toUrlPiece $ safeLink proxyAPI proxyAPIAuthResp) uri
-
-        showmsg :: String -> m a
-        showmsg = throwError . BadServerConfig . cs . (<> (": " <> show uri'))
+    extpath :: URI -> URI
+    extpath = (-/ (cs . toUrlPiece $ safeLink proxyAPI proxyAPIAuthResp))
 
 
 ----------------------------------------------------------------------
@@ -311,7 +305,7 @@ meta :: ( SPHandler (Error err) m
 meta appName proxyAPI proxyAPIAuthResp = do
   enterH "meta"
   landing <- getLandingURI
-  resp <- getResponseURI proxyAPI proxyAPIAuthResp
+  resp <- getSsoURI proxyAPI proxyAPIAuthResp
   contacts <- (^. cfgContacts) <$> getConfig
   Meta.spMeta <$> Meta.spDesc appName landing resp contacts
 

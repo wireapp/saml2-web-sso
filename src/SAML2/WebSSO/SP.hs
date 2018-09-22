@@ -121,12 +121,6 @@ createAuthnRequest lifeExpectancySecs = do
 ----------------------------------------------------------------------
 -- paths
 
-appendURI :: SBS -> URI -> SBS
-appendURI path uri = norm uri { uriPath = uriPath uri <> path }
-  where
-    norm :: URI -> SBS
-    norm = normalizeURIRef' httpNormalization
-
 getLandingURI :: (HasCallStack, HasConfig m) => m URI
 getLandingURI = (^. cfgSPAppURI) <$> getConfig
 
