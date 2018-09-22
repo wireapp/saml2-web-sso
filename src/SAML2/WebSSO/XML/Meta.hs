@@ -23,6 +23,7 @@ import Data.Proxy
 import Data.String.Conversions
 import GHC.Stack
 import Lens.Micro
+import SAML2.Util
 import SAML2.WebSSO.SP
 import SAML2.WebSSO.Types
 import SAML2.WebSSO.XML
@@ -30,7 +31,6 @@ import Text.Hamlet.XML
 import Text.XML
 import Text.XML.Cursor
 import Text.XML.DSig (parseKeyInfo, renderKeyInfo)
-import Text.XML.Util
 import URI.ByteString
 
 import qualified Data.Map as Map

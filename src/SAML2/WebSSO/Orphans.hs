@@ -5,8 +5,8 @@ module SAML2.WebSSO.Orphans where
 import Data.Aeson
 import Data.String.Conversions
 import Data.X509 as X509
+import SAML2.Util (parseURI', renderURI)
 import Text.XML.DSig
-import Text.XML.Util (parseURI', renderURI)
 import URI.ByteString
 
 

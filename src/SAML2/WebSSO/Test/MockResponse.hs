@@ -10,11 +10,11 @@ import Data.UUID as UUID
 import Data.UUID.V4 as UUID
 import GHC.Stack
 import Lens.Micro
+import SAML2.Util
 import SAML2.WebSSO
 import Text.Hamlet.XML (xml)
 import Text.XML
 import Text.XML.DSig
-import Text.XML.Util
 
 
 newtype SignedAuthnResponse = SignedAuthnResponse { fromSignedAuthnResponse :: Document }

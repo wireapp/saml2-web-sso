@@ -22,6 +22,7 @@ import Data.UUID as UUID
 import GHC.Stack
 import Lens.Micro
 import Network.Wai hiding (Response)
+import SAML2.Util
 import SAML2.WebSSO
 import Servant.API hiding (URI(..))
 import Servant.Server
@@ -30,7 +31,6 @@ import Servant.Utils.Enter
 #endif
 import Text.Hamlet.XML
 import Text.XML
-import Text.XML.Util
 import URI.ByteString
 import Web.Cookie
 
