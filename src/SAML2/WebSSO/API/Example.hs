@@ -221,11 +221,11 @@ getPath path = do
   cfg <- getConfig
 
   let sp, sso :: ST -> URI
-      sp = ((cfg ^. cfgSPAppURI) -/)
-      sso = ((cfg ^. cfgSPSsoURI) -/)
+      sp = ((cfg ^. cfgSPAppURI) =/)
+      sso = ((cfg ^. cfgSPSsoURI) =/)
 
       withidp :: IdPId -> URI -> URI
-      withidp (IdPId uuid) = (-/ UUID.toText uuid)
+      withidp (IdPId uuid) = (=/ UUID.toText uuid)
 
   pure $ case path of
     SpPathHome         -> sp  ""

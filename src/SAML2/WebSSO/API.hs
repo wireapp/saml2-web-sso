@@ -286,7 +286,7 @@ getSsoURI :: forall m endpoint api err.
 getSsoURI proxyAPI proxyAPIAuthResp = extpath . (^. cfgSPSsoURI) <$> getConfig
   where
     extpath :: URI -> URI
-    extpath = (-/ (cs . toUrlPiece $ safeLink proxyAPI proxyAPIAuthResp))
+    extpath = (=/ (cs . toUrlPiece $ safeLink proxyAPI proxyAPIAuthResp))
 
 
 ----------------------------------------------------------------------
