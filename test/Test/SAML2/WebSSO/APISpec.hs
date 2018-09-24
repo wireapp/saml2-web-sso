@@ -244,7 +244,7 @@ spec = describe "API" $ do
     it  "roundtrip-2" $ Right c2 `shouldBe` rndtrip c2
 
 
-  describe "meta" . withapp (Proxy @APIMeta') (meta "toy-sp" (Proxy @API) (Proxy @APIAuthResp')) mkTestCtx1 $ do
+  describe "meta" . withapp (Proxy @APIMeta') (meta "toy-sp" (getSsoURI (Proxy @API) (Proxy @APIAuthResp'))) mkTestCtx1 $ do
     it "responds with 200 and an 'SPSSODescriptor'" $ do
       get "/meta" `shouldRespondWith` 200 { matchBody = bodyContains "OrganizationName xml:lang=\"EN\">toy-sp" }
 
