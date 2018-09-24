@@ -215,7 +215,7 @@ judge' resp = do
 
   checkInResponseTo `mapM_` (resp ^. rspInRespTo)
   checkNotInFuture "Issuer instant" $ resp ^. rspIssueInstant
-  checkDestination "response destination" `mapM_` (resp ^. rspDestination)
+  maybe (pure ()) (checkDestination "response destination") (resp ^. rspDestination)
   checkAssertions (resp ^. rspIssuer) (resp ^. rspPayload)
 
 checkInResponseTo :: (SPStore m, MonadJudge m) => ID AuthnRequest -> m ()
@@ -229,12 +229,17 @@ checkNotInFuture msg tim = do
   unless (tim < now) $
     deny [msg <> " in the future: " <> show tim]
 
--- | check that the response is intended for us (based on config's finalize-login uri).
+-- | Check that the response is intended for us (based on config's finalize-login uri stored in
+-- 'JudgeCtx').
 checkDestination :: (HasConfig m, MonadJudge m) => String -> URI -> m ()
-checkDestination msg (renderURI -> haveDest) = do
-  JudgeCtx (renderURI -> wantDest) <- getJudgeCtx
-  unless (wantDest == haveDest) $ do
-    deny ["bad " <> msg <> ": expected " <> show wantDest <> ", got " <> show haveDest]
+checkDestination msg (renderURI -> expectedByIdp) = do
+  JudgeCtx (renderURI -> expectedByUs) <- getJudgeCtx
+  unless (expectedByUs == expectedByIdp) $ do
+    deny [mconcat [ "bad ",  msg, ": "
+                  , "expected by us: ", show expectedByUs, "; "
+                  , "expected by IdP: any of " <> show expectedByIdp
+                  ]
+         ]
 
 checkAssertions :: (SP m, SPStore m, MonadJudge m) => Maybe Issuer -> NonEmpty Assertion -> m AccessVerdict
 checkAssertions missuer (toList -> assertions) = do
@@ -333,7 +338,7 @@ checkSubjectConfirmationData bearer confdat = do
   checkDestination "confirmation recipient" $ confdat ^. scdRecipient
 
   getNow >>= \now -> when (now >= confdat ^. scdNotOnOrAfter) $
-    deny ["SubjectConfirmation with invalid NotOnOfAfter: " <> show (confdat ^. scdNotOnOrAfter)]
+    deny ["SubjectConfirmation with invalid NotOnOrAfter: " <> show (confdat ^. scdNotOnOrAfter)]
 
   checkInResponseTo `mapM_` (confdat ^. scdInResponseTo)
 
