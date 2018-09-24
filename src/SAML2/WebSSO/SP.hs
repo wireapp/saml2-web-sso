@@ -334,7 +334,7 @@ checkSubjectConfirmationData bearer confdat = do
   checkDestination "confirmation recipient" $ confdat ^. scdRecipient
 
   getNow >>= \now -> when (now >= confdat ^. scdNotOnOrAfter) $
-    deny ["SubjectConfirmation with invalid NotOnOfAfter: " <> show (confdat ^. scdNotOnOrAfter)]
+    deny ["SubjectConfirmation with invalid NotOnOrAfter: " <> show (confdat ^. scdNotOnOrAfter)]
 
   checkInResponseTo `mapM_` (confdat ^. scdInResponseTo)
 
