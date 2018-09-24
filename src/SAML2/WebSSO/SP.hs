@@ -215,7 +215,7 @@ judge' resp = do
 
   checkInResponseTo `mapM_` (resp ^. rspInRespTo)
   checkNotInFuture "Issuer instant" $ resp ^. rspIssueInstant
-  checkDestination "response destination" `mapM_` (resp ^. rspDestination)
+  maybe (pure ()) (checkDestination "response destination") (resp ^. rspDestination)
   checkAssertions (resp ^. rspIssuer) (resp ^. rspPayload)
 
 checkInResponseTo :: (SPStore m, MonadJudge m) => ID AuthnRequest -> m ()
@@ -235,7 +235,11 @@ checkDestination :: (HasConfig m, MonadJudge m) => String -> URI -> m ()
 checkDestination msg (renderURI -> expectedByIdp) = do
   JudgeCtx (renderURI -> expectedByUs) <- getJudgeCtx
   unless (expectedByUs == expectedByIdp) $ do
-    deny ["bad " <> msg <> ": expected by us: " <> show expectedByUs <> "; expected by IdP: " <> show expectedByIdp]
+    deny [mconcat [ "bad ",  msg, ": "
+                  , "expected by us: ", show expectedByUs, "; "
+                  , "expected by IdP: any of " <> show expectedByIdp
+                  ]
+         ]
 
 checkAssertions :: (SP m, SPStore m, MonadJudge m) => Maybe Issuer -> NonEmpty Assertion -> m AccessVerdict
 checkAssertions missuer (toList -> assertions) = do

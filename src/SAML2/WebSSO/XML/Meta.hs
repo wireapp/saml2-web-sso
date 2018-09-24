@@ -58,7 +58,8 @@ instance HasXMLRoot SPMetadata where
 
 -- | Construct SP metadata with a new UUID and current time stamp.
 --
--- TODO: what are the arguments 'org' and 'resp' used for by whom exactly?
+-- The @resp@ argument here must match the @finalize-login@ end-point (as can be constructed by
+-- 'getSsoURL').
 mkSPMetadata :: SP m => ST -> URI -> URI -> NonEmpty ContactPerson -> m SPMetadata
 mkSPMetadata nick org resp contact = do
   uuid <- createUUID
