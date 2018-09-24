@@ -20,7 +20,6 @@
 module SAML2.WebSSO.API where
 
 import Control.Monad.Except hiding (ap)
-import Data.Binary.Builder (toLazyByteString)
 import Data.EitherR
 import Data.Function
 import Data.List
@@ -41,6 +40,7 @@ import SAML2.WebSSO.Error as SamlErr
 import SAML2.WebSSO.SP
 import SAML2.WebSSO.Types
 import SAML2.WebSSO.XML
+import SAML2.WebSSO.Cookie
 import Servant.API as Servant hiding (URI(..))
 import Servant.Multipart
 import Servant.Server
@@ -50,9 +50,7 @@ import Text.XML
 import Text.XML.Cursor
 import Text.XML.DSig
 import URI.ByteString
-import Web.Cookie
 
-import qualified Data.ByteString.Builder as SBSBuilder
 import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
 import qualified Data.Text as ST
@@ -242,10 +240,7 @@ mkHtml nodes = renderLBS def doc
     rootattr = Map.fromList [("xmlns", "http://www.w3.org/1999/xhtml"), ("xml:lang", "en")]
 
 
-type WithCookieAndLocation = Headers '[Servant.Header "Set-Cookie" SetCookie, Servant.Header "Location" URI]
-
-instance ToHttpApiData SetCookie where
-  toUrlPiece = cs . SBSBuilder.toLazyByteString . renderSetCookie
+type WithCookieAndLocation = Headers '[Servant.Header "Set-Cookie" SetSAMLCookie, Servant.Header "Location" URI]
 
 instance ToHttpApiData URI where
   toUrlPiece = renderURI
@@ -308,7 +303,7 @@ authresp jctx handleVerdict body = do
     HandleVerdictRaw action -> throwError . CustomServant =<< action resp verdict
 
 
-type OnSuccessRedirect m = UserRef -> m (SetCookie, URI)
+type OnSuccessRedirect m = UserRef -> m (SetSAMLCookie, URI)
 
 simpleOnSuccess :: SPHandler (Error err) m => OnSuccessRedirect m
 simpleOnSuccess uid = (togglecookie . Just . userRefToST $ uid,) <$> getLandingURI
@@ -346,39 +341,3 @@ leaveH :: (Show a, SP m) => a -> m a
 leaveH x = do
   logger Debug $ "leaving handler: " <> show x
   pure x
-
-
-----------------------------------------------------------------------
--- cookies
-
-cookiename :: SBS
-cookiename = "saml2-web-sso_sp_credentials"
-
-togglecookie :: Maybe ST -> SetCookie
-togglecookie = \case
-  Just nick -> cookie
-    { setCookieValue = cs nick
-    }
-  Nothing -> cookie
-    { setCookieValue = ""
-    , setCookieExpires = Just . fromTime $ unsafeReadTime "1970-01-01T00:00:00Z"
-    , setCookieMaxAge = Just (-1)
-    }
-  where
-    cookie = defaultSetCookie
-      { setCookieName = cookiename
-      , setCookieSecure = True
-      , setCookiePath = Just "/"
-      }
-
-cookieToHeader :: SetCookie -> HttpTypes.Header
-cookieToHeader = ("set-cookie",) . cs . toLazyByteString . renderSetCookie
-
-headerValueToCookie :: ST -> Either ST SetCookie
-headerValueToCookie txt = do
-  let cookie = parseSetCookie $ cs txt
-  case ["missing cookie name"  | setCookieName cookie == ""] <>
-       ["wrong cookie name"    | setCookieName cookie /= cookiename] <>
-       ["missing cookie value" | setCookieValue cookie == ""]
-    of errs@(_:_) -> throwError $ ST.intercalate ", " errs
-       []         -> pure cookie
