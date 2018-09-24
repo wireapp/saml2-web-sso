@@ -30,7 +30,6 @@ import Data.Proxy
 import Data.String.Conversions
 import Data.Time
 import GHC.Generics
-import GHC.Stack
 import Lens.Micro
 import Network.HTTP.Media ((//))
 import Network.HTTP.Types
@@ -85,9 +84,11 @@ type API = APIMeta'
 
 api :: forall err m. SPHandler (Error err) m => ST -> HandleVerdict m -> ServerT API m
 api appName handleVerdict =
-       meta appName (Proxy @API) (Proxy @APIAuthResp')
+       meta appName getRespURI
   :<|> authreq'
-  :<|> authresp (JudgeCtx <$> getSsoURI (Proxy @API) (Proxy @APIAuthResp')) handleVerdict
+  :<|> authresp (JudgeCtx <$> getRespURI) handleVerdict
+  where
+    getRespURI = getSsoURI (Proxy @API) (Proxy @APIAuthResp')
 
 
 ----------------------------------------------------------------------
@@ -269,43 +270,13 @@ setHttpCachePolicy ap rq respond = ap rq $ respond . addHeadersToResponse httpCa
 
 
 ----------------------------------------------------------------------
--- paths
-
-getSsoURI :: forall m endpoint api err.
-                  ( HasCallStack, SP m
-                  , MonadError (Error err) m
-                  , IsElem endpoint api
-                  , HasLink endpoint
-#if MIN_VERSION_servant(0,14,0)
-                  , ToHttpApiData (MkLink endpoint Link)
-#else
-                  , ToHttpApiData (MkLink endpoint)
-#endif
-                  )
-               => Proxy api -> Proxy endpoint -> m URI
-getSsoURI proxyAPI proxyAPIAuthResp = extpath . (^. cfgSPSsoURI) <$> getConfig
-  where
-    extpath :: URI -> URI
-    extpath = (=/ (cs . toUrlPiece $ safeLink proxyAPI proxyAPIAuthResp))
-
-
-----------------------------------------------------------------------
 -- handlers
 
-meta :: ( SPHandler (Error err) m
-        , IsElem endpoint api
-        , HasLink endpoint
-#if MIN_VERSION_servant(0,14,0)
-        , ToHttpApiData (MkLink endpoint Link)
-#else
-        , ToHttpApiData (MkLink endpoint)
-#endif
-        )
-     => ST -> Proxy api -> Proxy endpoint -> m SPMetadata
-meta appName proxyAPI proxyAPIAuthResp = do
+meta :: forall m err. (SPHandler (Error err) m, HasConfig m) => ST -> m URI -> m SPMetadata
+meta appName getRespURI = do
   enterH "meta"
-  landing <- getLandingURI
-  resp <- getSsoURI proxyAPI proxyAPIAuthResp
+  landing  <- getLandingURI
+  resp     <- getRespURI
   contacts <- (^. cfgContacts) <$> getConfig
   Meta.mkSPMetadata appName landing resp contacts
 

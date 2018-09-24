@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module SAML2.WebSSO.SP where
@@ -17,7 +18,8 @@ import Lens.Micro
 import SAML2.Util
 import SAML2.WebSSO.Config
 import SAML2.WebSSO.Types
-import Servant.Server
+import Servant.API hiding (URI(..))
+import Servant hiding (URI(..))
 import URI.ByteString
 
 import qualified Data.Semigroup
@@ -123,6 +125,23 @@ createAuthnRequest lifeExpectancySecs = do
 
 getLandingURI :: (HasCallStack, HasConfig m) => m URI
 getLandingURI = (^. cfgSPAppURI) <$> getConfig
+
+getSsoURI :: forall m endpoint api.
+                  ( HasCallStack
+                  , HasConfig m
+                  , IsElem endpoint api
+                  , HasLink endpoint
+#if MIN_VERSION_servant(0,14,0)
+                  , ToHttpApiData (MkLink endpoint Link)
+#else
+                  , ToHttpApiData (MkLink endpoint)
+#endif
+                  )
+               => Proxy api -> Proxy endpoint -> m URI
+getSsoURI proxyAPI proxyAPIAuthResp = extpath . (^. cfgSPSsoURI) <$> getConfig
+  where
+    extpath :: URI -> URI
+    extpath = (=/ (cs . toUrlPiece $ safeLink proxyAPI proxyAPIAuthResp))
 
 
 ----------------------------------------------------------------------
