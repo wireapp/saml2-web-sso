@@ -229,12 +229,13 @@ checkNotInFuture msg tim = do
   unless (tim < now) $
     deny [msg <> " in the future: " <> show tim]
 
--- | check that the response is intended for us (based on config's finalize-login uri).
+-- | Check that the response is intended for us (based on config's finalize-login uri stored in
+-- 'JudgeCtx').
 checkDestination :: (HasConfig m, MonadJudge m) => String -> URI -> m ()
-checkDestination msg (renderURI -> haveDest) = do
-  JudgeCtx (renderURI -> wantDest) <- getJudgeCtx
-  unless (wantDest == haveDest) $ do
-    deny ["bad " <> msg <> ": expected " <> show wantDest <> ", got " <> show haveDest]
+checkDestination msg (renderURI -> expectedByIdp) = do
+  JudgeCtx (renderURI -> expectedByUs) <- getJudgeCtx
+  unless (expectedByUs == expectedByIdp) $ do
+    deny ["bad " <> msg <> ": expected by us: " <> show expectedByUs <> "; expected by IdP: " <> show expectedByIdp]
 
 checkAssertions :: (SP m, SPStore m, MonadJudge m) => Maybe Issuer -> NonEmpty Assertion -> m AccessVerdict
 checkAssertions missuer (toList -> assertions) = do
