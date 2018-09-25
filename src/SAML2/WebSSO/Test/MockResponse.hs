@@ -22,13 +22,13 @@ newtype SignedAuthnResponse = SignedAuthnResponse { fromSignedAuthnResponse :: D
 
 mkAuthnResponse
   :: HasCallStack
-  => SignPrivCreds -> IdPConfig extra -> AuthnRequest -> Bool -> IO SignedAuthnResponse
+  => SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> IO SignedAuthnResponse
 mkAuthnResponse = mkAuthnResponseWithModif id id
 
 mkAuthnResponseWithSubj
   :: HasCallStack
   => NameID
-  -> SignPrivCreds -> IdPConfig extra -> AuthnRequest -> Bool -> IO SignedAuthnResponse
+  -> SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> IO SignedAuthnResponse
 mkAuthnResponseWithSubj subj = mkAuthnResponseWithModif modif id
   where
     modif = transformBis
@@ -41,8 +41,8 @@ mkAuthnResponseWithSubj subj = mkAuthnResponseWithModif modif id
 mkAuthnResponseWithModif
   :: HasCallStack
   => ([Node] -> [Node]) -> ([Node] -> [Node])
-  -> SignPrivCreds -> IdPConfig extra -> AuthnRequest -> Bool -> IO SignedAuthnResponse
-mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp authnreq grantAccess = do
+  -> SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> IO SignedAuthnResponse
+mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp sp authnreq grantAccess = do
   let freshNCName = ("_" <>) . UUID.toText <$> UUID.nextRandom
   assertionUuid <- freshNCName
   respUuid      <- freshNCName
@@ -51,8 +51,7 @@ mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp authnreq gran
   let issueInstant    = renderTime now
       expires         = renderTime $ 3600 `addTime` now
       issuer    :: ST = idp ^. idpMetadata . edIssuer . fromIssuer . to renderURI
-      recipient :: ST = authnreq ^. rqIssuer . fromIssuer . to renderURI
-      destination     = recipient
+      recipient :: ST = sp ^. spResponseURL . to renderURI
       inResponseTo    = renderID $ authnreq ^. rqID
       status
         | grantAccess = "urn:oasis:names:tc:SAML:2.0:status:Success"
@@ -93,7 +92,7 @@ mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp authnreq gran
             xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"
             ID="#{respUuid}"
             Version="2.0"
-            Destination="#{destination}"
+            Destination="#{recipient}"
             InResponseTo="#{inResponseTo}"
             IssueInstant="#{issueInstant}">
               <Issuer xmlns="urn:oasis:names:tc:SAML:2.0:assertion">

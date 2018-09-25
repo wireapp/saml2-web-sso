@@ -13,6 +13,7 @@ import Data.Either
 import Data.EitherR
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.String.Conversions
+import Data.UUID as UUID
 import Lens.Micro
 import SAML2.Util
 import SAML2.WebSSO
@@ -306,11 +307,23 @@ spec = describe "API" $ do
 
 
   describe "mkAuthnResponse" $ do
+    let spmeta :: SPMetadata -- <- mkSPMetadata "appname" (ctx ^. ctxConfig . cfgSPAppURI) () (ctx ^. ctxConfig . cfgContacts)
+        spmeta = SPMetadata
+          { _spID = UUID.nil
+          , _spValidUntil = fromTime $ addTime (60 * 60 * 24 * 365) timeNow
+          , _spCacheDuration = 2592000
+          , _spOrgName = "drnick"
+          , _spOrgDisplayName = "drnick"
+          , _spOrgURL = [uri|http://localhost:8088/|]
+          , _spResponseURL = [uri|http://localhost:8088/sso/finalize-login|]
+          , _spContacts = fallbackContact :| []
+          }
+
     it "Produces output that decodes into 'AuthnResponse'" $ do
       idpcfg <- mkmyidp <&> idpMetadata . edCertAuthnResponse .~ (sampleIdPCert :| [])
       ctx <- mkTestCtx1 <&> ctxConfig . cfgIdps .~ [idpcfg]
       Right authnreq :: Either SomeException AuthnRequest <- try . ioFromTestSP ctx $ createAuthnRequest 3600
-      SignedAuthnResponse authnrespDoc <- mkAuthnResponse sampleIdPPrivkey idpcfg authnreq True
+      SignedAuthnResponse authnrespDoc <- mkAuthnResponse sampleIdPPrivkey idpcfg spmeta authnreq True
       parseFromDocument @AuthnResponse authnrespDoc `shouldSatisfy` isRight
 
     let check :: X509.SignedCertificate -> (Either SomeException () -> Bool) -> IO ()
@@ -320,7 +333,7 @@ spec = describe "API" $ do
           ctx <- mkTestCtx1 <&> ctxConfig . cfgIdps .~ [idpcfg]
           result :: Either SomeException () <- try . ioFromTestSP ctx $ do
             authnreq  <- createAuthnRequest 3600
-            SignedAuthnResponse authnrespDoc <- liftIO $ mkAuthnResponse sampleIdPPrivkey idpcfg authnreq True
+            SignedAuthnResponse authnrespDoc <- liftIO $ mkAuthnResponse sampleIdPPrivkey idpcfg spmeta authnreq True
             let authnrespLBS = renderLBS def authnrespDoc
             simpleVerifyAuthnResponse (Just issuer) authnrespLBS
           result `shouldSatisfy` expectation
