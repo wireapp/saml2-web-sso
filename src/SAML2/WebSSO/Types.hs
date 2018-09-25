@@ -65,7 +65,7 @@ instance ToJSON Issuer where
 -- | high-level, condensed data uesd for constructing an 'SPDesc'.  what is not in here is set to
 -- some constant default.
 data SPMetadata = SPMetadata
-  { _spID             :: UUID.UUID
+  { _spID             :: ID SPMetadata
   , _spValidUntil     :: UTCTime          -- FUTUREWORK: Time
   , _spCacheDuration  :: NominalDiffTime  -- FUTUREWORK: Duration
   , _spOrgName        :: ST

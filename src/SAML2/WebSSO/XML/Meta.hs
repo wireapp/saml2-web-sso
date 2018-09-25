@@ -32,7 +32,6 @@ import Text.XML.DSig (parseKeyInfo, renderKeyInfo)
 import URI.ByteString
 
 import qualified Data.Map as Map
-import qualified Data.UUID as UUID
 import qualified Data.X509 as X509
 import qualified Network.URI as OldURI
 import qualified SAML2.Bindings.Identifiers as HS
@@ -46,10 +45,10 @@ import qualified SAML2.XML.Signature.Types as HX (Signature)
 
 
 instance HasXML SPMetadata where
-  parse bad = die (Proxy @SPMetadata) bad  -- not implemented
+  parse = (importSPMetadata =<<) . either throwError pure . HX.xmlToSAML . renderLBS def . nodesToDoc
 
 instance HasXMLRoot SPMetadata where
-  renderRoot = unwrap . parseLBS def . HX.samlToXML . spMetaEntityDesc
+  renderRoot = unwrap . parseLBS def . HX.samlToXML . exportSPMetadata
     where
       unwrap = \case
         Right (Document _ el _) -> el
@@ -62,13 +61,13 @@ instance HasXMLRoot SPMetadata where
 -- 'getSsoURL').
 mkSPMetadata :: SP m => ST -> URI -> URI -> NonEmpty ContactPerson -> m SPMetadata
 mkSPMetadata nick org resp contact = do
-  uuid <- createUUID
+  mid <- createID
   now <- getNow
-  pure $ mkSPMetadata' uuid now nick org resp contact
+  pure $ mkSPMetadata' mid now nick org resp contact
 
-mkSPMetadata' :: UUID.UUID -> Time -> ST -> URI -> URI -> NonEmpty ContactPerson -> SPMetadata
-mkSPMetadata' uuid now nick org resp contact =
-  let _spID             = uuid
+mkSPMetadata' :: ID SPMetadata -> Time -> ST -> URI -> URI -> NonEmpty ContactPerson -> SPMetadata
+mkSPMetadata' mid now nick org resp contact =
+  let _spID             = mid
       _spCacheDuration  = months 1
       _spOrgName        = nick
       _spOrgDisplayName = nick
@@ -84,26 +83,63 @@ mkSPMetadata' uuid now nick org resp contact =
   in SPMetadata {..}
 
 
-spMetaEntityDesc :: HasCallStack => SPMetadata -> HS.Metadata
-spMetaEntityDesc spdesc = HS.EntityDescriptor
-    { HS.entityID                        = castURL (spdesc ^. spOrgURL) :: HS.EntityID
+-- | NB: this works best under the assumption that the input has been constructed by
+-- 'exportSPMetadata'.
+importSPMetadata :: (HasCallStack, MonadError String m) => HS.Metadata -> m SPMetadata
+importSPMetadata (NL.head . HS.descriptors . HS.entityDescriptors -> desc) = do
+  case desc of
+    HS.SPSSODescriptor {} -> pure ()
+    bad -> throwError $ "malformed HS.Descriptor: " <> show bad
+
+  _spID
+    <- let raw = HS.roleDescriptorID . HS.descriptorRole $ desc
+       in maybe (throwError ("malformed descriptorID: " <> show raw)) (pure . ID . cs) raw
+  _spValidUntil
+    <- let raw = HS.roleDescriptorValidUntil . HS.descriptorRole $ desc
+       in maybe (throwError $ "bad validUntil: " <> show raw) (fmap fromTime . importTime) raw
+  _spCacheDuration
+    <- let raw = HS.roleDescriptorCacheDuration . HS.descriptorRole $ desc
+       in maybe (throwError $ "bad cacheDuration: " <> show raw) pure raw
+  _spOrgName :: ST
+    <- let raw = case fmap HS.organizationName . HS.roleDescriptorOrganization . HS.descriptorRole $ desc of
+             Just (HS.Localized "EN" x :| []) -> Just x
+             _ -> Nothing
+       in maybe (throwError $ "bad orgName: " <> show raw) (pure . cs) raw
+  _spOrgDisplayName :: ST
+    <- let raw = case fmap HS.organizationDisplayName . HS.roleDescriptorOrganization . HS.descriptorRole $ desc of
+             Just (HS.Localized "EN" x :| []) -> Just x
+             _ -> Nothing
+       in maybe (throwError $ "bad orgDisplayName: " <> show raw) (pure . cs) raw
+  _spOrgURL <- let raw = fmap HS.organizationURL . HS.roleDescriptorOrganization . HS.descriptorRole $ desc
+               in case raw of
+                    Just (HS.Localized "EN" u :| []) -> pure $ importURL u
+                    bad -> throwError $ "bad or no organizationURL" <> show bad
+  let _spResponseURL = importURL . HS.endpointLocation . HS.indexedEndpoint . NL.head
+                       . HS.descriptorAssertionConsumerService $ desc
+  _spContacts <- fmap NL.fromList . mapM importContactPerson . HS.roleDescriptorContactPerson . HS.descriptorRole $ desc
+  pure SPMetadata {..}
+
+
+exportSPMetadata :: HasCallStack => SPMetadata -> HS.Metadata
+exportSPMetadata spdesc = HS.EntityDescriptor
+    { HS.entityID                        = exportURL (spdesc ^. spOrgURL) :: HS.EntityID
     , HS.metadataID                      = Nothing :: Maybe HX.ID
     , HS.metadataValidUntil              = Nothing :: Maybe HX.DateTime
     , HS.metadataCacheDuration           = Nothing :: Maybe HX.Duration
     , HS.entityAttrs                     = mempty  :: HX.Nodes
     , HS.metadataSignature               = Nothing :: Maybe HX.Signature
     , HS.metadataExtensions              = mempty  :: HS.Extensions
-    , HS.entityDescriptors               = HS.Descriptors (spMetaSSODesc spdesc :| [])
+    , HS.entityDescriptors               = HS.Descriptors (exportSPMetadata' spdesc :| [])
     , HS.entityOrganization              = Nothing :: Maybe HS.Organization
     , HS.entityContactPerson             = mempty  :: [HS.Contact]
     , HS.entityAditionalMetadataLocation = mempty  :: [HS.AdditionalMetadataLocation]
     }
 
 -- | [4/2.6], [4/2]
-spMetaSSODesc :: HasCallStack => SPMetadata -> HS.Descriptor
-spMetaSSODesc spdesc = HS.SPSSODescriptor
+exportSPMetadata' :: HasCallStack => SPMetadata -> HS.Descriptor
+exportSPMetadata' spdesc = HS.SPSSODescriptor
     { HS.descriptorRole = HS.RoleDescriptor
-      { HS.roleDescriptorID = Just (UUID.toString $ spdesc ^. spID) :: Maybe HX.ID
+      { HS.roleDescriptorID = Just (cs . renderID $ spdesc ^. spID) :: Maybe HX.ID
       , HS.roleDescriptorValidUntil = Just (spdesc ^. spValidUntil) :: Maybe HX.DateTime
       , HS.roleDescriptorCacheDuration = Just (spdesc ^. spCacheDuration) :: Maybe HX.Duration
       , HS.roleDescriptorProtocolSupportEnumeration = [HS.samlURN HS.SAML20 ["protocol"]] :: [HX.AnyURI]
@@ -117,19 +153,9 @@ spMetaSSODesc spdesc = HS.SPSSODescriptor
         , HS.organizationExtensions = HS.Extensions []
         , HS.organizationName = HS.Localized "EN" (cs $ spdesc ^. spOrgName) :| []
         , HS.organizationDisplayName = HS.Localized "EN" (cs $ spdesc ^. spOrgDisplayName) :| []
-        , HS.organizationURL = HS.Localized "EN" (castURL $ spdesc ^. spOrgURL) :| [] :: HX.List1 HS.LocalizedURI
+        , HS.organizationURL = HS.Localized "EN" (exportURL $ spdesc ^. spOrgURL) :| [] :: HX.List1 HS.LocalizedURI
         }
-      , HS.roleDescriptorContactPerson = toList (spdesc ^. spContacts) <&> \contact ->
-          HS.ContactPerson
-            { HS.contactType = castContactType $ contact ^. cntType
-            , HS.contactAttrs = []
-            , HS.contactExtensions = HS.Extensions []
-            , HS.contactCompany = cs <$> contact ^. cntCompany
-            , HS.contactGivenName = cs <$> contact ^. cntGivenName
-            , HS.contactSurName = cs <$> contact ^. cntSurname
-            , HS.contactEmailAddress = maybeToList $ castURL <$> contact ^. cntEmail :: [HX.AnyURI]
-            , HS.contactTelephoneNumber = maybeToList $ cs <$> contact ^. cntPhone
-            }
+      , HS.roleDescriptorContactPerson = exportContactPerson <$> toList (spdesc ^. spContacts)
       }
     , HS.descriptorSSO = HS.SSODescriptor
       { HS.ssoDescriptorArtifactResolutionService = [] :: [HS.IndexedEndpoint]
@@ -142,7 +168,7 @@ spMetaSSODesc spdesc = HS.SPSSODescriptor
     , HS.descriptorAssertionConsumerService = HS.IndexedEndpoint
       { HS.indexedEndpoint = HS.Endpoint
         { HS.endpointBinding = HX.Identified HS.BindingHTTPPOST :: HX.IdentifiedURI HS.Binding
-        , HS.endpointLocation = castURL $ spdesc ^. spResponseURL :: HX.AnyURI
+        , HS.endpointLocation = exportURL $ spdesc ^. spResponseURL :: HX.AnyURI
         , HS.endpointResponseLocation = Nothing :: Maybe HX.AnyURI
         , HS.endpointAttrs = [] :: HX.Nodes
         , HS.endpointXML = [] :: HX.Nodes
@@ -156,16 +182,51 @@ spMetaSSODesc spdesc = HS.SPSSODescriptor
     }
 
 
-castURL :: URI -> HX.URI
-castURL = fromJust . OldURI.parseURI . cs . renderURI
+exportURL :: URI -> HX.URI
+exportURL = fromJust . OldURI.parseURI . cs . renderURI
 
-castContactType :: ContactType -> HS.ContactType
-castContactType = \case
+importURL :: HX.URI -> URI
+importURL = unsafeParseURI . cs . show
+
+
+exportContactPerson :: ContactPerson -> HS.Contact
+exportContactPerson contact = HS.ContactPerson
+  { HS.contactType = exportContactType $ contact ^. cntType
+  , HS.contactAttrs = []
+  , HS.contactExtensions = HS.Extensions []
+  , HS.contactCompany = cs <$> contact ^. cntCompany
+  , HS.contactGivenName = cs <$> contact ^. cntGivenName
+  , HS.contactSurName = cs <$> contact ^. cntSurname
+  , HS.contactEmailAddress = maybeToList $ exportURL <$> contact ^. cntEmail :: [HX.AnyURI]
+  , HS.contactTelephoneNumber = maybeToList $ cs <$> contact ^. cntPhone
+  }
+
+importContactPerson :: MonadError String m => HS.Contact -> m ContactPerson
+importContactPerson contact = do
+  let _cntType      = importContactType $ HS.contactType contact
+      _cntCompany   = cs <$> HS.contactCompany contact
+      _cntGivenName = cs <$> HS.contactGivenName contact
+      _cntSurname   = cs <$> HS.contactSurName contact
+      _cntEmail     = listToMaybe $ importURL <$> HS.contactEmailAddress contact
+      _cntPhone     = listToMaybe $ cs <$> HS.contactTelephoneNumber contact
+  pure ContactPerson {..}
+
+
+exportContactType :: ContactType -> HS.ContactType
+exportContactType = \case
   ContactTechnical      -> HS.ContactTypeTechnical
   ContactSupport        -> HS.ContactTypeSupport
   ContactAdministrative -> HS.ContactTypeAdministrative
   ContactBilling        -> HS.ContactTypeBilling
   ContactOther          -> HS.ContactTypeOther
+
+importContactType :: HS.ContactType -> ContactType
+importContactType = \case
+  HS.ContactTypeTechnical      -> ContactTechnical
+  HS.ContactTypeSupport        -> ContactSupport
+  HS.ContactTypeAdministrative -> ContactAdministrative
+  HS.ContactTypeBilling        -> ContactBilling
+  HS.ContactTypeOther          -> ContactOther
 
 
 instance HasXML IdPMetadata where

@@ -87,13 +87,11 @@ createUUIDIO = liftIO UUID.nextRandom
 getNowIO :: MonadIO m => m Time
 getNowIO = Time <$> liftIO getCurrentTime
 
--- | Microsoft Active Directory requires IDs to be of the form @id<32 hex digits>@, so the
--- @UUID.toText@ needs to be tweaked a little.
+-- | (Microsoft Active Directory likes IDs to be of the form @id<32 hex digits>@: @ID . cs . ("id"
+-- <>) . filter (/= '-') . cs . UUID.toText <$> createUUID@.  Hopefully the more common form
+-- produced by this function is also ok.)
 createID :: SP m => m (ID a)
-createID = ID . fixMSAD . UUID.toText <$> createUUID
-  where
-    fixMSAD :: ST -> ST
-    fixMSAD = cs . ("id" <>) . filter (/= '-') . cs
+createID = ID . ("_" <>) . UUID.toText <$> createUUID
 
 -- | Allow the IdP to create unknown users implicitly by mentioning them by email (this happens in
 -- 'rqNameIDPolicy').

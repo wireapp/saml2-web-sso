@@ -13,7 +13,6 @@ import Data.Either
 import Data.EitherR
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.String.Conversions
-import Data.UUID as UUID
 import Lens.Micro
 import SAML2.Util
 import SAML2.WebSSO
@@ -309,7 +308,7 @@ spec = describe "API" $ do
   describe "mkAuthnResponse" $ do
     let spmeta :: SPMetadata -- <- mkSPMetadata "appname" (ctx ^. ctxConfig . cfgSPAppURI) () (ctx ^. ctxConfig . cfgContacts)
         spmeta = SPMetadata
-          { _spID = UUID.nil
+          { _spID = ID "_4b7e1488-c0c6-11e8-aef0-9fe604f9513a"
           , _spValidUntil = fromTime $ addTime (60 * 60 * 24 * 365) timeNow
           , _spCacheDuration = 2592000
           , _spOrgName = "drnick"
