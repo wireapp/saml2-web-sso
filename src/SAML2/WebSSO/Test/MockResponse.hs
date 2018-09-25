@@ -50,8 +50,9 @@ mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp sp authnreq g
 
   let issueInstant    = renderTime now
       expires         = renderTime $ 3600 `addTime` now
-      issuer    :: ST = idp ^. idpMetadata . edIssuer . fromIssuer . to renderURI
+      idpissuer :: ST = idp ^. idpMetadata . edIssuer . fromIssuer . to renderURI
       recipient :: ST = sp ^. spResponseURL . to renderURI
+      spissuer  :: ST = authnreq ^. rqIssuer . fromIssuer . to renderURI
       inResponseTo    = renderID $ authnreq ^. rqID
       status
         | grantAccess = "urn:oasis:names:tc:SAML:2.0:status:Success"
@@ -66,7 +67,7 @@ mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp sp authnreq g
           ID="#{assertionUuid}"
           IssueInstant="#{issueInstant}">
             <Issuer>
-                #{issuer}
+                #{idpissuer}
             <Subject>
                 <NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress">
                     #{"emil@email.com"}
@@ -78,7 +79,7 @@ mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp sp authnreq g
             <Conditions NotBefore="#{issueInstant}" NotOnOrAfter="#{expires}">
                 <AudienceRestriction>
                     <Audience>
-                        #{recipient}
+                        #{spissuer}
             <AuthnStatement AuthnInstant="#{issueInstant}" SessionIndex="_e9ae1025-bc03-4b5a-943c-c9fcb8730b21">
                 <AuthnContext>
                     <AuthnContextClassRef>
@@ -96,7 +97,7 @@ mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp sp authnreq g
             InResponseTo="#{inResponseTo}"
             IssueInstant="#{issueInstant}">
               <Issuer xmlns="urn:oasis:names:tc:SAML:2.0:assertion">
-                  #{issuer}
+                  #{idpissuer}
               <samlp:Status>
                   <samlp:StatusCode Value="#{status}">
               ^{assertion}
