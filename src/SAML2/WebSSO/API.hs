@@ -283,7 +283,7 @@ authreq lifeExpectancySecs idpname = do
   uri <- (^. idpMetadata . edRequestURI) <$> getIdPConfig idpname
   logger Debug $ "authreq uri: " <> cs (renderURI uri)
   req <- createAuthnRequest lifeExpectancySecs
-  logger Debug $ "authreq req: " <> show req
+  logger Debug $ "authreq req: " <> cs (encode req)
   leaveH $ FormRedirect uri req
 
 -- | 'authreq' with request life expectancy defaulting to 8 hours.

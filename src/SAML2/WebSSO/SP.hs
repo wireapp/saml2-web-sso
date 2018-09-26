@@ -93,20 +93,7 @@ getNowIO = Time <$> liftIO getCurrentTime
 createID :: SP m => m (ID a)
 createID = ID . ("_" <>) . UUID.toText <$> createUUID
 
--- | Allow the IdP to create unknown users implicitly by mentioning them by email (this happens in
--- 'rqNameIDPolicy').
---
--- NB: Using email addresses as unique identifiers between IdP and SP causes problems, since email
--- addresses can change over time.  The best option may be to use UUIDs instead, and provide email
--- addresses in SAML 'AuthnResponse' attributes or via scim.
---
--- Quote from the specs:
---
--- [3/4.1.4.1] If the service provider wishes to permit the identity provider to establish a new
--- identifier for the principal if none exists, it MUST include a NameIDPolicy element with the
--- AllowCreate attribute set to "true". Otherwise, only a principal for whom the identity provider
--- has previously established an identifier usable by the service provider can be authenticated
--- successfully.
+-- | Generate an 'AuthnRequest' value for the initiate-login response.
 createAuthnRequest :: (SP m, SPStore m) => NominalDiffTime -> m AuthnRequest
 createAuthnRequest lifeExpectancySecs = do
   _rqID           <- createID
