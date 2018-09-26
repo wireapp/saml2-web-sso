@@ -127,6 +127,9 @@ getSsoURI proxyAPI proxyAPIAuthResp = extpath . (^. cfgSPSsoURI) <$> getConfig
     extpath = (=/ (cs . toUrlPiece $ safeLink proxyAPI proxyAPIAuthResp))
 
 -- | 'getSsoURI' for links that have one variable path segment.
+--
+-- FUTUREWORK: this is only sometimes what we need.  it would be nice to have a type class with a
+-- method 'getSsoURI' for arbitrary path arities.
 getSsoURI' :: forall endpoint api a (f :: * -> *) t.
               ( HasConfig f
               , MkLink endpoint ~ (t -> a)
