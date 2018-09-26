@@ -10,7 +10,7 @@ import Lens.Micro
 import SAML2.WebSSO
 import SAML2.WebSSO.API.Example
 import Test.Hspec
-import TestSP
+import Util
 import URI.ByteString.QQ
 
 import qualified Data.Map as Map
@@ -163,33 +163,33 @@ specJudgeT = do
                                                            -- actually passes.
 
     it "violate condition not-before" $ do
-      testCtx2 <- mkTestCtx2
+      testCtx2 <- mkTestCtxWithIdP
       verdict <- ioFromTestSP (testCtx2 & ctxNow .~ timeLongAgo) $ judge resp jctx
       isDenied verdict
 
     it "violate condition not-on-or-after" $ do
-      testCtx2 <- mkTestCtx2
+      testCtx2 <- mkTestCtxWithIdP
       verdict <- ioFromTestSP (testCtx2 & ctxNow .~ timeIn20minutes) $ judge resp jctx
       isDenied verdict
 
     it "satisfy all conditions" $ do
-      testCtx3 <- mkTestCtx3
       pendingWith "we may test this in spar already (need to check)"
+      -- testCtx3 <- mkTestCtx3
       -- invalid InResponseTo field: ID {renderID = \"id05873dd012c44e6db0bd59f5aa2e6a0a\"}","
       -- Assertion IssueInstant in the future: \"2018-04-13T06:33:02.743Z\"",
       -- "bearer-confirmed assertions must be audience-restricted.",
       -- "AuthnStatement IssueInstance in the future: \"2018-03-27T06:23:57.851Z\""]}
 
-      isGranted =<< ioFromTestSP testCtx3 (judge resp jctx)
-      isGranted =<< ioFromTestSP (testCtx3 & ctxNow .~ timeIn10minutes) (judge resp jctx)
+      -- isGranted =<< ioFromTestSP testCtx3 (judge resp jctx)
+      -- isGranted =<< ioFromTestSP (testCtx3 & ctxNow .~ timeIn10minutes) (judge resp jctx)
 
     it "status failure" $ do
-      testCtx2 <- mkTestCtx2
+      testCtx2 <- mkTestCtxWithIdP
       verdict <- ioFromTestSP testCtx2 $ judge (resp & rspStatus .~ statusFailure) jctx
       isDenied verdict
 
     it "status success" $ do
-      testCtx2 <- mkTestCtx2
+      testCtx2 <- mkTestCtxWithIdP
       verdict <- ioFromTestSP testCtx2 $ judge (resp & rspStatus .~ statusSuccess) jctx
       pendingWith "we may test this in spar already (need to check)"
       -- "invalid InResponseTo field: ID {renderID = \"id05873dd012c44e6db0bd59f5aa2e6a0a\"}"
@@ -201,7 +201,7 @@ specJudgeT = do
       isGranted verdict
 
     it "status success yields name, nick" $ do
-      testCtx2 <- mkTestCtx2
+      testCtx2 <- mkTestCtxWithIdP
       verdict <- ioFromTestSP testCtx2 $ judge (resp & rspStatus .~ statusSuccess) jctx
       let uid = UserRef (Issuer [uri|https://sts.windows.net/682febe8-021b-4fde-ac09-e60085f05181/|])
                        (opaqueNameID "E3hQDDZoObpyTDplO8Ax8uC8ObcQmREdfps3TMpaI84")

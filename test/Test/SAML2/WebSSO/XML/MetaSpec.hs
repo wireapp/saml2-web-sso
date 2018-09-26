@@ -8,7 +8,6 @@ import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.String.Conversions
 import SAML2.WebSSO
 import Test.Hspec
-import TestSP
 import Text.XML
 import URI.ByteString.QQ
 import Util
@@ -18,7 +17,7 @@ spec :: Spec
 spec = do
   describe "spDesc" $ do
     it "does not smoke" $ do
-      testCtx1 <- mkTestCtx1
+      testCtx1 <- mkTestCtxSimple
       have <- ioFromTestSP testCtx1 $ mkSPMetadata
         "drnick" [uri|http://example.com/|] [uri|http://example.com/sso/login|] (fallbackContact :| [])
       let want = testSPMetadata (have ^. spID)

@@ -84,8 +84,8 @@ fallbackConfig = Config
   , _cfgLogLevel          = Debug
   , _cfgSPHost            = "localhost"
   , _cfgSPPort            = 8081
-  , _cfgSPAppURI          = [uri|https://me.wire.com/sp|]
-  , _cfgSPSsoURI          = [uri|https://me.wire.com/sso|]
+  , _cfgSPAppURI          = [uri|https://example-sp.com/landing|]
+  , _cfgSPSsoURI          = [uri|https://example-sp.com/sso|]
   , _cfgContacts          = fallbackContact :| []
   , _cfgIdps              = mempty
   }
