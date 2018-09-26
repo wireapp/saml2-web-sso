@@ -154,7 +154,8 @@ specJudgeT = do
         isDenied :: HasCallStack => AccessVerdict -> Expectation
         isDenied = (`shouldSatisfy` (\case AccessDenied{} -> True; _ -> False))
 
-        jctx = JudgeCtx [uri|http://anythingreally.com/|]  -- TODO: this only "works" out because we
+        jctx = JudgeCtx (Issuer [uri|http://anythingreally.com/|]) [uri|http://anythingreally.com/|]
+                                                           -- TODO: this only "works" out because we
                                                            -- expect the judgements to be forbiden;
                                                            -- but now the "forbidden" is for the
                                                            -- wrong reasons.  we also need to test

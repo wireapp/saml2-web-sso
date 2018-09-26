@@ -15,6 +15,7 @@ import Data.Time
 import Data.UUID (UUID)
 import GHC.Stack
 import Lens.Micro
+import Lens.Micro.TH
 import SAML2.Util
 import SAML2.WebSSO.Config
 import SAML2.WebSSO.Types
@@ -94,12 +95,12 @@ createID :: SP m => m (ID a)
 createID = ID . ("_" <>) . UUID.toText <$> createUUID
 
 -- | Generate an 'AuthnRequest' value for the initiate-login response.
-createAuthnRequest :: (SP m, SPStore m) => NominalDiffTime -> m AuthnRequest
-createAuthnRequest lifeExpectancySecs = do
+createAuthnRequest :: (SP m, SPStore m) => NominalDiffTime -> m Issuer -> m AuthnRequest
+createAuthnRequest lifeExpectancySecs getIssuer = do
   _rqID           <- createID
   _rqVersion      <- (^. cfgVersion) <$> getConfig
   _rqIssueInstant <- getNow
-  _rqIssuer       <- Issuer <$> getLandingURI
+  _rqIssuer       <- getIssuer
   let _rqNameIDPolicy = Just $ NameIdPolicy NameIDFEmail Nothing True
   storeRequest _rqID (addTime lifeExpectancySecs _rqIssueInstant)
   pure AuthnRequest{..}
@@ -107,9 +108,6 @@ createAuthnRequest lifeExpectancySecs = do
 
 ----------------------------------------------------------------------
 -- paths
-
-getLandingURI :: (HasCallStack, HasConfig m) => m URI
-getLandingURI = (^. cfgSPAppURI) <$> getConfig
 
 getSsoURI :: forall m endpoint api.
                   ( HasCallStack
@@ -128,6 +126,23 @@ getSsoURI proxyAPI proxyAPIAuthResp = extpath . (^. cfgSPSsoURI) <$> getConfig
     extpath :: URI -> URI
     extpath = (=/ (cs . toUrlPiece $ safeLink proxyAPI proxyAPIAuthResp))
 
+-- | 'getSsoURI' for links that have one variable path segment.
+getSsoURI' :: forall endpoint api a (f :: * -> *) t.
+              ( HasConfig f
+              , MkLink endpoint ~ (t -> a)
+#if MIN_VERSION_servant(0,14,0)
+              , HasLink endpoint Link
+#else
+              , HasLink endpoint
+#endif
+              , ToHttpApiData a
+              , IsElem endpoint api
+              ) => Proxy api -> Proxy endpoint -> t -> f URI
+getSsoURI' proxyAPI proxyAPIAuthResp idpid = extpath . (^. cfgSPSsoURI) <$> getConfig
+  where
+    extpath :: URI -> URI
+    extpath = (=/ (cs . toUrlPiece $ safeLink proxyAPI proxyAPIAuthResp idpid))
+
 
 ----------------------------------------------------------------------
 -- compute access verdict(s)
@@ -138,10 +153,15 @@ getSsoURI proxyAPI proxyAPIAuthResp = extpath . (^. cfgSPSsoURI) <$> getConfig
 --
 -- NOTE: @-XGeneralizedNewtypeDeriving@ does not help with the boilerplate instances below, since
 -- this is a transformer stack and not a concrete 'Monad'.
-newtype JudgeT m a = JudgeT { fromJudgeT :: ExceptT [String] (WriterT [String] (ReaderT JudgeCtx m)) a }
+newtype JudgeT m a = JudgeT
+  { fromJudgeT :: ExceptT [String] (WriterT [String] (ReaderT JudgeCtx m)) a }
 
-newtype JudgeCtx = JudgeCtx { _judgeCtxRenderURI :: URI }
-  deriving (Eq, Show)
+data JudgeCtx = JudgeCtx
+  { _judgeCtxRequestIssuer :: Issuer
+  , _judgeCtxResponseURI   :: URI
+  }
+
+makeLenses ''JudgeCtx
 
 runJudgeT :: forall m. (Monad m, SP m) => JudgeCtx -> JudgeT m AccessVerdict -> m AccessVerdict
 runJudgeT ctx (JudgeT em) = fmap collectErrors . (`runReaderT` ctx) . runWriterT $ runExceptT em
@@ -218,7 +238,7 @@ checkNotInFuture msg tim = do
 -- 'JudgeCtx').
 checkDestination :: (HasConfig m, MonadJudge m) => String -> URI -> m ()
 checkDestination msg (renderURI -> expectedByIdp) = do
-  JudgeCtx (renderURI -> expectedByUs) <- getJudgeCtx
+  (renderURI -> expectedByUs) <- (^. judgeCtxResponseURI) <$> getJudgeCtx
   unless (expectedByUs == expectedByIdp) $ do
     deny [mconcat [ "bad ",  msg, ": "
                   , "expected by us: ", show expectedByUs, "; "
@@ -337,7 +357,7 @@ judgeConditions (Conditions lowlimit uplimit onetimeuse maudiences) = do
   when onetimeuse $
     deny ["unsupported flag: OneTimeUse"]
 
-  us <- getLandingURI
+  Issuer us <- (^. judgeCtxRequestIssuer) <$> getJudgeCtx
   case maudiences of
     Just aus | us `notElem` aus
       -> deny ["I am " <> cs (renderURI us) <> ", and I am not in the target audience [" <>

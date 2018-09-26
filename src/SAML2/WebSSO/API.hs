@@ -62,15 +62,9 @@ import qualified SAML2.WebSSO.XML.Meta as Meta
 -- saml web-sso api
 
 
-type APIMeta     = Get '[XML] SPMetadata
+type APIMeta     = Capture "idp" IdPId :> Get '[XML] SPMetadata
 type APIAuthReq  = Capture "idp" IdPId :> Get '[HTML] (FormRedirect AuthnRequest)
-type APIAuthResp = MultipartForm Mem AuthnResponseBody :> PostRedir '[HTML] (WithCookieAndLocation ST)
-
--- NB: 'APIAuthResp' cannot easily be enhanced with a @Capture "idp" IdPId@ path segment like
--- 'APIAuthReq'.  The reason is a design flaw in the standard: the meta information end-point must
--- provide the response end-point URL to any client, and it would not be clear which IdP to include
--- there.  So instead we need to accept responses from any IdP on the same URI, and rely on the
--- information from the response body only to recover our internal spar IdP handle.
+type APIAuthResp = Capture "idp" IdPId :> MultipartForm Mem AuthnResponseBody :> PostRedir '[HTML] (WithCookieAndLocation ST)
 
 type APIMeta'     = "meta" :> APIMeta
 type APIAuthReq'  = "authreq" :> APIAuthReq
@@ -82,11 +76,15 @@ type API = APIMeta'
 
 api :: forall err m. SPHandler (Error err) m => ST -> HandleVerdict m -> ServerT API m
 api appName handleVerdict =
-       meta appName getRespURI
-  :<|> authreq'
-  :<|> authresp (JudgeCtx <$> getRespURI) handleVerdict
-  where
-    getRespURI = getSsoURI (Proxy @API) (Proxy @APIAuthResp')
+       meta appName defRequestIssuer defResponseURI
+  :<|> authreq' defRequestIssuer
+  :<|> authresp defRequestIssuer defResponseURI handleVerdict
+
+defRequestIssuer :: HasConfig m => IdPId -> m Issuer
+defRequestIssuer = fmap Issuer <$> getSsoURI' (Proxy @API) (Proxy @APIAuthReq')
+
+defResponseURI :: HasConfig m => IdPId -> m URI
+defResponseURI = getSsoURI' (Proxy @API) (Proxy @APIAuthResp')
 
 
 ----------------------------------------------------------------------
@@ -267,36 +265,50 @@ setHttpCachePolicy ap rq respond = ap rq $ respond . addHeadersToResponse httpCa
 ----------------------------------------------------------------------
 -- handlers
 
-meta :: forall m err. (SPHandler (Error err) m, HasConfig m) => ST -> m URI -> m SPMetadata
-meta appName getRespURI = do
+-- | TODO: currently, meta does not fail if idp does not exist.  should we change that behavior?
+meta
+  :: forall m err. (SPHandler (Error err) m, HasConfig m)
+  => ST -> (IdPId -> m Issuer) -> (IdPId -> m URI)
+  -> IdPId -> m SPMetadata
+meta appName getRequestIssuer getResponseURI idpid = do
   enterH "meta"
-  landing  <- getLandingURI
-  resp     <- getRespURI
-  contacts <- (^. cfgContacts) <$> getConfig
-  Meta.mkSPMetadata appName landing resp contacts
+  Issuer org <- getRequestIssuer idpid
+  resp       <- getResponseURI idpid
+  contacts   <- (^. cfgContacts) <$> getConfig
+  Meta.mkSPMetadata appName org resp contacts
 
 -- | Create authnreq, store it for comparison against assertions later, and return it in an HTTP
 -- redirect together with the IdP's URI.
-authreq :: (SPHandler (Error err) m) => NominalDiffTime -> IdPId -> m (FormRedirect AuthnRequest)
-authreq lifeExpectancySecs idpname = do
+authreq
+  :: (SPHandler (Error err) m)
+  => NominalDiffTime -> (IdPId -> m Issuer)
+  -> IdPId -> m (FormRedirect AuthnRequest)
+authreq lifeExpectancySecs getIssuer idpid = do
   enterH "authreq"
-  uri <- (^. idpMetadata . edRequestURI) <$> getIdPConfig idpname
+  uri <- (^. idpMetadata . edRequestURI) <$> getIdPConfig idpid
   logger Debug $ "authreq uri: " <> cs (renderURI uri)
-  req <- createAuthnRequest lifeExpectancySecs
+  req <- createAuthnRequest lifeExpectancySecs (getIssuer idpid)
   logger Debug $ "authreq req: " <> cs (encode req)
   leaveH $ FormRedirect uri req
 
 -- | 'authreq' with request life expectancy defaulting to 8 hours.
-authreq' :: (SPHandler (Error err) m) => IdPId -> m (FormRedirect AuthnRequest)
+authreq'
+  :: (SPHandler (Error err) m)
+  => (IdPId -> m Issuer)
+  -> IdPId -> m (FormRedirect AuthnRequest)
 authreq' = authreq (8 * 60 * 60)
 
 -- | parse and validate response, and pass the verdict to a user-provided verdict handler.
-authresp :: SPHandler (Error err) m => m JudgeCtx -> HandleVerdict m -> AuthnResponseBody -> m (WithCookieAndLocation ST)
-authresp jctx handleVerdict body = do
+authresp
+  :: SPHandler (Error err) m
+  => (IdPId -> m Issuer) -> (IdPId -> m URI) -> HandleVerdict m
+  -> IdPId -> AuthnResponseBody -> m (WithCookieAndLocation ST)
+authresp getRequestIssuerURI getResponseURI handleVerdict idpid body = do
   enterH "authresp: entering"
+  jctx :: JudgeCtx      <- JudgeCtx <$> getRequestIssuerURI idpid <*> getResponseURI idpid
   resp :: AuthnResponse <- fromAuthnResponseBody body
   logger Debug $ "authresp: " <> ppShow resp
-  verdict <- judge resp =<< jctx
+  verdict <- judge resp jctx
   logger Debug $ "authresp: " <> show verdict
   case handleVerdict of
     HandleVerdictRedirect onsuccess -> simpleHandleVerdict onsuccess verdict
@@ -306,7 +318,7 @@ authresp jctx handleVerdict body = do
 type OnSuccessRedirect m = UserRef -> m (SetSAMLCookie, URI)
 
 simpleOnSuccess :: SPHandler (Error err) m => OnSuccessRedirect m
-simpleOnSuccess uid = (togglecookie . Just . userRefToST $ uid,) <$> getLandingURI
+simpleOnSuccess uid = (togglecookie . Just . userRefToST $ uid,) . (^. cfgSPAppURI) <$> getConfig
 
 -- | We support two cases: redirect with a cookie, and a generic response with arbitrary status,
 -- headers, and body.  The latter case fits the 'ServantErr' type well, but we give it a more
