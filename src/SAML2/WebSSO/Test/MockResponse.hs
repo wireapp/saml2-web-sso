@@ -10,11 +10,11 @@ import Data.UUID as UUID
 import Data.UUID.V4 as UUID
 import GHC.Stack
 import Lens.Micro
+import SAML2.Util
 import SAML2.WebSSO
 import Text.Hamlet.XML (xml)
 import Text.XML
 import Text.XML.DSig
-import Text.XML.Util
 
 
 newtype SignedAuthnResponse = SignedAuthnResponse { fromSignedAuthnResponse :: Document }
@@ -22,13 +22,13 @@ newtype SignedAuthnResponse = SignedAuthnResponse { fromSignedAuthnResponse :: D
 
 mkAuthnResponse
   :: HasCallStack
-  => SignPrivCreds -> IdPConfig extra -> AuthnRequest -> Bool -> IO SignedAuthnResponse
+  => SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> IO SignedAuthnResponse
 mkAuthnResponse = mkAuthnResponseWithModif id id
 
 mkAuthnResponseWithSubj
   :: HasCallStack
   => NameID
-  -> SignPrivCreds -> IdPConfig extra -> AuthnRequest -> Bool -> IO SignedAuthnResponse
+  -> SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> IO SignedAuthnResponse
 mkAuthnResponseWithSubj subj = mkAuthnResponseWithModif modif id
   where
     modif = transformBis
@@ -41,8 +41,8 @@ mkAuthnResponseWithSubj subj = mkAuthnResponseWithModif modif id
 mkAuthnResponseWithModif
   :: HasCallStack
   => ([Node] -> [Node]) -> ([Node] -> [Node])
-  -> SignPrivCreds -> IdPConfig extra -> AuthnRequest -> Bool -> IO SignedAuthnResponse
-mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp authnreq grantAccess = do
+  -> SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> IO SignedAuthnResponse
+mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp sp authnreq grantAccess = do
   let freshNCName = ("_" <>) . UUID.toText <$> UUID.nextRandom
   assertionUuid <- freshNCName
   respUuid      <- freshNCName
@@ -50,16 +50,16 @@ mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp authnreq gran
 
   let issueInstant    = renderTime now
       expires         = renderTime $ 3600 `addTime` now
-      issuer    :: ST = idp ^. idpIssuer . fromIssuer . to renderURI
-      recipient :: ST = authnreq ^. rqIssuer . fromIssuer . to renderURI
-      destination     = recipient
+      idpissuer :: ST = idp ^. idpMetadata . edIssuer . fromIssuer . to renderURI
+      recipient :: ST = sp ^. spResponseURL . to renderURI
+      spissuer  :: ST = authnreq ^. rqIssuer . fromIssuer . to renderURI
       inResponseTo    = renderID $ authnreq ^. rqID
       status
         | grantAccess = "urn:oasis:names:tc:SAML:2.0:status:Success"
         | otherwise   = "urn:oasis:names:tc:SAML:2.0:status:Requester"
 
   assertion :: [Node]
-    <- signElementIOAt 1 creds $ modifUnsignedAssertion
+    <- signElementIOAt 1 creds . modifUnsignedAssertion . repairNamespaces $
       [xml|
         <Assertion
           xmlns="urn:oasis:names:tc:SAML:2.0:assertion"
@@ -67,7 +67,7 @@ mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp authnreq gran
           ID="#{assertionUuid}"
           IssueInstant="#{issueInstant}">
             <Issuer>
-                #{issuer}
+                #{idpissuer}
             <Subject>
                 <NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress">
                     #{"emil@email.com"}
@@ -79,7 +79,7 @@ mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp authnreq gran
             <Conditions NotBefore="#{issueInstant}" NotOnOrAfter="#{expires}">
                 <AudienceRestriction>
                     <Audience>
-                        #{recipient}
+                        #{spissuer}
             <AuthnStatement AuthnInstant="#{issueInstant}" SessionIndex="_e9ae1025-bc03-4b5a-943c-c9fcb8730b21">
                 <AuthnContext>
                     <AuthnContextClassRef>
@@ -87,17 +87,17 @@ mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp authnreq gran
       |]
 
   let authnResponse :: Element
-      [NodeElement authnResponse] = modifAll
+      [NodeElement authnResponse] = modifAll . repairNamespaces $
         [xml|
           <samlp:Response
             xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"
             ID="#{respUuid}"
             Version="2.0"
-            Destination="#{destination}"
+            Destination="#{recipient}"
             InResponseTo="#{inResponseTo}"
             IssueInstant="#{issueInstant}">
               <Issuer xmlns="urn:oasis:names:tc:SAML:2.0:assertion">
-                  #{issuer}
+                  #{idpissuer}
               <samlp:Status>
                   <samlp:StatusCode Value="#{status}">
               ^{assertion}

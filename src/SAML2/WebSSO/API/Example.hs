@@ -22,6 +22,7 @@ import Data.UUID as UUID
 import GHC.Stack
 import Lens.Micro
 import Network.Wai hiding (Response)
+import SAML2.Util
 import SAML2.WebSSO
 import Servant.API hiding (URI(..))
 import Servant.Server
@@ -30,9 +31,7 @@ import Servant.Utils.Enter
 #endif
 import Text.Hamlet.XML
 import Text.XML
-import Text.XML.Util
 import URI.ByteString
-import Web.Cookie
 
 
 -- | The most straight-forward 'Application' that can be constructed from 'api', 'API'.
@@ -57,7 +56,7 @@ app' Proxy ctx = do
   pure . setHttpCachePolicy $ served
 
 type SPAPI =
-       Header "Cookie" SetCookie :> Get '[HTML] LoginStatus
+       Header "Cookie" SetSAMLCookie :> Get '[HTML] LoginStatus
   :<|> "logout" :> "local" :> GetRedir '[HTML] (WithCookieAndLocation ST)
   :<|> "logout" :> "single" :> GetRedir '[HTML] (WithCookieAndLocation ST)
 
@@ -71,15 +70,15 @@ spapi = loginStatus :<|> localLogout :<|> singleLogout
 appapi :: SPHandler SimpleError m => ServerT APPAPI m
 appapi = spapi :<|> api "toy-sp" (HandleVerdictRedirect simpleOnSuccess)
 
-loginStatus :: SP m => Maybe SetCookie -> m LoginStatus
+loginStatus :: SP m => Maybe SetSAMLCookie -> m LoginStatus
 loginStatus cookie = do
   idpids     <- (^. cfgIdps) <$> getConfig
   loginOpts  <- mkLoginOption `mapM` idpids
   logoutPath <- getPath' SpPathLocalLogout
-  pure $ maybe (NotLoggedIn loginOpts) (LoggedInAs logoutPath . cs . setCookieValue) cookie
+  pure $ maybe (NotLoggedIn loginOpts) (LoggedInAs logoutPath . cs . setSAMLCookieValue) cookie
 
 mkLoginOption :: SP m => IdPConfig a -> m (ST, ST)
-mkLoginOption icfg = (renderURI $ icfg ^. idpIssuer . fromIssuer,) <$> getPath' (SsoPathAuthnReq (icfg ^. idpId))
+mkLoginOption icfg = (renderURI $ icfg ^. idpMetadata . edIssuer . fromIssuer,) <$> getPath' (SsoPathAuthnReq (icfg ^. idpId))
 
 -- | only logout on this SP.
 localLogout :: SPHandler SimpleError m => m (WithCookieAndLocation ST)
@@ -95,9 +94,6 @@ data LoginStatus
   = NotLoggedIn [(ST{- issuer -}, ST{- authreq path -})]
   | LoggedInAs ST ST
   deriving (Eq, Show)
-
-instance FromHttpApiData SetCookie where
-  parseUrlPiece = headerValueToCookie
 
 instance MimeRender HTML LoginStatus where
   mimeRender Proxy (NotLoggedIn loginOpts)
@@ -174,7 +170,7 @@ instance HasConfig SimpleSP where
 instance SPStoreIdP SimpleError SimpleSP where
   storeIdPConfig _ = pure ()
   getIdPConfig = simpleGetIdPConfigBy (^. idpId)
-  getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpIssuer)
+  getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpMetadata . edIssuer)
 
 simpleGetIdPConfigBy :: (MonadError (Error err) m, HasConfig m, Show a, Ord a)
                      => (IdPConfig (ConfigExtra m) -> a) -> a -> m (IdPConfig (ConfigExtra m))
@@ -213,18 +209,24 @@ data Path = SpPathHome | SpPathLocalLogout | SpPathSingleLogout
   deriving (Eq, Show)
 
 
-getPath :: (HasConfig m, HasCallStack) => Path -> m URI
-getPath = fmap unsafeParseURI . getPath'
-
 getPath' :: forall m. (HasConfig m) => Path -> m ST
-getPath' = fmap cs . \case
-  SpPathHome         -> sp  ""
-  SpPathLocalLogout  -> sp  "/logout/local"
-  SpPathSingleLogout -> sp  "/logout/single"
-  SsoPathMeta        -> sso "/meta"
-  SsoPathAuthnReq ip -> sso "/authreq" <&> withidp ip
-  SsoPathAuthnResp   -> sso "/authresp"
-  where
-    sp  p = appendURI p . (^. cfgSPAppURI) <$> getConfig
-    sso p = appendURI p . (^. cfgSPSsoURI) <$> getConfig
-    withidp (IdPId uuid) = (<> ("/" <> cs (UUID.toString uuid)))
+getPath' = fmap renderURI . getPath
+
+getPath :: forall m. (HasConfig m) => Path -> m URI
+getPath path = do
+  cfg <- getConfig
+
+  let sp, sso :: ST -> URI
+      sp = ((cfg ^. cfgSPAppURI) =/)
+      sso = ((cfg ^. cfgSPSsoURI) =/)
+
+      withidp :: IdPId -> URI -> URI
+      withidp (IdPId uuid) = (=/ UUID.toText uuid)
+
+  pure $ case path of
+    SpPathHome         -> sp  ""
+    SpPathLocalLogout  -> sp  "/logout/local"
+    SpPathSingleLogout -> sp  "/logout/single"
+    SsoPathMeta        -> sso "/meta"
+    SsoPathAuthnReq ip -> withidp ip $ sso "/authreq"
+    SsoPathAuthnResp   -> sso "/authresp"

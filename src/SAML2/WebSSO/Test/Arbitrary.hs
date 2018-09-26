@@ -4,9 +4,12 @@
 
 module SAML2.WebSSO.Test.Arbitrary where
 
+import Control.Monad
 import Data.List.NonEmpty as NL
-import Data.Maybe (catMaybes)
 import Data.String.Conversions
+import Data.Time
+import Data.Word (Word32)
+import GHC.Stack
 import Hedgehog
 import SAML2.WebSSO
 import Test.QuickCheck (Arbitrary(arbitrary, shrink))
@@ -100,8 +103,33 @@ genIdPMetadata = IdPMetadata
 genX509SignedCertificate :: Gen X509.SignedCertificate
 genX509SignedCertificate = either (error . show) pure $ DSig.parseKeyInfo "<KeyInfo xmlns=\"http://www.w3.org/2000/09/xmldsig#\"><X509Data><X509Certificate>MIIDBTCCAe2gAwIBAgIQev76BWqjWZxChmKkGqoAfDANBgkqhkiG9w0BAQsFADAtMSswKQYDVQQDEyJhY2NvdW50cy5hY2Nlc3Njb250cm9sLndpbmRvd3MubmV0MB4XDTE4MDIxODAwMDAwMFoXDTIwMDIxOTAwMDAwMFowLTErMCkGA1UEAxMiYWNjb3VudHMuYWNjZXNzY29udHJvbC53aW5kb3dzLm5ldDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMgmGiRfLh6Fdi99XI2VA3XKHStWNRLEy5Aw/gxFxchnh2kPdk/bejFOs2swcx7yUWqxujjCNRsLBcWfaKUlTnrkY7i9x9noZlMrijgJy/Lk+HH5HX24PQCDf+twjnHHxZ9G6/8VLM2e5ZBeZm+t7M3vhuumEHG3UwloLF6cUeuPdW+exnOB1U1fHBIFOG8ns4SSIoq6zw5rdt0CSI6+l7b1DEjVvPLtJF+zyjlJ1Qp7NgBvAwdiPiRMU4l8IRVbuSVKoKYJoyJ4L3eXsjczoBSTJ6VjV2mygz96DC70MY3avccFrk7tCEC6ZlMRBfY1XPLyldT7tsR3EuzjecSa1M8CAwEAAaMhMB8wHQYDVR0OBBYEFIks1srixjpSLXeiR8zES5cTY6fBMA0GCSqGSIb3DQEBCwUAA4IBAQCKthfK4C31DMuDyQZVS3F7+4Evld3hjiwqu2uGDK+qFZas/D/eDunxsFpiwqC01RIMFFN8yvmMjHphLHiBHWxcBTS+tm7AhmAvWMdxO5lzJLS+UWAyPF5ICROe8Mu9iNJiO5JlCo0Wpui9RbB1C81Xhax1gWHK245ESL6k7YWvyMYWrGqr1NuQcNS0B/AIT1Nsj1WY7efMJQOmnMHkPUTWryVZlthijYyd7P2Gz6rY5a81DAFqhDNJl2pGIAE6HWtSzeUEh3jCsHEkoglKfm4VrGJEuXcALmfCMbdfTvtu4rlsaP2hQad+MG/KJFlenoTK34EMHeBPDCpqNDz8UVNk</X509Certificate></X509Data></KeyInfo>"
 
+genSPMetadata :: Gen SPMetadata
+genSPMetadata = do
+  _spID             <- genID
+  _spValidUntil     <- fromTime <$> genTime
+  _spCacheDuration  <- genNominalDifftime
+  _spOrgName        <- genNiceWord
+  _spOrgDisplayName <- genNiceWord
+  _spOrgURL         <- genURI
+  _spResponseURL    <- genURI
+  _spContacts       <- NL.fromList <$> Gen.list (Range.linear 1 3) genContactPerson
+  pure SPMetadata {..}
+
+genContactPerson :: Gen ContactPerson
+genContactPerson = do
+  _cntType      <- Gen.enumBounded
+  _cntCompany   <- Gen.maybe genNiceWord
+  _cntGivenName <- Gen.maybe genNiceWord
+  _cntSurname   <- Gen.maybe genNiceWord
+  _cntEmail     <- Gen.maybe genEmail
+  _cntPhone     <- Gen.maybe genNiceWord
+  pure ContactPerson {..}
+
+genEmail :: Gen URI  -- TODO: get a little more inspired here?
+genEmail = pure [uri|email:somebody@example.com|]
+
 genAuthnRequest :: Gen AuthnRequest
-genAuthnRequest = AuthnRequest <$> genID <*> genVersion <*> genTime <*> genIssuer
+genAuthnRequest = AuthnRequest <$> genID <*> genVersion <*> genTime <*> genIssuer <*> Gen.maybe genNameIDPolicy
 
 genTime :: Gen Time
 genTime = pure $ unsafeReadTime "2013-03-18T07:33:56Z"
@@ -109,17 +137,26 @@ genTime = pure $ unsafeReadTime "2013-03-18T07:33:56Z"
 genDuration :: Gen Duration
 genDuration = pure Duration
 
+genNominalDifftime :: Gen NominalDiffTime  -- TODO: get rid of this and use 'genDuration'
+genNominalDifftime = fromIntegral <$> Gen.int (Range.linear 0 1000000)
+
 genID :: Gen (ID a)
-genID = ID <$> genNiceText (Range.singleton 2)
+genID = ID . ("_" <>) . UUID.toText <$> genUUID
 
 genIssuer :: Gen Issuer
 genIssuer = Issuer <$> genURI
+
+genNameIDPolicy :: Gen NameIdPolicy
+genNameIDPolicy = NameIdPolicy <$> genNameIDFormat <*> Gen.maybe genNiceWord <*> Gen.bool
+
+genNameIDFormat :: Gen NameIDFormat
+genNameIDFormat = Gen.enumBounded
 
 genNameID :: Gen NameID
 genNameID = do
   unid <- genUnqualifiedNameID
   case unid of
-    NameIDFEntity enturi -> pure $ entityNameID enturi
+    UNameIDEntity enturi -> pure $ entityNameID enturi
     _ -> either (error . show) pure =<<
          (mkNameID unid <$> qualifier <*> qualifier <*> qualifier)
   where
@@ -127,14 +164,14 @@ genNameID = do
 
 genUnqualifiedNameID :: Gen UnqualifiedNameID
 genUnqualifiedNameID = Gen.choice
-  [ NameIDFUnspecified <$> mktxt 2000
-  , NameIDFEmail       <$> mktxt 2000
-  , NameIDFX509        <$> mktxt 2000
-  , NameIDFWindows     <$> mktxt 2000
-  , NameIDFKerberos    <$> mktxt 2000
-  , NameIDFEntity      <$> genURI' (Just (Range.linear 1 1024))
-  , NameIDFPersistent  <$> mktxt 1024
-  , NameIDFTransient   <$> mktxt 2000
+  [ UNameIDUnspecified <$> mktxt 2000
+  , UNameIDEmail       <$> mktxt 2000
+  , UNameIDX509        <$> mktxt 2000
+  , UNameIDWindows     <$> mktxt 2000
+  , UNameIDKerberos    <$> mktxt 2000
+  , UNameIDEntity      <$> genURI' (Just (Range.linear 1 1024))
+  , UNameIDPersistent  <$> mktxt 1024
+  , UNameIDTransient   <$> mktxt 2000
   ]
   where
     mktxt charlen = cs <$> Gen.text (Range.linear 1 charlen) Gen.alpha
@@ -143,10 +180,13 @@ genNonEmpty :: Range Int -> Gen a -> Gen (NonEmpty a)
 genNonEmpty rng gen = (:|) <$> gen <*> Gen.list rng gen
 
 genStatus :: Gen Status
-genStatus = undefined  -- Gen.enumBounded
+genStatus = Gen.choice
+  [ pure statusSuccess
+  , pure statusFailure
+  ]
 
 genAuthnResponse :: Gen AuthnResponse
-genAuthnResponse = genResponse $ Gen.list (Range.linear 0 100) genAssertion
+genAuthnResponse = genResponse (NL.fromList <$> Gen.list (Range.linear 1 100) genAssertion)
 
 genResponse :: forall payload. Gen payload -> Gen (Response payload)
 genResponse genPayload = do
@@ -270,17 +310,12 @@ genXMLAttr = (,) <$> genXMLName <*> genNiceWord
 genXMLInstruction :: Gen Instruction
 genXMLInstruction = Instruction <$> genNiceWord <*> genNiceWord
 
-genUUID :: Gen UUID.UUID
-genUUID = Gen.element someUUIDs
-  where
-    someUUIDs :: [UUID.UUID]
-    someUUIDs = catMaybes $ UUID.fromText <$>
-      [ "b83919ba-792c-11e8-87a6-5be4268de632"
-      , "b8fd2ad0-792c-11e8-9e90-8fed1fff12b4"
-      , "b924b6cc-792c-11e8-992c-4754ae6de3a2"
-      , "b9479610-792c-11e8-adf7-03c8d9d56542"
-      , "d20556a6-792c-11e8-8a98-47e39b3c575f"
-      ]
+genUUID :: HasCallStack => Gen UUID.UUID
+genUUID = do
+  ws :: [Word32] <- fmap fromIntegral <$> replicateM 4 (Gen.int (Range.linear 0 1000000))
+  case ws of
+    [w1, w2, w3, w4] -> pure $ UUID.fromWords w1 w2 w3 w4
+    _ -> error "impossible"
 
 genIdPId :: Gen IdPId
 genIdPId = IdPId <$> genUUID
@@ -377,6 +412,9 @@ instance Arbitrary Node where
 
 instance Arbitrary Name where
   arbitrary = TQH.hedgehog genXMLName
+
+instance Arbitrary IdPMetadata where
+  arbitrary = TQH.hedgehog genIdPMetadata
 
 shrinkElement :: Element -> [Element]
 shrinkElement (Element tag attrs nodes) = case (shrinkAttrs attrs, shrink nodes) of

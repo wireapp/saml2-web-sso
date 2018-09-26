@@ -1,28 +1,30 @@
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module SAML2.WebSSO.SP where
 
 import Control.Monad.Except
+import Control.Monad.Reader
 import Control.Monad.Writer
 import Data.Foldable (toList)
 import Data.List
+import Data.List.NonEmpty (NonEmpty)
 import Data.Maybe
 import Data.String.Conversions
 import Data.Time
 import Data.UUID (UUID)
 import GHC.Stack
 import Lens.Micro
-import Servant.Server
+import SAML2.Util
+import SAML2.WebSSO.Config
+import SAML2.WebSSO.Types
+import Servant.API hiding (URI(..))
+import Servant hiding (URI(..))
 import URI.ByteString
 
 import qualified Data.Semigroup
-import qualified Data.Text as ST
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
-
-import SAML2.WebSSO.Config
-import SAML2.WebSSO.Types
-import Text.XML.Util
 
 
 ----------------------------------------------------------------------
@@ -85,20 +87,33 @@ createUUIDIO = liftIO UUID.nextRandom
 getNowIO :: MonadIO m => m Time
 getNowIO = Time <$> liftIO getCurrentTime
 
--- | Microsoft Active Directory requires IDs to be of the form @id<32 hex digits>@, so the
--- @UUID.toText@ needs to be tweaked a little.
+-- | (Microsoft Active Directory likes IDs to be of the form @id<32 hex digits>@: @ID . cs . ("id"
+-- <>) . filter (/= '-') . cs . UUID.toText <$> createUUID@.  Hopefully the more common form
+-- produced by this function is also ok.)
 createID :: SP m => m (ID a)
-createID = ID . fixMSAD . UUID.toText <$> createUUID
-  where
-    fixMSAD :: ST -> ST
-    fixMSAD = cs . ("id" <>) . filter (/= '-') . cs
+createID = ID . ("_" <>) . UUID.toText <$> createUUID
 
+-- | Allow the IdP to create unknown users implicitly by mentioning them by email (this happens in
+-- 'rqNameIDPolicy').
+--
+-- NB: Using email addresses as unique identifiers between IdP and SP causes problems, since email
+-- addresses can change over time.  The best option may be to use UUIDs instead, and provide email
+-- addresses in SAML 'AuthnResponse' attributes or via scim.
+--
+-- Quote from the specs:
+--
+-- [3/4.1.4.1] If the service provider wishes to permit the identity provider to establish a new
+-- identifier for the principal if none exists, it MUST include a NameIDPolicy element with the
+-- AllowCreate attribute set to "true". Otherwise, only a principal for whom the identity provider
+-- has previously established an identifier usable by the service provider can be authenticated
+-- successfully.
 createAuthnRequest :: (SP m, SPStore m) => NominalDiffTime -> m AuthnRequest
 createAuthnRequest lifeExpectancySecs = do
   _rqID           <- createID
   _rqVersion      <- (^. cfgVersion) <$> getConfig
   _rqIssueInstant <- getNow
   _rqIssuer       <- Issuer <$> getLandingURI
+  let _rqNameIDPolicy = Just $ NameIdPolicy NameIDFEmail Nothing True
   storeRequest _rqID (addTime lifeExpectancySecs _rqIssueInstant)
   pure AuthnRequest{..}
 
@@ -106,14 +121,25 @@ createAuthnRequest lifeExpectancySecs = do
 ----------------------------------------------------------------------
 -- paths
 
-appendURI :: SBS -> URI -> SBS
-appendURI path uri = norm uri { uriPath = uriPath uri <> path }
-  where
-    norm :: URI -> SBS
-    norm = normalizeURIRef' httpNormalization
-
 getLandingURI :: (HasCallStack, HasConfig m) => m URI
 getLandingURI = (^. cfgSPAppURI) <$> getConfig
+
+getSsoURI :: forall m endpoint api.
+                  ( HasCallStack
+                  , HasConfig m
+                  , IsElem endpoint api
+                  , HasLink endpoint
+#if MIN_VERSION_servant(0,14,0)
+                  , ToHttpApiData (MkLink endpoint Link)
+#else
+                  , ToHttpApiData (MkLink endpoint)
+#endif
+                  )
+               => Proxy api -> Proxy endpoint -> m URI
+getSsoURI proxyAPI proxyAPIAuthResp = extpath . (^. cfgSPSsoURI) <$> getConfig
+  where
+    extpath :: URI -> URI
+    extpath = (=/ (cs . toUrlPiece $ safeLink proxyAPI proxyAPIAuthResp))
 
 
 ----------------------------------------------------------------------
@@ -125,10 +151,13 @@ getLandingURI = (^. cfgSPAppURI) <$> getConfig
 --
 -- NOTE: @-XGeneralizedNewtypeDeriving@ does not help with the boilerplate instances below, since
 -- this is a transformer stack and not a concrete 'Monad'.
-newtype JudgeT m a = JudgeT { fromJudgeT :: ExceptT [String] (WriterT [String] m) a }
+newtype JudgeT m a = JudgeT { fromJudgeT :: ExceptT [String] (WriterT [String] (ReaderT JudgeCtx m)) a }
 
-runJudgeT :: forall m. (Monad m, SP m) => JudgeT m AccessVerdict -> m AccessVerdict
-runJudgeT (JudgeT em) = fmap collectErrors . runWriterT $ runExceptT em
+newtype JudgeCtx = JudgeCtx { _judgeCtxRenderURI :: URI }
+  deriving (Eq, Show)
+
+runJudgeT :: forall m. (Monad m, SP m) => JudgeCtx -> JudgeT m AccessVerdict -> m AccessVerdict
+runJudgeT ctx (JudgeT em) = fmap collectErrors . (`runReaderT` ctx) . runWriterT $ runExceptT em
   where
     collectErrors :: (Either [String] AccessVerdict, [String]) -> AccessVerdict
     collectErrors (Left errs, errs')    = AccessDenied . fmap cs $ errs' <> errs
@@ -137,10 +166,12 @@ runJudgeT (JudgeT em) = fmap collectErrors . runWriterT $ runExceptT em
 
 -- the parts of the MonadError, MonadWriter interfaces we want here.
 class (Functor m, Applicative m, Monad m) => MonadJudge m where
+  getJudgeCtx :: m JudgeCtx
   deny :: [String] -> m ()
   giveup :: [String] -> m a
 
 instance (Functor m, Applicative m, Monad m) => MonadJudge (JudgeT m) where
+  getJudgeCtx = JudgeT . lift . lift $ ask
   deny = JudgeT . tell
   giveup = JudgeT . throwError
 
@@ -156,35 +187,33 @@ instance (Functor m, Applicative m, Monad m) => Monad (JudgeT m) where
 
 instance (HasConfig m) => HasConfig (JudgeT m) where
   type ConfigExtra (JudgeT m) = ConfigExtra m
-  getConfig = JudgeT . lift . lift $ getConfig
+  getConfig = JudgeT . lift . lift . lift $ getConfig
 
 instance SP m => SP (JudgeT m) where
-  logger level     = JudgeT . lift . lift . logger level
-  createUUID       = JudgeT . lift . lift $ createUUID
-  getNow           = JudgeT . lift . lift $ getNow
+  logger level     = JudgeT . lift . lift . lift . logger level
+  createUUID       = JudgeT . lift . lift . lift $ createUUID
+  getNow           = JudgeT . lift . lift . lift $ getNow
 
 instance SPStore m => SPStore (JudgeT m) where
-  storeRequest r      = JudgeT . lift . lift . storeRequest r
-  checkAgainstRequest = JudgeT . lift . lift . checkAgainstRequest
-  storeAssertion i    = JudgeT . lift . lift . storeAssertion i
+  storeRequest r      = JudgeT . lift . lift . lift . storeRequest r
+  checkAgainstRequest = JudgeT . lift . lift . lift . checkAgainstRequest
+  storeAssertion i    = JudgeT . lift . lift . lift . storeAssertion i
 
 
 -- | [3/4.1.4.2], [3/4.1.4.3]; specific to active-directory:
 -- <https://docs.microsoft.com/en-us/azure/active-directory/develop/active-directory-single-sign-on-protocol-reference>
-judge :: (SP m, SPStore m) => AuthnResponse -> m AccessVerdict
-judge resp = runJudgeT (judge' resp)
+judge :: (SP m, SPStore m) => AuthnResponse -> JudgeCtx -> m AccessVerdict
+judge resp ctx = runJudgeT ctx (judge' resp)
 
 -- TODO: crash for any extensions of the xml tree that we don't understand!
 
 judge' :: (HasCallStack, MonadJudge m, SP m, SPStore m) => AuthnResponse -> m AccessVerdict
 judge' resp = do
-  case resp ^. rspStatus of
-    StatusSuccess -> pure ()
-    bad -> deny ["status: " <> show bad]
+  either (deny . (:[])) pure . statusIsSuccess $ resp ^. rspStatus
 
   checkInResponseTo `mapM_` (resp ^. rspInRespTo)
   checkNotInFuture "Issuer instant" $ resp ^. rspIssueInstant
-  checkDestination  "response destination" `mapM_` (resp ^. rspDestination)
+  maybe (pure ()) (checkDestination "response destination") (resp ^. rspDestination)
   checkAssertions (resp ^. rspIssuer) (resp ^. rspPayload)
 
 checkInResponseTo :: (SPStore m, MonadJudge m) => ID AuthnRequest -> m ()
@@ -198,22 +227,20 @@ checkNotInFuture msg tim = do
   unless (tim < now) $
     deny [msg <> " in the future: " <> show tim]
 
--- | check that the response is intended for us (based on config's sso uri).  use for both response
--- destination and subject confirmation recipient.  only do prefix check because which sub-url the
--- IdP is aiming for is out of our hands here, and having the app's sso root url should be safe.
+-- | Check that the response is intended for us (based on config's finalize-login uri stored in
+-- 'JudgeCtx').
 checkDestination :: (HasConfig m, MonadJudge m) => String -> URI -> m ()
-checkDestination msg (renderURI -> haveDest) = do
-  (renderURI . (^. cfgSPAppURI) <$> getConfig) >>= \wantDest -> do
-    unless (wantDest `ST.isPrefixOf` haveDest) $ do
-      deny ["bad " <> msg <> ": expected " <> show wantDest <> ", got " <> show haveDest]
+checkDestination msg (renderURI -> expectedByIdp) = do
+  JudgeCtx (renderURI -> expectedByUs) <- getJudgeCtx
+  unless (expectedByUs == expectedByIdp) $ do
+    deny [mconcat [ "bad ",  msg, ": "
+                  , "expected by us: ", show expectedByUs, "; "
+                  , "expected by IdP: any of " <> show expectedByIdp
+                  ]
+         ]
 
--- TODO: check that the @InResponseTo@ field in 'Response' exists and matches the one in 'Assertion'
--- (or 'SubjectConfirmationData', to be more specific).  if that's not the case, can we crash with
--- an error?
-
-checkAssertions :: (SP m, SPStore m, MonadJudge m) => Maybe Issuer -> [Assertion] -> m AccessVerdict
-checkAssertions _ [] = giveup ["no assertions"]
-checkAssertions missuer assertions = do
+checkAssertions :: (SP m, SPStore m, MonadJudge m) => Maybe Issuer -> NonEmpty Assertion -> m AccessVerdict
+checkAssertions missuer (toList -> assertions) = do
   forM_ assertions $ \ass -> do
     checkNotInFuture "Assertion IssueInstant" (ass ^. assIssueInstant)
     storeAssertion (ass ^. assID) (ass ^. assEndOfLife)
@@ -295,6 +322,8 @@ checkSubjectConfirmation ass conf = do
       deny ["bearer-confirmed assertions must be audience-restricted."]
       -- (the actual validation of the field, given it is Just, happens in 'judgeConditions'.)
 
+  checkSubjectConfirmationData bearer `mapM_` (conf ^. scData)
+
   pure bearer
 
 checkSubjectConfirmationData :: (HasConfig m, SP m, SPStore m, MonadJudge m)
@@ -307,7 +336,7 @@ checkSubjectConfirmationData bearer confdat = do
   checkDestination "confirmation recipient" $ confdat ^. scdRecipient
 
   getNow >>= \now -> when (now >= confdat ^. scdNotOnOrAfter) $
-    deny ["SubjectConfirmation with invalid NotOnOfAfter: " <> show (confdat ^. scdNotOnOrAfter)]
+    deny ["SubjectConfirmation with invalid NotOnOrAfter: " <> show (confdat ^. scdNotOnOrAfter)]
 
   checkInResponseTo `mapM_` (confdat ^. scdInResponseTo)
 

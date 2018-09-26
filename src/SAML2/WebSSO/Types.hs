@@ -17,17 +17,18 @@ import GHC.Generics (Generic)
 import GHC.Stack
 import Lens.Micro
 import Lens.Micro.TH
+import SAML2.Util
 import SAML2.WebSSO.Orphans ()
 import SAML2.WebSSO.Types.TH (deriveJSONOptions)
-import Text.XML.Util
 import URI.ByteString  -- FUTUREWORK: should saml2-web-sso also use the URI from http-types?  we already
                        -- depend on that via xml-conduit anyway.  (is it a problem though that it is
                        -- string-based?  is it less of a problem because we need it anyway?)
 
+import qualified Data.List as L
 import qualified Data.Text as ST
+import qualified SAML2.Core as HS
 import qualified Data.X509 as X509
 import qualified Servant
-import qualified Text.XML as XML
 
 
 ----------------------------------------------------------------------
@@ -61,21 +62,17 @@ instance ToJSON Issuer where
 ----------------------------------------------------------------------
 -- meta [4/2.3.2]
 
--- | 'HS.Descriptor', but without exposing the use of hsaml2.
-newtype SPDesc = SPDesc XML.Document
-  deriving (Eq, Show, Generic)
-
 -- | high-level, condensed data uesd for constructing an 'SPDesc'.  what is not in here is set to
 -- some constant default.
-data SPDescPre = SPDescPre
-  { _spdID             :: UUID.UUID
-  , _spdValidUntil     :: UTCTime          -- FUTUREWORK: Time
-  , _spdCacheDuration  :: NominalDiffTime  -- FUTUREWORK: Duration
-  , _spdOrgName        :: ST
-  , _spdOrgDisplayName :: ST
-  , _spdOrgURL         :: URI
-  , _spdResponseURL    :: URI
-  , _spdContacts       :: NonEmpty ContactPerson
+data SPMetadata = SPMetadata
+  { _spID             :: ID SPMetadata
+  , _spValidUntil     :: UTCTime          -- FUTUREWORK: Time
+  , _spCacheDuration  :: NominalDiffTime  -- FUTUREWORK: Duration
+  , _spOrgName        :: ST
+  , _spOrgDisplayName :: ST
+  , _spOrgURL         :: URI
+  , _spResponseURL    :: URI
+  , _spContacts       :: NonEmpty ContactPerson
   }
   deriving (Eq, Show, Generic)
 
@@ -140,8 +137,9 @@ data AuthnRequest = AuthnRequest
   , _rqIssueInstant     :: Time
   , _rqIssuer           :: Issuer
 
-    -- extended xml type (attribute requests, ...)
-    -- ...
+    -- extended xml type
+  , _rqNameIDPolicy     :: Maybe NameIdPolicy
+  -- ...  (e.g. attribute requests)
   }
   deriving (Eq, Show, Generic)
 
@@ -156,13 +154,13 @@ data RequestedAuthnContext = RequestedAuthnContext
 
 -- | [1/3.4.1.1]
 data NameIdPolicy = NameIdPolicy
-  { _nidFormat          :: Maybe ST
+  { _nidFormat          :: NameIDFormat
   , _nidSpNameQualifier :: Maybe ST
-  , _nidAllowCreate     :: Maybe Bool
+  , _nidAllowCreate     :: Bool  -- ^ default: 'False'
   } deriving (Eq, Show, Generic)
 
 -- | [1/3.4]
-type AuthnResponse = Response [Assertion]
+type AuthnResponse = Response (NonEmpty Assertion)
 
 -- | [1/3.2.2]
 data Response payload = Response
@@ -220,19 +218,42 @@ data NameID = NameID
   deriving (Eq, Ord, Show, Generic)
 
 -- | [1/8.3]
+data NameIDFormat
+  = NameIDFUnspecified  -- ^ 'nameIDNameQ', 'nameIDSPNameQ' SHOULD be omitted.
+  | NameIDFEmail
+  | NameIDFX509
+  | NameIDFWindows
+  | NameIDFKerberos
+  | NameIDFEntity
+  | NameIDFPersistent   -- ^ use UUIDv4 where we have the choice.
+  | NameIDFTransient
+  deriving (Eq, Ord, Enum, Bounded, Show, Generic)
+
+-- | [1/8.3]
+type family NameIDReprFormat (t :: NameIDFormat) where
+  NameIDReprFormat 'NameIDFUnspecified = ST
+  NameIDReprFormat 'NameIDFEmail       = ST
+  NameIDReprFormat 'NameIDFX509        = ST
+  NameIDReprFormat 'NameIDFWindows     = ST
+  NameIDReprFormat 'NameIDFKerberos    = ST
+  NameIDReprFormat 'NameIDFEntity      = URI
+  NameIDReprFormat 'NameIDFPersistent  = ST
+  NameIDReprFormat 'NameIDFTransient   = ST
+
+-- | [1/8.3]  (FUTUREWORK: there may be a way to make this nicer by using 'NameIDFormat', 'NameIDReprFormat'.
 data UnqualifiedNameID
-  = NameIDFUnspecified ST  -- ^ 'nameIDNameQ', 'nameIDSPNameQ' SHOULD be omitted.
-  | NameIDFEmail       ST
-  | NameIDFX509        ST
-  | NameIDFWindows     ST
-  | NameIDFKerberos    ST
-  | NameIDFEntity      URI
-  | NameIDFPersistent  ST  -- ^ use UUIDv4 where we have the choice.
-  | NameIDFTransient   ST
+  = UNameIDUnspecified ST  -- ^ 'nameIDNameQ', 'nameIDSPNameQ' SHOULD be omitted.
+  | UNameIDEmail       ST
+  | UNameIDX509        ST
+  | UNameIDWindows     ST
+  | UNameIDKerberos    ST
+  | UNameIDEntity      URI
+  | UNameIDPersistent  ST  -- ^ use UUIDv4 where we have the choice.
+  | UNameIDTransient   ST
   deriving (Eq, Ord, Show, Generic)
 
 mkNameID :: MonadError String m => UnqualifiedNameID -> Maybe ST -> Maybe ST -> Maybe ST -> m NameID
-mkNameID nid@(NameIDFEntity uri) m1 m2 m3 = do
+mkNameID nid@(UNameIDEntity uri) m1 m2 m3 = do
   mapM_ throwError $
     [ "mkNameID: nameIDNameQ, nameIDSPNameQ, nameIDSPProvidedID MUST be omitted for entity NameIDs."
       <> show [m1, m2, m3]
@@ -243,7 +264,7 @@ mkNameID nid@(NameIDFEntity uri) m1 m2 m3 = do
     | uritxt <- [renderURI uri], ST.length uritxt > 1024
     ]
   pure $ NameID nid Nothing Nothing Nothing
-mkNameID nid@(NameIDFPersistent txt) m1 m2 m3 = do
+mkNameID nid@(UNameIDPersistent txt) m1 m2 m3 = do
   mapM_ throwError $
     [ "mkNameID: persistent text too long: "
       <> show (nid, ST.length txt)
@@ -254,35 +275,46 @@ mkNameID nid m1 m2 m3 = do
   pure $ NameID nid m1 m2 m3
 
 opaqueNameID :: ST -> NameID
-opaqueNameID raw = NameID (NameIDFUnspecified raw) Nothing Nothing Nothing
+opaqueNameID raw = NameID (UNameIDUnspecified raw) Nothing Nothing Nothing
 
 entityNameID :: URI -> NameID
-entityNameID uri = NameID (NameIDFEntity uri) Nothing Nothing Nothing
+entityNameID uri = NameID (UNameIDEntity uri) Nothing Nothing Nothing
 
-nameIDFormat :: HasCallStack => UnqualifiedNameID -> String
+nameIDFormat :: HasCallStack => NameIDFormat -> String
 nameIDFormat = \case
-  NameIDFUnspecified _ -> "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"
-  NameIDFEmail _       -> "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
-  NameIDFX509 _        -> "urn:oasis:names:tc:SAML:1.1:nameid-format:X509SubjectName"
-  NameIDFWindows _     -> "urn:oasis:names:tc:SAML:1.1:nameid-format:WindowsDomainQualifiedName"
-  NameIDFKerberos _    -> "urn:oasis:names:tc:SAML:2.0:nameid-format:kerberos"
-  NameIDFEntity _      -> "urn:oasis:names:tc:SAML:2.0:nameid-format:entity"
-  NameIDFPersistent _  -> "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
-  NameIDFTransient _   -> "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"
+  NameIDFUnspecified -> "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"
+  NameIDFEmail       -> "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
+  NameIDFX509        -> "urn:oasis:names:tc:SAML:1.1:nameid-format:X509SubjectName"
+  NameIDFWindows     -> "urn:oasis:names:tc:SAML:1.1:nameid-format:WindowsDomainQualifiedName"
+  NameIDFKerberos    -> "urn:oasis:names:tc:SAML:2.0:nameid-format:kerberos"
+  NameIDFEntity      -> "urn:oasis:names:tc:SAML:2.0:nameid-format:entity"
+  NameIDFPersistent  -> "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
+  NameIDFTransient   -> "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"
+
+unameIDFormat :: HasCallStack => UnqualifiedNameID -> String
+unameIDFormat = \case
+  UNameIDUnspecified _ -> "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"
+  UNameIDEmail _       -> "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
+  UNameIDX509 _        -> "urn:oasis:names:tc:SAML:1.1:nameid-format:X509SubjectName"
+  UNameIDWindows _     -> "urn:oasis:names:tc:SAML:1.1:nameid-format:WindowsDomainQualifiedName"
+  UNameIDKerberos _    -> "urn:oasis:names:tc:SAML:2.0:nameid-format:kerberos"
+  UNameIDEntity _      -> "urn:oasis:names:tc:SAML:2.0:nameid-format:entity"
+  UNameIDPersistent _  -> "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
+  UNameIDTransient _   -> "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"
 
 -- | Extract the 'UnqualifiedNameID' part from the input and render it to a 'ST'.  If there are any
 -- qualifiers, return 'Nothing' to prevent name clashes (where two inputs are different, but produce
 -- the same output).
 shortShowNameID :: NameID -> Maybe ST
 shortShowNameID (NameID uqn Nothing Nothing Nothing) = case uqn of
-  NameIDFUnspecified st  -> Just st
-  NameIDFEmail       st  -> Just st
-  NameIDFX509        st  -> Just st
-  NameIDFWindows     st  -> Just st
-  NameIDFKerberos    st  -> Just st
-  NameIDFEntity      uri -> Just $ renderURI uri
-  NameIDFPersistent  st  -> Just st
-  NameIDFTransient   st  -> Just st
+  UNameIDUnspecified st  -> Just st
+  UNameIDEmail       st  -> Just st
+  UNameIDX509        st  -> Just st
+  UNameIDWindows     st  -> Just st
+  UNameIDKerberos    st  -> Just st
+  UNameIDEntity      uri -> Just $ renderURI uri
+  UNameIDPersistent  st  -> Just st
+  UNameIDTransient   st  -> Just st
 shortShowNameID _ = Nothing
 
 
@@ -290,10 +322,18 @@ data Version = Version_2_0
   deriving (Eq, Show, Bounded, Enum, Generic)
 
 -- | [1/3.2.2.1;3.2.2.2]
-data Status =
-    StatusSuccess
-  | StatusFailure ST
-  deriving (Eq, Show, Generic)
+type Status = HS.Status
+
+statusIsSuccess :: MonadError String m => Status -> m ()
+statusIsSuccess = \case
+  HS.Status (HS.StatusCode HS.StatusSuccess _) _ _ -> pure ()
+  bad -> throwError $ "status: " <> show bad
+
+statusSuccess :: Status
+statusSuccess = HS.Status (HS.StatusCode HS.StatusSuccess []) Nothing Nothing
+
+statusFailure :: Status
+statusFailure = HS.Status (HS.StatusCode HS.StatusRequester []) Nothing Nothing
 
 
 ----------------------------------------------------------------------
@@ -434,9 +474,8 @@ makeLenses ''NameID
 makeLenses ''NameIdPolicy
 makeLenses ''RequestedAuthnContext
 makeLenses ''Response
-makeLenses ''SPDescPre
+makeLenses ''SPMetadata
 makeLenses ''Statement
-makeLenses ''Status
 makeLenses ''Subject
 makeLenses ''SubjectAndStatements
 makeLenses ''SubjectConfirmation
@@ -497,17 +536,22 @@ assEndOfLife = lens gt st
     st :: Assertion -> Time -> Assertion
     st ass tim = ass & assConditions . _Just . condNotOnOrAfter .~ Just tim
 
-
--- TODO: remove the following three, they are more confusing than helpful!
-
-idpIssuer :: Lens' (IdPConfig extra) Issuer
-idpIssuer = idpMetadata . edIssuer
-
-idpRequestUri :: Lens' (IdPConfig extra) URI
-idpRequestUri = idpMetadata . edRequestURI
-
-idpPublicKeys :: Lens' (IdPConfig extra) (NonEmpty X509.SignedCertificate)
-idpPublicKeys = idpMetadata . edCertAuthnResponse
+-- | [3/4.1.4.2] SubjectConfirmation [...] If the containing message is in response to an
+-- AuthnRequest, then the InResponseTo attribute MUST match the request's ID.
+rspInResponseTo :: MonadError String m => AuthnResponse -> m (ID AuthnRequest)
+rspInResponseTo aresp = case ids of
+  [] -> throwError "not found"
+  [i] -> pure i
+  is@(i:_:_) -> if L.nub is == [i]
+                then pure i
+                else throwError $ "contradictory InResponseTo values: " <> show is
+  where
+    ids :: [ID AuthnRequest]
+    ids = maybeToList
+        . (^. scdInResponseTo)
+      =<< (^. scData)
+      =<< (^. assContents . sasSubject . subjectConfirmations)
+      =<< toList (aresp ^. rspPayload)
 
 
 ----------------------------------------------------------------------

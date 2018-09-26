@@ -10,6 +10,7 @@ import Control.Monad.IO.Class (liftIO)
 import Data.Either
 import Data.List.NonEmpty as NL
 import Data.String.Conversions
+import SAML2.Util
 import SAML2.WebSSO
 import System.Environment (setEnv)
 import System.IO.Unsafe (unsafePerformIO)
@@ -17,7 +18,6 @@ import Test.Hspec
 import Text.Show.Pretty (ppShow)
 import Text.XML
 import Text.XML.DSig as DSig
-import Text.XML.Util
 import URI.ByteString
 import Util
 
@@ -58,10 +58,11 @@ spec = describe "XML serialization" $ do
   describe "AuthnRequest" $ do
     it "works" $ do
       let req = AuthnRequest
-            { _rqID = ID "aiandama aiandama"
+            { _rqID = ID "_233f9cee-b6bc-11e8-87ff-97a7b126bf5a"
             , _rqVersion = Version_2_0
             , _rqIssueInstant = unsafeReadTime "2013-03-18T07:33:56Z"
             , _rqIssuer = iss
+            , _rqNameIDPolicy = Nothing
             }
           iss = Issuer $ unsafeParseURI "http://wire.com"
       decodeElem @Issuer @(Either String) (encodeElem iss) `shouldBe` Right iss

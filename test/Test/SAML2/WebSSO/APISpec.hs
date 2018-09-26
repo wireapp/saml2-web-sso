@@ -14,6 +14,7 @@ import Data.EitherR
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.String.Conversions
 import Lens.Micro
+import SAML2.Util
 import SAML2.WebSSO
 import SAML2.WebSSO.Test.Arbitrary (genFormRedirect, genAuthnRequest)
 import SAML2.WebSSO.Test.Credentials
@@ -28,7 +29,6 @@ import Test.Hspec.Wai
 import Test.Hspec.Wai.Matcher
 import TestSP
 import Text.XML as XML
-import Text.XML.Util
 import URI.ByteString.QQ
 import Util
 
@@ -62,6 +62,10 @@ instance HasXMLRoot SomeSAMLRequest where
 base64ours, base64theirs :: HasCallStack => SBS -> IO SBS
 base64ours = pure . cs . EL.encode . cs
 base64theirs sbs = shelly . silently $ cs <$> (setStdin (cs sbs) >> run "/usr/bin/base64" ["--wrap", "0"])
+
+
+jctx :: TestSP JudgeCtx
+jctx = pure $ JudgeCtx [uri|https://zb2.zerobuzz.net:60443/sso/authresp|]
 
 
 -- on servant-0.12 or later, use 'hoistServer':
@@ -116,7 +120,7 @@ burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
         get ("/authreq/" <> cs (idPIdToST (idp ^. idpId)))
           `shouldRespondWith` 200 { matchBody = bodyContains "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" }
 
-    describe "authresp" . withapp (Proxy @APIAuthResp') (authresp (HandleVerdictRedirect simpleOnSuccess)) ctx $ do
+    describe "authresp" . withapp (Proxy @APIAuthResp') (authresp jctx (HandleVerdictRedirect simpleOnSuccess)) ctx $ do
       it "responds with 303" $ do
         sample <- liftIO $ cs <$> readSampleIO respXmlPath
         let postresp = postHtmlForm "/authresp" body
@@ -240,7 +244,7 @@ spec = describe "API" $ do
     it  "roundtrip-2" $ Right c2 `shouldBe` rndtrip c2
 
 
-  describe "meta" . withapp (Proxy @APIMeta') (meta "toy-sp" (Proxy @API) (Proxy @APIAuthResp')) mkTestCtx1 $ do
+  describe "meta" . withapp (Proxy @APIMeta') (meta "toy-sp" (getSsoURI (Proxy @API) (Proxy @APIAuthResp'))) mkTestCtx1 $ do
     it "responds with 200 and an 'SPSSODescriptor'" $ do
       get "/meta" `shouldRespondWith` 200 { matchBody = bodyContains "OrganizationName xml:lang=\"EN\">toy-sp" }
 
@@ -260,59 +264,75 @@ spec = describe "API" $ do
       it "responds with a body that contains the IdPs response URL" $ do
         myidp <- liftIO mkmyidp
         get "/authreq/eafd1654-754d-11e8-9438-00163e5e6c14" `shouldRespondWith` 200
-          { matchBody = bodyContains . cs . renderURI $ myidp ^. idpRequestUri }
+          { matchBody = bodyContains . cs . renderURI $ myidp ^. idpMetadata . edRequestURI }
 
 
   describe "authresp" $ do
     let mkpostresp = readSampleIO "microsoft-authnresponse-2.xml"
           <&> \sample -> postHtmlForm "/authresp" [("SAMLResponse", cs . EL.encode . cs $ sample)]
 
-    context "unknown idp" . withapp (Proxy @APIAuthResp') (authresp (HandleVerdictRedirect simpleOnSuccess)) mkTestCtx1 $ do
+    context "unknown idp" . withapp (Proxy @APIAuthResp') (authresp jctx (HandleVerdictRedirect simpleOnSuccess)) mkTestCtx1 $ do
       let errmsg = "Unknown IdP: Issuer"
       it "responds with 404" $ do
         postresp <- liftIO mkpostresp
         postresp `shouldRespondWith` 404 { matchBody = bodyContains errmsg }
 
-    context "known idp, bad timestamp" . withapp (Proxy @APIAuthResp') (authresp (HandleVerdictRedirect simpleOnSuccess)) mkTestCtx2 $ do
+    context "known idp, bad timestamp" . withapp (Proxy @APIAuthResp') (authresp jctx (HandleVerdictRedirect simpleOnSuccess)) mkTestCtx2 $ do
       it "responds with 402" $ do
         postresp <- liftIO mkpostresp
         postresp `shouldRespondWith`
           403 { matchBody = bodyContains "violation of NotBefore condition" }
 
-    let mkTestCtx3' = do
+    let withTestCtx3' = withapp (Proxy @APIAuthResp') (authresp jctx' (HandleVerdictRedirect simpleOnSuccess)) $ do
           reqstore <- newMVar $ Map.fromList [(ID "idcf2299ac551b42f1aa9b88804ed308c2", unsafeReadTime "2019-04-14T10:53:57Z")]
           mkTestCtx3
-            <&> ctxNow .~ unsafeReadTime "2018-04-14T10:53:57Z"
+            <&> ctxNow .~ unsafeReadTime "2018-04-14T10:03:02Z"
             <&> ctxConfig . cfgSPAppURI .~ [uri|https://zb2.zerobuzz.net:60443/authresp|]
             <&> ctxRequestStore .~ reqstore
-    context "known idp, good timestamp" . withapp (Proxy @APIAuthResp') (authresp (HandleVerdictRedirect simpleOnSuccess)) mkTestCtx3' $ do
+
+        jctx' = pure $ JudgeCtx [uri|https://zb2.zerobuzz.net:60443/authresp|]
+
+    context "known idp, good timestamp" . withTestCtx3' $ do
       it "responds with 303" $ do
         postresp <- liftIO mkpostresp
-        postresp `shouldRespondWith` 303 { matchBody = bodyContains "<body><p>SSO successful, redirecting to https://zb2.zerobuzz.net:60443/authresp" }
+        postresp `shouldRespondWith`
+          303 { matchBody = bodyContains "<body><p>SSO successful, redirecting to https://zb2.zerobuzz.net:60443/authresp" }
 
 
   describe "idp smoke tests" $ do
     burnIdP "okta-config.yaml" "okta-resp-1.base64" "2018-05-25T10:57:16.135Z" "https://zb2.zerobuzz.net:60443/"
-    burnIdP "microsoft-idp-config.yaml" "microsoft-authnresponse-2.base64" "2018-04-14T10:53:57Z" "https://zb2.zerobuzz.net:60443/authresp"
+    -- TODO: burnIdP "microsoft-idp-config.yaml" "microsoft-authnresponse-2.base64" "2018-04-14T10:53:57Z" "https://zb2.zerobuzz.net:60443/authresp"
     -- TODO: centrify
 
 
   describe "mkAuthnResponse" $ do
+    let spmeta :: SPMetadata -- <- mkSPMetadata "appname" (ctx ^. ctxConfig . cfgSPAppURI) () (ctx ^. ctxConfig . cfgContacts)
+        spmeta = SPMetadata
+          { _spID = ID "_4b7e1488-c0c6-11e8-aef0-9fe604f9513a"
+          , _spValidUntil = fromTime $ addTime (60 * 60 * 24 * 365) timeNow
+          , _spCacheDuration = 2592000
+          , _spOrgName = "drnick"
+          , _spOrgDisplayName = "drnick"
+          , _spOrgURL = [uri|http://localhost:8088/|]
+          , _spResponseURL = [uri|http://localhost:8088/sso/finalize-login|]
+          , _spContacts = fallbackContact :| []
+          }
+
     it "Produces output that decodes into 'AuthnResponse'" $ do
-      idpcfg <- mkmyidp <&> idpPublicKeys .~ (sampleIdPCert :| [])
+      idpcfg <- mkmyidp <&> idpMetadata . edCertAuthnResponse .~ (sampleIdPCert :| [])
       ctx <- mkTestCtx1 <&> ctxConfig . cfgIdps .~ [idpcfg]
       Right authnreq :: Either SomeException AuthnRequest <- try . ioFromTestSP ctx $ createAuthnRequest 3600
-      SignedAuthnResponse authnrespDoc <- mkAuthnResponse sampleIdPPrivkey idpcfg authnreq True
+      SignedAuthnResponse authnrespDoc <- mkAuthnResponse sampleIdPPrivkey idpcfg spmeta authnreq True
       parseFromDocument @AuthnResponse authnrespDoc `shouldSatisfy` isRight
 
     let check :: X509.SignedCertificate -> (Either SomeException () -> Bool) -> IO ()
         check cert expectation = do
-          idpcfg <- mkmyidp <&> idpPublicKeys .~ (cert :| [])
-          let issuer = idpcfg ^. idpIssuer
+          idpcfg <- mkmyidp <&> idpMetadata . edCertAuthnResponse .~ (cert :| [])
+          let issuer = idpcfg ^. idpMetadata . edIssuer
           ctx <- mkTestCtx1 <&> ctxConfig . cfgIdps .~ [idpcfg]
           result :: Either SomeException () <- try . ioFromTestSP ctx $ do
             authnreq  <- createAuthnRequest 3600
-            SignedAuthnResponse authnrespDoc <- liftIO $ mkAuthnResponse sampleIdPPrivkey idpcfg authnreq True
+            SignedAuthnResponse authnrespDoc <- liftIO $ mkAuthnResponse sampleIdPPrivkey idpcfg spmeta authnreq True
             let authnrespLBS = renderLBS def authnrespDoc
             simpleVerifyAuthnResponse (Just issuer) authnrespLBS
           result `shouldSatisfy` expectation

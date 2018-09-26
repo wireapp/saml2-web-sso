@@ -7,7 +7,7 @@ import Control.Exception (SomeException)
 import Control.Monad
 import Control.Monad.Except
 import Data.EitherR
-import Data.List.NonEmpty (NonEmpty((:|)))
+import Data.List.NonEmpty as NL (NonEmpty((:|)), nonEmpty)
 import Data.Maybe (fromMaybe, isNothing, maybeToList, catMaybes)
 import Data.Monoid ((<>))
 import Data.String.Conversions
@@ -16,11 +16,10 @@ import Data.Typeable (Proxy(Proxy), Typeable)
 import GHC.Stack
 import Lens.Micro
 import Prelude hiding ((.), id)
+import SAML2.Util
 import SAML2.WebSSO.Types
 import Text.Show.Pretty (ppShow)
 import Text.XML hiding (renderText)
-import Text.XML.Cursor
-import Text.XML.Util
 import URI.ByteString
 
 import qualified Data.List as List
@@ -152,7 +151,7 @@ wrapRenderRoot exprt = parseElement . HS.samlToXML . exprt
       Right (Document _ el _) -> el
       Left msg  -> error $ show (Proxy @us, msg)
 
-instance HasXML     AuthnRequest     where parse      = importAuthnRequest
+instance HasXML     AuthnRequest     where parse      = wrapParse importAuthnRequest
 instance HasXMLRoot AuthnRequest     where renderRoot = wrapRenderRoot exportAuthnRequest
 instance HasXML     AuthnResponse    where parse      = wrapParse importAuthnResponse
 instance HasXMLRoot AuthnResponse    where renderRoot = wrapRenderRoot exportAuthnResponse
@@ -166,52 +165,37 @@ instance HasXML Issuer where
   render = wrapRender exportIssuer
 
 nameIDToST :: NameID -> ST
-nameIDToST (NameID (NameIDFUnspecified txt) Nothing Nothing Nothing) = txt
-nameIDToST (NameID (NameIDFEmail txt) Nothing Nothing Nothing) = txt
-nameIDToST (NameID (NameIDFEntity uri) Nothing Nothing Nothing) = renderURI uri
-nameIDToST other = cs $ encodeElem other  -- TODO: some of the others may have more reasonable serialization.
+nameIDToST (NameID (UNameIDUnspecified txt) Nothing Nothing Nothing) = txt
+nameIDToST (NameID (UNameIDEmail txt) Nothing Nothing Nothing) = txt
+nameIDToST (NameID (UNameIDEntity uri) Nothing Nothing Nothing) = renderURI uri
+nameIDToST other = cs $ encodeElem other  -- (some of the others may also have obvious
+                                          -- serializations, but we don't need them for now.)
 
 userRefToST :: UserRef -> ST
 userRefToST (UserRef (Issuer tenant) subject) = "{" <> renderURI tenant <> "}" <> nameIDToST subject
 
 
-importAuthnRequest :: MonadError String m => [Node] -> m AuthnRequest
-importAuthnRequest [fromNode -> cursor] = do
-  _rqID <- case cursor $| attribute "ID" of
-    [i] -> pure $ ID i
-    bad -> die (Proxy @AuthnRequest) ("no valid ID: " <> show bad)
-  _rqVersion <- case cursor $| attribute "Version" of
-    ["2.0"] -> pure Version_2_0
-    bad     -> die (Proxy @AuthnRequest) ("no valid Version: " <> show bad)
-  _rqIssueInstant <- case cursor $| attribute "IssueInstant" of
-    [decodeTime -> Right t] -> pure t
-    bad     -> die (Proxy @AuthnRequest) ("no valid IssueInstant: " <> show bad)
-  _rqIssuer <- case parseURI' . mconcat $ (cursor $/ element "{urn:oasis:names:tc:SAML:2.0:assertion}Issuer" &/ content :: [ST]) of
-    Right iss -> pure $ Issuer iss
-    Left msg -> die (Proxy @AuthnRequest) ("no valid Issuer: " <> show msg)
-  pure AuthnRequest {..}
-importAuthnRequest bad = die (Proxy @AuthnRequest) ("unvalid input: " <> show bad)
-
-
--- | TODO: this makes the test suite fail, not sure why hsaml2 is unhappy with its own rendering.
-importAuthnRequest_broken :: MonadError String m => HS.AuthnRequest -> m AuthnRequest
-importAuthnRequest_broken req = do
+importAuthnRequest :: MonadError String m => HS.AuthnRequest -> m AuthnRequest
+importAuthnRequest req = do
   let proto = HS.requestProtocol $ HS.authnRequest req
   _rqID           <- importID $ HS.protocolID proto
   _rqVersion      <- importVersion $ HS.protocolVersion proto
   _rqIssueInstant <- importTime $ HS.protocolIssueInstant proto
   _rqIssuer       <- importRequiredIssuer $ HS.protocolIssuer proto
+  _rqNameIDPolicy <- fmapFlipM importNameIDPolicy $ HS.authnRequestNameIDPolicy req
+
   fmapFlipM importURI (HS.protocolDestination proto) >>= \case
     Nothing -> pure ()
     Just dest -> die (Proxy @AuthnRequest) ("protocol destination not allowed: " <> show dest)
 
   -- TODO: make sure everything in HS.AuthnRequest that might change the interpreation of the data
-  -- we know is 'Nothing'.  also do this on all other 'import*' functions.  (or should we only do
-  -- this once we have our own parsers only based on stack-prism and xml-conduit?)
+  -- we know is 'Nothing'.  also do this on all other 'import*' functions.
   pure AuthnRequest {..}
 
 exportAuthnRequest :: AuthnRequest -> HS.AuthnRequest
-exportAuthnRequest req = defAuthnRequest proto
+exportAuthnRequest req = (defAuthnRequest proto)
+  { HS.authnRequestNameIDPolicy = exportNameIDPolicy <$> req ^. rqNameIDPolicy
+  }
   where
     proto = (defProtocolType (exportID $ req ^. rqID) (exportTime $ req ^. rqIssueInstant))
       { HS.protocolVersion = exportVersion $ req ^. rqVersion
@@ -248,6 +232,45 @@ defProtocolType pid iinst = HS.ProtocolType
   }
 
 
+importNameIDPolicy :: (HasCallStack, MonadError String m) => HS.NameIDPolicy -> m NameIdPolicy
+importNameIDPolicy nip = do
+  _nidFormat             <- importNameIDFormat $ HS.nameIDPolicyFormat nip
+  let _nidSpNameQualifier = cs <$> HS.nameIDPolicySPNameQualifier nip
+      _nidAllowCreate     = HS.nameIDPolicyAllowCreate nip
+  pure NameIdPolicy {..}
+
+exportNameIDPolicy :: HasCallStack => NameIdPolicy -> HS.NameIDPolicy
+exportNameIDPolicy nip = HS.NameIDPolicy
+  { HS.nameIDPolicyFormat          = exportNameIDFormat $ nip ^. nidFormat
+  , HS.nameIDPolicySPNameQualifier = cs <$> nip ^. nidSpNameQualifier
+  , HS.nameIDPolicyAllowCreate     = nip ^. nidAllowCreate
+  }
+
+importNameIDFormat :: (HasCallStack, MonadError String m) => HS.IdentifiedURI HS.NameIDFormat -> m NameIDFormat
+importNameIDFormat = \case
+  HS.Identified HS.NameIDFormatUnspecified     -> pure NameIDFUnspecified
+  HS.Identified HS.NameIDFormatEmail           -> pure NameIDFEmail
+  HS.Identified HS.NameIDFormatX509            -> pure NameIDFX509
+  HS.Identified HS.NameIDFormatWindows         -> pure NameIDFWindows
+  HS.Identified HS.NameIDFormatKerberos        -> pure NameIDFKerberos
+  HS.Identified HS.NameIDFormatEntity          -> pure NameIDFEntity
+  HS.Identified HS.NameIDFormatPersistent      -> pure NameIDFPersistent
+  HS.Identified HS.NameIDFormatTransient       -> pure NameIDFTransient
+  bad@(HS.Identified HS.NameIDFormatEncrypted) -> throwError $ "unsupported: " <> show bad
+  bad@(HS.Unidentified _)                      -> throwError $ "unsupported: " <> show bad
+
+exportNameIDFormat :: NameIDFormat -> HS.IdentifiedURI HS.NameIDFormat
+exportNameIDFormat = \case
+  NameIDFUnspecified -> HS.Identified HS.NameIDFormatUnspecified
+  NameIDFEmail       -> HS.Identified HS.NameIDFormatEmail
+  NameIDFX509        -> HS.Identified HS.NameIDFormatX509
+  NameIDFWindows     -> HS.Identified HS.NameIDFormatWindows
+  NameIDFKerberos    -> HS.Identified HS.NameIDFormatKerberos
+  NameIDFEntity      -> HS.Identified HS.NameIDFormatEntity
+  NameIDFPersistent  -> HS.Identified HS.NameIDFormatPersistent
+  NameIDFTransient   -> HS.Identified HS.NameIDFormatTransient
+
+
 importAuthnResponse :: (HasCallStack, MonadError String m) => HS.Response -> m AuthnResponse
 importAuthnResponse rsp = do
   let rsptyp :: HS.StatusResponseType = HS.response rsp
@@ -260,7 +283,7 @@ importAuthnResponse rsp = do
   _rspDestination  <- fmapFlipM importURI $ HS.protocolDestination proto
   _rspIssuer       <- importOptionalIssuer $ HS.protocolIssuer proto
   _rspStatus       <- importStatus $ HS.status rsptyp
-  _rspPayload      <- importAssertion `mapM` HS.responseAssertions rsp
+  _rspPayload      <- maybe (throwError "no assertions") pure . NL.nonEmpty =<< (importAssertion `mapM` HS.responseAssertions rsp)
 
   pure Response {..}
 
@@ -403,7 +426,7 @@ importBaseID (HS.BaseID bidq bidspq bid) = BaseID (cs bid) (cs <$> bidq) (cs <$>
 
 importBaseIDasNameID :: (HasCallStack, ConvertibleStrings s ST) => HS.BaseID s -> NameID
 importBaseIDasNameID (importBaseID -> BaseID bid bidq bidspq) =
-  NameID (NameIDFUnspecified bid) bidq bidspq Nothing
+  NameID (UNameIDUnspecified bid) bidq bidspq Nothing
 
 importNameID :: (HasCallStack, MonadError String m) => HS.NameID -> m NameID
 importNameID bad@(HS.NameID (HS.BaseID _ _ _) (HS.Unidentified _) _)
@@ -413,14 +436,14 @@ importNameID (HS.NameID (HS.BaseID m1 m2 nid) (HS.Identified hsNameIDFormat) m3)
     form hsNameIDFormat (cs nid) >>= \nid' -> mkNameID nid' (cs <$> m1) (cs <$> m2) (cs <$> m3)
   where
     form :: MonadError String m => HS.NameIDFormat -> ST -> m UnqualifiedNameID
-    form HS.NameIDFormatUnspecified = pure . NameIDFUnspecified
-    form HS.NameIDFormatEmail       = pure . NameIDFEmail
-    form HS.NameIDFormatX509        = pure . NameIDFX509
-    form HS.NameIDFormatWindows     = pure . NameIDFWindows
-    form HS.NameIDFormatKerberos    = pure . NameIDFKerberos
-    form HS.NameIDFormatEntity      = fmap NameIDFEntity . parseURI'
-    form HS.NameIDFormatPersistent  = pure . NameIDFPersistent
-    form HS.NameIDFormatTransient   = pure . NameIDFTransient
+    form HS.NameIDFormatUnspecified = pure . UNameIDUnspecified
+    form HS.NameIDFormatEmail       = pure . UNameIDEmail
+    form HS.NameIDFormatX509        = pure . UNameIDX509
+    form HS.NameIDFormatWindows     = pure . UNameIDWindows
+    form HS.NameIDFormatKerberos    = pure . UNameIDKerberos
+    form HS.NameIDFormatEntity      = fmap UNameIDEntity . parseURI'
+    form HS.NameIDFormatPersistent  = pure . UNameIDPersistent
+    form HS.NameIDFormatTransient   = pure . UNameIDTransient
     form b@HS.NameIDFormatEncrypted = \_ -> die (Proxy @NameID) (show b)
 
 exportNameID :: NameID -> HS.NameID
@@ -433,14 +456,14 @@ exportNameID name = HS.NameID
     (fmt, nid) = unform (name ^. nameID)
 
     unform :: UnqualifiedNameID -> (HS.IdentifiedURI HS.NameIDFormat, ST)
-    unform (NameIDFUnspecified n) = (HS.Identified HS.NameIDFormatUnspecified, n)
-    unform (NameIDFEmail       n) = (HS.Identified HS.NameIDFormatEmail, n)
-    unform (NameIDFX509        n) = (HS.Identified HS.NameIDFormatX509, n)
-    unform (NameIDFWindows     n) = (HS.Identified HS.NameIDFormatWindows, n)
-    unform (NameIDFKerberos    n) = (HS.Identified HS.NameIDFormatKerberos, n)
-    unform (NameIDFEntity      n) = (HS.Identified HS.NameIDFormatEntity, renderURI n)
-    unform (NameIDFPersistent  n) = (HS.Identified HS.NameIDFormatPersistent, n)
-    unform (NameIDFTransient   n) = (HS.Identified HS.NameIDFormatTransient, n)
+    unform (UNameIDUnspecified n) = (HS.Identified HS.NameIDFormatUnspecified, n)
+    unform (UNameIDEmail       n) = (HS.Identified HS.NameIDFormatEmail, n)
+    unform (UNameIDX509        n) = (HS.Identified HS.NameIDFormatX509, n)
+    unform (UNameIDWindows     n) = (HS.Identified HS.NameIDFormatWindows, n)
+    unform (UNameIDKerberos    n) = (HS.Identified HS.NameIDFormatKerberos, n)
+    unform (UNameIDEntity      n) = (HS.Identified HS.NameIDFormatEntity, renderURI n)
+    unform (UNameIDPersistent  n) = (HS.Identified HS.NameIDFormatPersistent, n)
+    unform (UNameIDTransient   n) = (HS.Identified HS.NameIDFormatTransient, n)
 
 importVersion :: (HasCallStack, MonadError String m) => HS.SAMLVersion -> m Version
 importVersion HS.SAML20 = pure Version_2_0
@@ -463,17 +486,19 @@ exportURI uri = fromMaybe err . HS.parseURIReference . cs . renderURI $ uri
   where err = error $ "internal error: " <> show uri
 
 importStatus :: (HasCallStack, MonadError String m) => HS.Status -> m Status
-importStatus (HS.Status (HS.StatusCode HS.StatusSuccess []) Nothing Nothing) = pure StatusSuccess
-importStatus status = pure . StatusFailure . cs . show $ status
+importStatus = pure
 
 exportStatus :: HasCallStack => Status -> HS.Status
-exportStatus StatusSuccess = HS.Status (HS.StatusCode HS.StatusSuccess []) Nothing Nothing
-exportStatus bad = error $ "not implemented: " <> show bad
+exportStatus = id
+
+instance HasXML Status where
+  parse = wrapParse importStatus
+  render = wrapRender exportStatus
 
 importIssuer :: (HasCallStack, MonadError String m) => HS.Issuer -> m Issuer
 importIssuer = fmap Issuer . (nameIDToURI <=< importNameID) . HS.issuer
   where
-    nameIDToURI (NameID (NameIDFEntity uri) Nothing Nothing Nothing) = pure uri
+    nameIDToURI (NameID (UNameIDEntity uri) Nothing Nothing Nothing) = pure uri
     nameIDToURI bad = die (Proxy @Issuer) bad
 
 exportIssuer :: HasCallStack => Issuer -> HS.Issuer

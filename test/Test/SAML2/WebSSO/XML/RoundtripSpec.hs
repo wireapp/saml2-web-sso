@@ -26,9 +26,11 @@ prop_tripNameID = mkprop genNameID
 prop_tripIdPMetadata :: Property
 prop_tripIdPMetadata = mkprop genIdPMetadata
 
--- TODO: enable and fix
--- prop_tripAuthnRequest :: Property
--- prop_tripAuthnRequest = mkprop genAuthnRequest
+prop_tripSPMetadata :: Property
+prop_tripSPMetadata = mkprop genSPMetadata
+
+prop_tripAuthnRequest :: Property
+prop_tripAuthnRequest = mkprop genAuthnRequest
 
 -- TODO: enable and fix
 -- prop_tripAuthnResponse :: Property

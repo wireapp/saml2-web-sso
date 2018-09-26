@@ -44,6 +44,11 @@ spec = describe "xml:dsig" $ do
       raw <- cs <$> readSampleIO "microsoft-authnresponse-2.xml"
       verify (keyinfo :| []) raw "_c79c3ec8-1c26-4752-9443-1f76eb7d5dd6" `shouldBe` Right ()
 
+    it "works with more than one key" $ do
+      Right keyinfo <- (parseKeyInfo >=> certToCreds) <$> readSampleIO "microsoft-idp-keyinfo.xml"
+      raw <- cs <$> readSampleIO "microsoft-authnresponse-2.xml"
+      verify (keyinfo :| [sampleIdPPubkey]) raw "_c79c3ec8-1c26-4752-9443-1f76eb7d5dd6" `shouldBe` Right ()
+
   describe "verifyRoot" $ do
     it "works" $ do
       Right keyinfo <- (parseKeyInfo >=> certToCreds) <$> readSampleIO "microsoft-idp-keyinfo.xml"

@@ -20,7 +20,6 @@
 module SAML2.WebSSO.API where
 
 import Control.Monad.Except hiding (ap)
-import Data.Binary.Builder (toLazyByteString)
 import Data.EitherR
 import Data.Function
 import Data.List
@@ -30,18 +29,18 @@ import Data.Proxy
 import Data.String.Conversions
 import Data.Time
 import GHC.Generics
-import GHC.Stack
 import Lens.Micro
 import Network.HTTP.Media ((//))
 import Network.HTTP.Types
 import Network.Wai hiding (Response)
 import Network.Wai.Internal as Wai
+import SAML2.Util
 import SAML2.WebSSO.Config
 import SAML2.WebSSO.Error as SamlErr
 import SAML2.WebSSO.SP
 import SAML2.WebSSO.Types
 import SAML2.WebSSO.XML
-import Servant.API.ContentTypes as Servant
+import SAML2.WebSSO.Cookie
 import Servant.API as Servant hiding (URI(..))
 import Servant.Multipart
 import Servant.Server
@@ -50,11 +49,8 @@ import Text.Show.Pretty (ppShow)
 import Text.XML
 import Text.XML.Cursor
 import Text.XML.DSig
-import Text.XML.Util
 import URI.ByteString
-import Web.Cookie
 
-import qualified Data.ByteString.Builder as SBSBuilder
 import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
 import qualified Data.Text as ST
@@ -66,7 +62,7 @@ import qualified SAML2.WebSSO.XML.Meta as Meta
 -- saml web-sso api
 
 
-type APIMeta     = Get '[XML] SPDesc
+type APIMeta     = Get '[XML] SPMetadata
 type APIAuthReq  = Capture "idp" IdPId :> Get '[HTML] (FormRedirect AuthnRequest)
 type APIAuthResp = MultipartForm Mem AuthnResponseBody :> PostRedir '[HTML] (WithCookieAndLocation ST)
 
@@ -86,9 +82,11 @@ type API = APIMeta'
 
 api :: forall err m. SPHandler (Error err) m => ST -> HandleVerdict m -> ServerT API m
 api appName handleVerdict =
-       meta appName (Proxy @API) (Proxy @APIAuthResp')
+       meta appName getRespURI
   :<|> authreq'
-  :<|> authresp handleVerdict
+  :<|> authresp (JudgeCtx <$> getRespURI) handleVerdict
+  where
+    getRespURI = getSsoURI (Proxy @API) (Proxy @APIAuthResp')
 
 
 ----------------------------------------------------------------------
@@ -122,7 +120,7 @@ simpleVerifyAuthnResponse :: forall m err. SPStoreIdP (Error err) m => Maybe Iss
 simpleVerifyAuthnResponse Nothing _ = throwError $ BadSamlResponse "missing issuer"
 simpleVerifyAuthnResponse (Just issuer) raw = do
     creds :: NonEmpty SignCreds <- do
-      certs <- (^. idpPublicKeys) <$> getIdPConfigByIssuer issuer
+      certs <- (^. idpMetadata . edCertAuthnResponse) <$> getIdPConfigByIssuer issuer
       forM certs $ \cert -> certToCreds cert &
         either (throwError . BadServerConfig . ((encodeElem issuer <> ": ") <>) . cs) pure
 
@@ -158,6 +156,8 @@ type GetRedir = Verb 'GET 307
 type PostRedir = Verb 'POST 303
 
 
+-- | There is a tiny package `servant-xml`, which does essentially what this type and its
+-- 'Mime{,Un}Render' instances do, but inlining this package seems easier.
 data XML
 
 instance Accept XML where
@@ -240,10 +240,7 @@ mkHtml nodes = renderLBS def doc
     rootattr = Map.fromList [("xmlns", "http://www.w3.org/1999/xhtml"), ("xml:lang", "en")]
 
 
-type WithCookieAndLocation = Headers '[Servant.Header "Set-Cookie" SetCookie, Servant.Header "Location" URI]
-
-instance ToHttpApiData SetCookie where
-  toUrlPiece = cs . SBSBuilder.toLazyByteString . renderSetCookie
+type WithCookieAndLocation = Headers '[Servant.Header "Set-Cookie" SetSAMLCookie, Servant.Header "Location" URI]
 
 instance ToHttpApiData URI where
   toUrlPiece = renderURI
@@ -268,58 +265,22 @@ setHttpCachePolicy ap rq respond = ap rq $ respond . addHeadersToResponse httpCa
 
 
 ----------------------------------------------------------------------
--- paths
-
-getResponseURI :: forall m endpoint api err.
-                  ( HasCallStack, SP m
-                  , MonadError (Error err) m
-                  , IsElem endpoint api
-                  , HasLink endpoint
-#if MIN_VERSION_servant(0,14,0)
-                  , ToHttpApiData (MkLink endpoint Link)
-#else
-                  , ToHttpApiData (MkLink endpoint)
-#endif
-                  )
-               => Proxy api -> Proxy endpoint -> m URI
-getResponseURI proxyAPI proxyAPIAuthResp = resp =<< (^. cfgSPSsoURI) <$> getConfig
-  where
-    resp :: URI -> m URI
-    resp uri = either showmsg pure (parseURI' uri')
-      where
-        uri' :: ST
-        uri' = cs $ appendURI (cs . toUrlPiece $ safeLink proxyAPI proxyAPIAuthResp) uri
-
-        showmsg :: String -> m a
-        showmsg = throwError . BadServerConfig . cs . (<> (": " <> show uri'))
-
-
-----------------------------------------------------------------------
 -- handlers
 
-meta :: ( SPHandler (Error err) m
-        , IsElem endpoint api
-        , HasLink endpoint
-#if MIN_VERSION_servant(0,14,0)
-        , ToHttpApiData (MkLink endpoint Link)
-#else
-        , ToHttpApiData (MkLink endpoint)
-#endif
-        )
-     => ST -> Proxy api -> Proxy endpoint -> m SPDesc
-meta appName proxyAPI proxyAPIAuthResp = do
+meta :: forall m err. (SPHandler (Error err) m, HasConfig m) => ST -> m URI -> m SPMetadata
+meta appName getRespURI = do
   enterH "meta"
-  landing <- getLandingURI
-  resp <- getResponseURI proxyAPI proxyAPIAuthResp
+  landing  <- getLandingURI
+  resp     <- getRespURI
   contacts <- (^. cfgContacts) <$> getConfig
-  Meta.spMeta <$> Meta.spDesc appName landing resp contacts
+  Meta.mkSPMetadata appName landing resp contacts
 
 -- | Create authnreq, store it for comparison against assertions later, and return it in an HTTP
 -- redirect together with the IdP's URI.
 authreq :: (SPHandler (Error err) m) => NominalDiffTime -> IdPId -> m (FormRedirect AuthnRequest)
 authreq lifeExpectancySecs idpname = do
   enterH "authreq"
-  uri <- (^. idpRequestUri) <$> getIdPConfig idpname
+  uri <- (^. idpMetadata . edRequestURI) <$> getIdPConfig idpname
   logger Debug $ "authreq uri: " <> cs (renderURI uri)
   req <- createAuthnRequest lifeExpectancySecs
   logger Debug $ "authreq req: " <> show req
@@ -330,19 +291,19 @@ authreq' :: (SPHandler (Error err) m) => IdPId -> m (FormRedirect AuthnRequest)
 authreq' = authreq (8 * 60 * 60)
 
 -- | parse and validate response, and pass the verdict to a user-provided verdict handler.
-authresp :: SPHandler (Error err) m => HandleVerdict m -> AuthnResponseBody -> m (WithCookieAndLocation ST)
-authresp handleVerdict body = do
+authresp :: SPHandler (Error err) m => m JudgeCtx -> HandleVerdict m -> AuthnResponseBody -> m (WithCookieAndLocation ST)
+authresp jctx handleVerdict body = do
   enterH "authresp: entering"
   resp :: AuthnResponse <- fromAuthnResponseBody body
   logger Debug $ "authresp: " <> ppShow resp
-  verdict <- judge resp
+  verdict <- judge resp =<< jctx
   logger Debug $ "authresp: " <> show verdict
   case handleVerdict of
     HandleVerdictRedirect onsuccess -> simpleHandleVerdict onsuccess verdict
     HandleVerdictRaw action -> throwError . CustomServant =<< action resp verdict
 
 
-type OnSuccessRedirect m = UserRef -> m (SetCookie, URI)
+type OnSuccessRedirect m = UserRef -> m (SetSAMLCookie, URI)
 
 simpleOnSuccess :: SPHandler (Error err) m => OnSuccessRedirect m
 simpleOnSuccess uid = (togglecookie . Just . userRefToST $ uid,) <$> getLandingURI
@@ -380,39 +341,3 @@ leaveH :: (Show a, SP m) => a -> m a
 leaveH x = do
   logger Debug $ "leaving handler: " <> show x
   pure x
-
-
-----------------------------------------------------------------------
--- cookies
-
-cookiename :: SBS
-cookiename = "saml2-web-sso_sp_credentials"
-
-togglecookie :: Maybe ST -> SetCookie
-togglecookie = \case
-  Just nick -> cookie
-    { setCookieValue = cs nick
-    }
-  Nothing -> cookie
-    { setCookieValue = ""
-    , setCookieExpires = Just . fromTime $ unsafeReadTime "1970-01-01T00:00:00Z"
-    , setCookieMaxAge = Just (-1)
-    }
-  where
-    cookie = defaultSetCookie
-      { setCookieName = cookiename
-      , setCookieSecure = True
-      , setCookiePath = Just "/"
-      }
-
-cookieToHeader :: SetCookie -> HttpTypes.Header
-cookieToHeader = ("set-cookie",) . cs . toLazyByteString . renderSetCookie
-
-headerValueToCookie :: ST -> Either ST SetCookie
-headerValueToCookie txt = do
-  let cookie = parseSetCookie $ cs txt
-  case ["missing cookie name"  | setCookieName cookie == ""] <>
-       ["wrong cookie name"    | setCookieName cookie /= cookiename] <>
-       ["missing cookie value" | setCookieValue cookie == ""]
-    of errs@(_:_) -> throwError $ ST.intercalate ", " errs
-       []         -> pure cookie
