@@ -139,8 +139,8 @@ data AuthnRequest = AuthnRequest
 
     -- extended xml type
   , _rqNameIDPolicy     :: Maybe NameIdPolicy
-    -- ^ Allow the IdP to create unknown users implicitly if their subject identifier has the right
-    -- form.
+    -- ^ [1/3.4.1] Allow the IdP to create unknown users implicitly if their subject identifier has
+    -- the right form.
     --
     -- NB: Using email addresses as unique identifiers between IdP and SP causes problems, since
     -- email addresses can change over time.  The best option may be to use UUIDs instead, and
