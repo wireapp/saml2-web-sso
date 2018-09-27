@@ -205,7 +205,7 @@ simpleStoreAssertion store now aid time = do
 -- uri paths
 
 data Path = SpPathHome | SpPathLocalLogout | SpPathSingleLogout
-          | SsoPathMeta | SsoPathAuthnReq IdPId | SsoPathAuthnResp
+          | SsoPathMeta IdPId | SsoPathAuthnReq IdPId | SsoPathAuthnResp IdPId
   deriving (Eq, Show)
 
 
@@ -224,9 +224,9 @@ getPath path = do
       withidp (IdPId uuid) = (=/ UUID.toText uuid)
 
   pure $ case path of
-    SpPathHome         -> sp  ""
-    SpPathLocalLogout  -> sp  "/logout/local"
-    SpPathSingleLogout -> sp  "/logout/single"
-    SsoPathMeta        -> sso "/meta"
-    SsoPathAuthnReq ip -> withidp ip $ sso "/authreq"
-    SsoPathAuthnResp   -> sso "/authresp"
+    SpPathHome          -> sp  ""
+    SpPathLocalLogout   -> sp  "/logout/local"
+    SpPathSingleLogout  -> sp  "/logout/single"
+    SsoPathMeta ip      -> withidp ip $ sso "/meta"
+    SsoPathAuthnReq ip  -> withidp ip $ sso "/authreq"
+    SsoPathAuthnResp ip -> withidp ip $ sso "/authresp"

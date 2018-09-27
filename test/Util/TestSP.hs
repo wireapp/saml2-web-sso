@@ -1,8 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
-
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module TestSP where
+module Util.TestSP where
 
 import Control.Concurrent.MVar
 import Control.Exception (throwIO, ErrorCall(..))
@@ -10,59 +9,57 @@ import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.EitherR
-import Data.String.Conversions
-import Data.Yaml
+import Data.List.NonEmpty (NonEmpty((:|)))
+import Data.Maybe
+import Data.UUID as UUID
 import Lens.Micro
-import Lens.Micro.TH
 import SAML2.WebSSO
 import SAML2.WebSSO.API.Example
+import SAML2.WebSSO.Test.Credentials
 import Servant.Server
 import URI.ByteString.QQ
-import Util
+import Util.Types
 
 
-----------------------------------------------------------------------
-
-data Ctx = Ctx
-  { _ctxNow            :: Time
-  , _ctxConfig         :: Config_
-  , _ctxAssertionStore :: MVar AssertionStore
-  , _ctxRequestStore   :: MVar RequestStore
-  }
-
-instance Show Ctx where
-  show (Ctx n c _ _) = "(Ctx " <> show (n, c) <> ")"
-
-makeLenses ''Ctx
-
-mkTestCtx1 :: IO Ctx
-mkTestCtx1 = do
-  let _ctxNow         = timeNow
+mkTestCtxSimple :: MonadIO m => m Ctx
+mkTestCtxSimple = liftIO $ do
+  let _ctxNow         = timeNow  -- constant time value, see below
       _ctxConfig      = fallbackConfig & cfgLogLevel .~ Fatal
-                                       & cfgSPAppURI .~ [uri|https://zb2.zerobuzz.net:60443/|]
-                                       & cfgSPSsoURI .~ [uri|https://zb2.zerobuzz.net:60443/|]
   _ctxAssertionStore <- newMVar mempty
-  _ctxRequestStore <- newMVar mempty
+  _ctxRequestStore   <- newMVar mempty
   pure Ctx {..}
+
+mkTestCtxWithIdP :: MonadIO m => m Ctx
+mkTestCtxWithIdP = liftIO $ do
+  mkTestCtxSimple <&> ctxConfig . cfgIdps .~ [testIdPConfig]
+
+testIdPConfig :: IdPConfig_
+testIdPConfig = IdPConfig {..}
+  where
+    _idpId               = IdPId . fromJust . UUID.fromText $ "035ed888-c196-11e8-8278-7b25a2639572"
+    _idpMetadata         = IdPMetadata {..}
+    _edIssuer            = Issuer [uri|http://sample-idp.com/issuer|]
+    _edRequestURI        = [uri|http://sample-idp.com/request|]
+    _edCertAuthnResponse = sampleIdPCert :| []
+    _idpExtraInfo        = ()
+
+mkTestSPMetadata :: HasConfig m => IdPId -> m SPMetadata
+mkTestSPMetadata idpid = do
+  let _spID             = ID "_4b7e1488-c0c6-11e8-aef0-9fe604f9513a"
+      _spValidUntil     = fromTime $ addTime (60 * 60 * 24 * 365) timeNow
+      _spCacheDuration  = 2592000
+      _spOrgName        = "drnick"
+      _spOrgDisplayName = "drnick"
+      _spContacts       = fallbackContact :| []
+  _spOrgURL            <- (^. fromIssuer) <$> defRequestIssuer idpid
+  _spResponseURL       <- defResponseURI idpid
+  pure SPMetadata {..}
+
 
 -- | Use this to see more output on a per-test basis.
 verbose :: Ctx -> Ctx
 verbose = ctxConfig . cfgLogLevel .~ Debug
 
-mkTestCtx2 :: IO Ctx
-mkTestCtx2 = do
-  myidp <- mkmyidp
-  testCtx1 <- mkTestCtx1
-  pure $ testCtx1 & ctxConfig . cfgIdps .~ [myidp]
-
-mkmyidp :: IO IdPConfig_
-mkmyidp = do
-  decodeThrow . cs =<< readSampleIO "microsoft-idp-config.yaml"
-
-mkTestCtx3 :: IO Ctx
-mkTestCtx3 = mkTestCtx2
-  <&> ctxNow .~ unsafeReadTime "2018-03-11T17:14:13Z"
-  <&> ctxConfig . cfgSPSsoURI .~ [uri|https://zb2.zerobuzz.net:60443/|]
 
 timeLongAgo     :: Time
 timeLongAgo     = unsafeReadTime "1918-04-14T09:58:58.457Z"
@@ -119,8 +116,6 @@ handlerFromTestSP ctx (TestSP m) = Handler . ExceptT . fmap (fmapL toServantErr)
 ioFromTestSP :: Ctx -> TestSP a -> IO a
 ioFromTestSP ctx m = either (throwIO . ErrorCall . show) pure =<< (runExceptT . runHandler' $ handlerFromTestSP ctx m)
 
-
-----------------------------------------------------------------------
 
 newtype TestSPStoreIdP a = TestSPStoreIdP { runTestSPStoreIdP :: ExceptT SimpleError (Reader (Maybe IdPConfig_)) a }
   deriving (Functor, Applicative, Monad, MonadReader (Maybe IdPConfig_), MonadError SimpleError)

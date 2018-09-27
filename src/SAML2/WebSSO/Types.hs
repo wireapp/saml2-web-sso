@@ -95,12 +95,12 @@ data ContactType
   | ContactOther
   deriving (Eq, Enum, Bounded, Show, Generic)
 
--- | There can be lots of certs for one IdP.  In particular, azure offers more than one key for
--- authentication response signing, with no indication in the metadata file which will be used.
 data IdPMetadata = IdPMetadata
   { _edIssuer            :: Issuer
   , _edRequestURI        :: URI
   , _edCertAuthnResponse :: NonEmpty X509.SignedCertificate
+    -- ^ There can be lots of certs for one IdP.  In particular, azure offers more than one key for
+    -- authentication response signing, with no indication in the metadata file which will be used.
   }
   deriving (Eq, Show, Generic)
 
@@ -139,6 +139,21 @@ data AuthnRequest = AuthnRequest
 
     -- extended xml type
   , _rqNameIDPolicy     :: Maybe NameIdPolicy
+    -- ^ [1/3.4.1] Allow the IdP to create unknown users implicitly if their subject identifier has
+    -- the right form.
+    --
+    -- NB: Using email addresses as unique identifiers between IdP and SP causes problems, since
+    -- email addresses can change over time.  The best option may be to use UUIDs instead, and
+    -- provide email addresses in SAML 'AuthnResponse' attributes or via scim.
+    --
+    -- Quote from the specs:
+    --
+    -- [3/4.1.4.1] If the service provider wishes to permit the identity provider to establish a new
+    -- identifier for the principal if none exists, it MUST include a NameIDPolicy element with the
+    -- AllowCreate attribute set to "true". Otherwise, only a principal for whom the identity
+    -- provider has previously established an identifier usable by the service provider can be
+    -- authenticated successfully.
+
   -- ...  (e.g. attribute requests)
   }
   deriving (Eq, Show, Generic)
@@ -505,6 +520,9 @@ instance Servant.FromHttpApiData IdPId where
     parseUrlPiece piece = case UUID.fromText piece of
       Nothing -> Left . cs $ "no valid UUID-piece " ++ show piece
       Just uid -> return $ IdPId uid
+
+instance Servant.ToHttpApiData IdPId where
+    toUrlPiece = idPIdToST
 
 deriveJSON deriveJSONOptions ''ContactPerson
 deriveJSON deriveJSONOptions ''ContactType
