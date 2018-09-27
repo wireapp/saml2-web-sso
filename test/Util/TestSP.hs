@@ -1,5 +1,6 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE QuasiQuotes                #-}
 
 module Util.TestSP where
 

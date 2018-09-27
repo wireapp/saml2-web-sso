@@ -10,7 +10,6 @@ import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.String.Conversions
 import SAML2.WebSSO.Test.Credentials
 import Test.Hspec
-import Text.Hamlet.XML (xml)
 import Text.XML
 import Text.XML.DSig
 import Util
@@ -77,12 +76,12 @@ spec = describe "xml:dsig" $ do
 
         someID withID = Map.fromList [("ID", UUID.toText UUID.nil) | withID]
         doc withID = Document (Prologue [] Nothing []) (Element "root" (someID withID) root) []
-        root = [xml|
-                  <bloo hign="___">
-                    <ack hoghn="true">
-                      <nonack>
-                    hackach
-                |]
+        root = [ NodeElement (Element "bloo" (Map.fromList [("hign", "___")])
+                 [ NodeElement (Element "ack" (Map.fromList [("hoghn", "true")])
+                   [ NodeElement (Element "nonack" mempty mempty) ])
+                 , NodeContent "hackach"
+                 ])
+               ]
 
     check True True (== Right ())
     check True False (== Right ())

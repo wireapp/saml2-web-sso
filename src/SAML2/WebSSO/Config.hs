@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass     #-}
 {-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE QuasiQuotes        #-}
 {-# LANGUAGE Strict, StrictData #-}
 
 -- FUTUREWORK: set `-XNoDeriveAnyClass`.

@@ -19,7 +19,6 @@
 :set -XMultiParamTypeClasses
 :set -XNoMonomorphismRestriction
 :set -XPolyKinds
-:set -XQuasiQuotes
 :set -XRankNTypes
 :set -XRecordWildCards
 :set -XScopedTypeVariables

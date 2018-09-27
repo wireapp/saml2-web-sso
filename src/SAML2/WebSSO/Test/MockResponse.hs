@@ -1,4 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes       #-}
+
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 
 module SAML2.WebSSO.Test.MockResponse where

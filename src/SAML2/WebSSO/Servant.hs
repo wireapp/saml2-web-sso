@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes       #-}
 
 module SAML2.WebSSO.Servant
   ( module SAML2.WebSSO.Servant

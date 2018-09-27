@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes       #-}
 
 -- | haskell representations of the sample data in /test/xml/.
 module Samples where

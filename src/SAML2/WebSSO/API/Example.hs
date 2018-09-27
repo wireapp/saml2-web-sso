@@ -1,5 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE QuasiQuotes                #-}
 
 -- | This is a sample application composed of the end-points in "SAML.WebSSO.API" plus a minimum of
 -- functionality to make a running web application.  Some parts of this module could be handy to

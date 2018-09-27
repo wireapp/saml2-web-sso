@@ -29,7 +29,6 @@ default-extensions:
   - MultiParamTypeClasses
   - NoMonomorphismRestriction
   - PolyKinds
-  - QuasiQuotes
   - RankNTypes
   - RecordWildCards
   - ScopedTypeVariables

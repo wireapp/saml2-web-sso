@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes       #-}
 
 -- FUTUREWORK: consider using http://hackage.haskell.org/package/xml-conduit-parse
 
@@ -40,10 +41,9 @@ import Prelude hiding ((.), id)
 import SAML2.Util
 import SAML2.WebSSO.SP
 import SAML2.WebSSO.Types
-import Text.Hamlet.XML
 import Text.XML
 import Text.XML.Cursor
-import Text.XML.DSig (parseKeyInfo, renderKeyInfo)
+import Text.XML.DSig (parseKeyInfo)
 import URI.ByteString
 
 import qualified Data.List as List
@@ -56,6 +56,7 @@ import qualified SAML2.Bindings.Identifiers as HS
 import qualified SAML2.Core as HS
 import qualified SAML2.Metadata.Metadata as HS
 import qualified SAML2.Profiles as HS
+import qualified SAML2.WebSSO.XML.QQ as QQ
 import qualified SAML2.XML as HS
 import qualified SAML2.XML as HX
 import qualified SAML2.XML.Schema.Datatypes as HX (Duration, UnsignedShort, Boolean)
@@ -835,33 +836,6 @@ parseIdPMetadata el@(Element _ attrs _) = do
   pure IdPMetadata {..}
 
 
-renderIdPMetadata :: HasCallStack => IdPMetadata -> Element
-renderIdPMetadata (IdPMetadata issuer requri (NL.toList -> certs)) = nodesToElem $ repairNamespaces nodes
-  where
-    nodes = [xml|
-      <EntityDescriptor
-        ID="#{descID}"
-        entityID="#{entityID}"
-        xmlns="urn:oasis:names:tc:SAML:2.0:metadata">
-          <IDPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">
-              <KeyDescriptor use="signing">
-                  ^{certNodes}
-              <SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST" Location="#{authnUrl}">
-      |]
-
-    descID = "_0c29ba62-a541-11e8-8042-873ef87bdcba"
-    entityID = renderURI $ issuer ^. fromIssuer
-    authnUrl = renderURI $ requri
-    certNodes = mconcat $ mkCertNode <$> certs
-
-    mkCertNode
-      = either (error . show) id
-      . fmap docToNodes
-      . parseLBS def
-      . cs
-      . renderKeyInfo
-
-
 ----------------------------------------------------------------------
 -- instances
 
@@ -972,4 +946,4 @@ instance HasXML IdPMetadata where
   parse bad = die (Proxy @IdPMetadata) bad
 
 instance HasXMLRoot IdPMetadata where
-  renderRoot = renderIdPMetadata
+  renderRoot = QQ.renderIdPMetadata

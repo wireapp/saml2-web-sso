@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes       #-}
 
 module Test.SAML2.WebSSO.XML.MetaSpec (spec) where
 
