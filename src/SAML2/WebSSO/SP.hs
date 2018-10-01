@@ -94,14 +94,16 @@ getNowIO = Time <$> liftIO getCurrentTime
 createID :: SP m => m (ID a)
 createID = ID . ("_" <>) . UUID.toText <$> createUUID
 
--- | Generate an 'AuthnRequest' value for the initiate-login response.
+-- | Generate an 'AuthnRequest' value for the initiate-login response.  The 'NameIdPolicy' is
+-- 'NameIDFUnspecified'.  Do not use email here unless you are confident that there won't be issues
+-- with changing email addresses that you don't know how to resolve.
 createAuthnRequest :: (SP m, SPStore m) => NominalDiffTime -> m Issuer -> m AuthnRequest
 createAuthnRequest lifeExpectancySecs getIssuer = do
   _rqID           <- createID
   _rqVersion      <- (^. cfgVersion) <$> getConfig
   _rqIssueInstant <- getNow
   _rqIssuer       <- getIssuer
-  let _rqNameIDPolicy = Just $ NameIdPolicy NameIDFEmail Nothing True
+  let _rqNameIDPolicy = Just $ NameIdPolicy NameIDFUnspecified Nothing True
   storeRequest _rqID (addTime lifeExpectancySecs _rqIssueInstant)
   pure AuthnRequest{..}
 
