@@ -2,7 +2,10 @@
 
 :set -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wtabs
 
-:set -XNoOverloadedStrings  # this is the only one we can't use like this because it gets sensei confused.
+:set -hide-package cryptohash
+
+:set -XNoOverloadedStrings
+
 :set -XConstraintKinds
 :set -XDataKinds
 :set -XDefaultSignatures

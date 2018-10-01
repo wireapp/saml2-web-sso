@@ -233,10 +233,10 @@ spec = describe "API" $ do
       context "unknown key"  $ check False False False
 
   describe "cookies" $ do
-    let c1 = togglecookie Nothing
-        c2 = togglecookie (Just "nick")
+    let c1 = toggleCookie @CookieName "/" Nothing
+        c2 = toggleCookie @CookieName "/" (Just "nick")
         rndtrip
-          = headerValueToCookie
+          = parseUrlPiece @Cky
           . cs . snd
           . cookieToHeader
 

@@ -40,7 +40,6 @@ import SAML2.WebSSO.Error as SamlErr
 import SAML2.WebSSO.SP
 import SAML2.WebSSO.Types
 import SAML2.WebSSO.XML
-import SAML2.WebSSO.Cookie
 import Servant.API as Servant hiding (URI(..))
 import Servant.Multipart
 import Servant.Server
@@ -55,6 +54,7 @@ import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
 import qualified Data.Text as ST
 import qualified Network.HTTP.Types.Header as HttpTypes
+import qualified SAML2.WebSSO.Cookie as Cky
 import qualified SAML2.WebSSO.XML.Meta as Meta
 
 
@@ -238,7 +238,7 @@ mkHtml nodes = renderLBS def doc
     rootattr = Map.fromList [("xmlns", "http://www.w3.org/1999/xhtml"), ("xml:lang", "en")]
 
 
-type WithCookieAndLocation = Headers '[Servant.Header "Set-Cookie" SetSAMLCookie, Servant.Header "Location" URI]
+type WithCookieAndLocation = Headers '[Servant.Header "Set-Cookie" Cky, Servant.Header "Location" URI]
 
 instance ToHttpApiData URI where
   toUrlPiece = renderURI
@@ -315,10 +315,13 @@ authresp getRequestIssuerURI getResponseURI handleVerdict idpid body = do
     HandleVerdictRaw action -> throwError . CustomServant =<< action resp verdict
 
 
-type OnSuccessRedirect m = UserRef -> m (SetSAMLCookie, URI)
+type OnSuccessRedirect m = UserRef -> m (Cky, URI)
+
+type Cky = Cky.SimpleSetCookie CookieName
+type CookieName = "saml2-web-sso"
 
 simpleOnSuccess :: SPHandler (Error err) m => OnSuccessRedirect m
-simpleOnSuccess uid = (togglecookie . Just . userRefToST $ uid,) . (^. cfgSPAppURI) <$> getConfig
+simpleOnSuccess uid = (Cky.toggleCookie "/" . Just . userRefToST $ uid,) . (^. cfgSPAppURI) <$> getConfig
 
 -- | We support two cases: redirect with a cookie, and a generic response with arbitrary status,
 -- headers, and body.  The latter case fits the 'ServantErr' type well, but we give it a more

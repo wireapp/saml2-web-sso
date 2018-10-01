@@ -56,7 +56,7 @@ app' Proxy ctx = do
   pure . setHttpCachePolicy $ served
 
 type SPAPI =
-       Header "Cookie" SetSAMLCookie :> Get '[HTML] LoginStatus
+       Header "Cookie" Cky :> Get '[HTML] LoginStatus
   :<|> "logout" :> "local" :> GetRedir '[HTML] (WithCookieAndLocation ST)
   :<|> "logout" :> "single" :> GetRedir '[HTML] (WithCookieAndLocation ST)
 
@@ -70,12 +70,12 @@ spapi = loginStatus :<|> localLogout :<|> singleLogout
 appapi :: SPHandler SimpleError m => ServerT APPAPI m
 appapi = spapi :<|> api "toy-sp" (HandleVerdictRedirect simpleOnSuccess)
 
-loginStatus :: SP m => Maybe SetSAMLCookie -> m LoginStatus
+loginStatus :: SP m => Maybe Cky -> m LoginStatus
 loginStatus cookie = do
   idpids     <- (^. cfgIdps) <$> getConfig
   loginOpts  <- mkLoginOption `mapM` idpids
   logoutPath <- getPath' SpPathLocalLogout
-  pure $ maybe (NotLoggedIn loginOpts) (LoggedInAs logoutPath . cs . setSAMLCookieValue) cookie
+  pure $ maybe (NotLoggedIn loginOpts) (LoggedInAs logoutPath . cs . setSimpleCookieValue) cookie
 
 mkLoginOption :: SP m => IdPConfig a -> m (ST, ST)
 mkLoginOption icfg = (renderURI $ icfg ^. idpMetadata . edIssuer . fromIssuer,) <$> getPath' (SsoPathAuthnReq (icfg ^. idpId))
@@ -84,7 +84,7 @@ mkLoginOption icfg = (renderURI $ icfg ^. idpMetadata . edIssuer . fromIssuer,) 
 localLogout :: SPHandler SimpleError m => m (WithCookieAndLocation ST)
 localLogout = do
   uri <- getPath SpPathHome
-  pure . addHeader (togglecookie Nothing) . addHeader uri $ "Logged out locally, redirecting to " <> renderURI uri
+  pure . addHeader (toggleCookie "/" Nothing) . addHeader uri $ "Logged out locally, redirecting to " <> renderURI uri
 
 -- | as in [3/4.4]
 singleLogout :: (HasCallStack, SP m) => m (WithCookieAndLocation ST)
