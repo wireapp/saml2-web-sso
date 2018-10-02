@@ -61,7 +61,6 @@ import qualified SAML2.WebSSO.XML.Meta as Meta
 ----------------------------------------------------------------------
 -- saml web-sso api
 
-
 type APIMeta     = Capture "idp" IdPId :> Get '[XML] SPMetadata
 type APIAuthReq  = Capture "idp" IdPId :> Get '[HTML] (FormRedirect AuthnRequest)
 type APIAuthResp = Capture "idp" IdPId :> MultipartForm Mem AuthnResponseBody :> PostRedir '[HTML] (WithCookieAndLocation ST)
@@ -298,7 +297,9 @@ authreq'
   -> IdPId -> m (FormRedirect AuthnRequest)
 authreq' = authreq (8 * 60 * 60)
 
--- | parse and validate response, and pass the verdict to a user-provided verdict handler.
+-- | parse and validate response, and pass the verdict to a user-provided verdict handler.  the
+-- handler takes a response and a verdict (provided by this package), and can cause any effects in
+-- 'm' and return anything it likes.
 authresp
   :: SPHandler (Error err) m
   => (IdPId -> m Issuer) -> (IdPId -> m URI) -> (AuthnResponse -> AccessVerdict -> m resp)
