@@ -78,7 +78,7 @@ api :: forall err m. SPHandler (Error err) m => ST -> HandleVerdict m -> ServerT
 api appName handleVerdict =
        meta appName defRequestIssuer defResponseURI
   :<|> authreq' defRequestIssuer
-  :<|> authresp defRequestIssuer defResponseURI handleVerdict
+  :<|> authresp' defRequestIssuer defResponseURI handleVerdict
 
 defRequestIssuer :: HasConfig m => IdPId -> m Issuer
 defRequestIssuer = fmap Issuer <$> getSsoURI' (Proxy @API) (Proxy @APIAuthReq')
@@ -301,18 +301,27 @@ authreq' = authreq (8 * 60 * 60)
 -- | parse and validate response, and pass the verdict to a user-provided verdict handler.
 authresp
   :: SPHandler (Error err) m
-  => (IdPId -> m Issuer) -> (IdPId -> m URI) -> HandleVerdict m
-  -> IdPId -> AuthnResponseBody -> m (WithCookieAndLocation ST)
-authresp getRequestIssuerURI getResponseURI handleVerdict idpid body = do
+  => (IdPId -> m Issuer) -> (IdPId -> m URI) -> (AuthnResponse -> AccessVerdict -> m resp)
+  -> IdPId -> AuthnResponseBody -> m resp
+authresp getRequestIssuerURI getResponseURI handleVerdictAction idpid body = do
   enterH "authresp: entering"
   jctx :: JudgeCtx      <- JudgeCtx <$> getRequestIssuerURI idpid <*> getResponseURI idpid
   resp :: AuthnResponse <- fromAuthnResponseBody body
   logger Debug $ "authresp: " <> ppShow resp
   verdict <- judge resp jctx
   logger Debug $ "authresp: " <> show verdict
-  case handleVerdict of
-    HandleVerdictRedirect onsuccess -> simpleHandleVerdict onsuccess verdict
-    HandleVerdictRaw action -> throwError . CustomServant =<< action resp verdict
+  handleVerdictAction resp verdict
+
+-- | a variant of 'authresp' with a less general verdict handler.
+authresp'
+  :: SPHandler (Error err) m
+  => (IdPId -> m Issuer) -> (IdPId -> m URI) -> HandleVerdict m
+  -> IdPId -> AuthnResponseBody -> m (WithCookieAndLocation ST)
+authresp' getRequestIssuerURI getResponseURI handleVerdict idpid body = do
+  let handleVerdictAction resp verdict = case handleVerdict of
+        HandleVerdictRedirect onsuccess -> simpleHandleVerdict onsuccess verdict
+        HandleVerdictRaw action -> throwError . CustomServant =<< action resp verdict
+  authresp getRequestIssuerURI getResponseURI handleVerdictAction idpid body
 
 
 type OnSuccessRedirect m = UserRef -> m (Cky, URI)

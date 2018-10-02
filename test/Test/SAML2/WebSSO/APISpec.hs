@@ -66,7 +66,7 @@ base64theirs sbs = shelly . silently $ cs <$> (setStdin (cs sbs) >> run "/usr/bi
 
 testAuthRespApp :: IO Ctx -> SpecWith Application -> Spec
 testAuthRespApp = withapp (Proxy @APIAuthResp')
-  (authresp defRequestIssuer defResponseURI (HandleVerdictRedirect simpleOnSuccess))
+  (authresp' defRequestIssuer defResponseURI (HandleVerdictRedirect simpleOnSuccess))
 
 -- on servant-0.12 or later, use 'hoistServer':
 -- <https://github.com/haskell-servant/servant/blob/master/servant/CHANGELOG.md#significant-changes-1>
