@@ -222,11 +222,11 @@ judge resp ctx = runJudgeT ctx (judge' resp)
 judge' :: (HasCallStack, MonadJudge m, SP m, SPStore m) => AuthnResponse -> m AccessVerdict
 judge' resp = do
   either (deny . (:[])) pure . statusIsSuccess $ resp ^. rspStatus
-
+  uref <- either (giveup . (:[])) pure $ getUserRef resp
   checkInResponseTo `mapM_` (resp ^. rspInRespTo)
   checkNotInFuture "Issuer instant" $ resp ^. rspIssueInstant
   maybe (pure ()) (checkDestination "response destination") (resp ^. rspDestination)
-  checkAssertions (resp ^. rspIssuer) (resp ^. rspPayload)
+  checkAssertions (resp ^. rspIssuer) (resp ^. rspPayload) uref
 
 checkInResponseTo :: (SPStore m, MonadJudge m) => ID AuthnRequest -> m ()
 checkInResponseTo req = do
@@ -251,29 +251,15 @@ checkDestination msg (renderURI -> expectedByIdp) = do
                   ]
          ]
 
-checkAssertions :: (SP m, SPStore m, MonadJudge m) => Maybe Issuer -> NonEmpty Assertion -> m AccessVerdict
-checkAssertions missuer (toList -> assertions) = do
+checkAssertions :: (SP m, SPStore m, MonadJudge m) => Maybe Issuer -> NonEmpty Assertion -> UserRef -> m AccessVerdict
+checkAssertions missuer (toList -> assertions) uref@(UserRef issuer _) = do
   forM_ assertions $ \ass -> do
     checkNotInFuture "Assertion IssueInstant" (ass ^. assIssueInstant)
     storeAssertion (ass ^. assID) (ass ^. assEndOfLife)
   judgeConditions `mapM_` catMaybes ((^. assConditions) <$> assertions)
 
-  issuer <- case nub $ (^. assIssuer) <$> assertions of
-    [i] -> pure i
-    [] -> giveup ["no statement issuer"]
-    bad@(_:_:_) -> giveup ["multiple statement issuers not supported", show bad]
-
   unless (maybe True (issuer ==) missuer) $
     deny ["issuers mismatch: " <> show (missuer, issuer)]
-
-  subject
-    <- do
-         -- subject must occur at least once; there must not be two different subjects.  (this is probably a
-         -- slight restriction of the excessively vague specs.)
-         case nub $ (^. assContents . sasSubject) <$> assertions of
-           [Subject s _] -> pure s
-           []                -> giveup ["no subjects"]
-           bad@(_:_:_)       -> giveup ["more than one subject: " <> show bad]
 
   checkSubjectConfirmations assertions
 
@@ -287,7 +273,7 @@ checkAssertions missuer (toList -> assertions) = do
     deny ["no AuthnStatement in assertions"]
 
   checkStatement `mapM_` statements
-  pure $ AccessGranted (UserRef issuer subject)
+  pure $ AccessGranted uref
 
 checkStatement :: (SP m, MonadJudge m) => Statement -> m ()
 checkStatement = \case
