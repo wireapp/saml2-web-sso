@@ -66,6 +66,7 @@ toggleCookie path = SimpleSetCookie . \case
       { setCookieName = cookieName (Proxy @name)
       , setCookieSecure = True
       , setCookiePath = Just path
+      , setCookieSameSite = Just sameSiteStrict
       }
 
 beginningOfTime :: Time
