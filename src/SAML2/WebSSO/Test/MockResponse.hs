@@ -23,7 +23,9 @@ newtype SignedAuthnResponse = SignedAuthnResponse { fromSignedAuthnResponse :: D
 mkAuthnResponse
   :: HasCallStack
   => SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> IO SignedAuthnResponse
-mkAuthnResponse = mkAuthnResponseWithModif id id
+mkAuthnResponse creds idp spmeta areq grant = do
+  subj <- opaqueNameID . UUID.toText <$> UUID.nextRandom
+  mkAuthnResponseWithSubj subj creds idp spmeta areq grant
 
 mkAuthnResponseWithSubj
   :: HasCallStack
