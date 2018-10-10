@@ -66,7 +66,7 @@ base64theirs sbs = shelly . silently $ cs <$> (setStdin (cs sbs) >> run "/usr/bi
 
 testAuthRespApp :: IO Ctx -> SpecWith Application -> Spec
 testAuthRespApp = withapp (Proxy @APIAuthResp')
-  (authresp' defRequestIssuer defResponseURI (HandleVerdictRedirect simpleOnSuccess))
+  (authresp' defSPIssuer defResponseURI (HandleVerdictRedirect simpleOnSuccess))
 
 -- on servant-0.12 or later, use 'hoistServer':
 -- <https://github.com/haskell-servant/servant/blob/master/servant/CHANGELOG.md#significant-changes-1>
@@ -114,7 +114,7 @@ burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
       getIdP = Yaml.decodeThrow . cs =<< readSampleIO cfgPath
 
   describe ("smoke tests: " <> show cfgPath) $ do
-    describe "authreq" . withapp (Proxy @APIAuthReq') (authreq' defRequestIssuer) ctx $ do
+    describe "authreq" . withapp (Proxy @APIAuthReq') (authreq' defSPIssuer) ctx $ do
       it "responds with 200" $ do
         idp <- liftIO getIdP
         get ("/authreq/" <> cs (idPIdToST (idp ^. idpId)))
@@ -244,22 +244,22 @@ spec = describe "API" $ do
     it  "roundtrip-2" $ Right c2 `shouldBe` rndtrip c2
 
 
-  describe "meta" . withapp (Proxy @APIMeta') (meta "toy-sp" defRequestIssuer defResponseURI) mkTestCtxSimple $ do
+  describe "meta" . withapp (Proxy @APIMeta') (meta "toy-sp" defSPIssuer defResponseURI) mkTestCtxSimple $ do
     it "responds with 200 and an 'SPSSODescriptor'" $ do
-      get "/meta/b4f00ae8-c17f-11e8-95b3-dfdb6b1db921"
+      get "/meta"
         `shouldRespondWith` 200 { matchBody = bodyContains "OrganizationName xml:lang=\"EN\">toy-sp" }
 
 
   describe "authreq" $ do
-    context "invalid uuid" . withapp (Proxy @APIAuthReq') (authreq' defRequestIssuer) mkTestCtxSimple $ do
+    context "invalid uuid" . withapp (Proxy @APIAuthReq') (authreq' defSPIssuer) mkTestCtxSimple $ do
       it "responds with 400" $ do
         get "/authreq/broken-uuid" `shouldRespondWith` 400
 
-    context "unknown idp" . withapp (Proxy @APIAuthReq') (authreq' defRequestIssuer) mkTestCtxSimple $ do
+    context "unknown idp" . withapp (Proxy @APIAuthReq') (authreq' defSPIssuer) mkTestCtxSimple $ do
       it "responds with 404" $ do
         get "/authreq/6bf0dfb0-754f-11e8-b71d-00163e5e6c14" `shouldRespondWith` 404
 
-    context "known idp" . withapp (Proxy @APIAuthReq') (authreq' defRequestIssuer) mkTestCtxWithIdP $ do
+    context "known idp" . withapp (Proxy @APIAuthReq') (authreq' defSPIssuer) mkTestCtxWithIdP $ do
       it "responds with 200" $ do
         let idpid = testIdPConfig ^. idpId . to (cs . idPIdToST)
         get ("/authreq/" <> idpid) `shouldRespondWith` 200
@@ -274,9 +274,9 @@ spec = describe "API" $ do
     let postTestAuthnResp :: WaiSession SResponse
         postTestAuthnResp = do
           ctx <- mkTestCtxWithIdP
-          spmeta <- liftIO . ioFromTestSP ctx $ mkTestSPMetadata (testIdPConfig ^. idpId)
+          spmeta <- liftIO $ ioFromTestSP ctx mkTestSPMetadata
           authnreq :: AuthnRequest
-            <- liftIO . ioFromTestSP ctx $ createAuthnRequest 3600 (defRequestIssuer $ testIdPConfig ^. idpId)
+            <- liftIO . ioFromTestSP ctx $ createAuthnRequest 3600 defSPIssuer
           SignedAuthnResponse aresp <- liftIO $ mkAuthnResponse sampleIdPPrivkey testIdPConfig spmeta authnreq True
           postHtmlForm "/authresp" [("SAMLResponse", cs . EL.encode . renderLBS def $ aresp)]
 
@@ -306,9 +306,9 @@ spec = describe "API" $ do
   describe "mkAuthnResponse (this is testing the test helpers)" $ do
     it "Produces output that decodes into 'AuthnResponse'" $ do
       ctx <- mkTestCtxWithIdP
-      spmeta <- ioFromTestSP ctx $ mkTestSPMetadata (testIdPConfig ^. idpId)
+      spmeta <- ioFromTestSP ctx mkTestSPMetadata
       Right authnreq :: Either SomeException AuthnRequest
-        <- try . ioFromTestSP ctx $ createAuthnRequest 3600 (defRequestIssuer $ testIdPConfig ^. idpId)
+        <- try . ioFromTestSP ctx $ createAuthnRequest 3600 defSPIssuer
       SignedAuthnResponse authnrespDoc <- mkAuthnResponse sampleIdPPrivkey testIdPConfig spmeta authnreq True
       parseFromDocument @AuthnResponse authnrespDoc `shouldSatisfy` isRight
 
@@ -316,9 +316,9 @@ spec = describe "API" $ do
         check cert expectation = do
           let idpcfg = testIdPConfig & idpMetadata . edCertAuthnResponse .~ (cert :| [])
           ctx <- mkTestCtxSimple <&> ctxConfig . cfgIdps .~ [idpcfg]
-          spmeta <- ioFromTestSP ctx $ mkTestSPMetadata (idpcfg ^. idpId)
+          spmeta <- ioFromTestSP ctx mkTestSPMetadata
           let idpissuer :: Issuer        = idpcfg ^. idpMetadata . edIssuer
-              spissuer  :: TestSP Issuer = defRequestIssuer $ idpcfg ^. idpId
+              spissuer  :: TestSP Issuer = defSPIssuer
           result :: Either SomeException () <- try . ioFromTestSP ctx $ do
             authnreq  <- createAuthnRequest 3600 spissuer
             SignedAuthnResponse authnrespDoc <- liftIO $ mkAuthnResponse sampleIdPPrivkey idpcfg spmeta authnreq True

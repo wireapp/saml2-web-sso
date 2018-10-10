@@ -14,5 +14,5 @@ spec :: Spec
 spec = describe "API.Example" $ do
   describe "meta" . with (app' (Proxy :: Proxy TestSP) =<< mkTestCtxSimple) $ do
     it "responds with 200" $ do
-      get "/sso/meta/b10d2c04-c17e-11e8-bc44-8f4b32e86cdd" `shouldRespondWith` 200
+      get "/sso/meta" `shouldRespondWith` 200
       get "/sp/logout/local" `shouldRespondWith` 307

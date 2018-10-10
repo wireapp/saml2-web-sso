@@ -61,9 +61,9 @@ import qualified SAML2.WebSSO.XML.Meta as Meta
 ----------------------------------------------------------------------
 -- saml web-sso api
 
-type APIMeta     = Capture "idp" IdPId :> Get '[XML] SPMetadata
+type APIMeta     = Get '[XML] SPMetadata
 type APIAuthReq  = Capture "idp" IdPId :> Get '[HTML] (FormRedirect AuthnRequest)
-type APIAuthResp = Capture "idp" IdPId :> MultipartForm Mem AuthnResponseBody :> PostRedir '[HTML] (WithCookieAndLocation ST)
+type APIAuthResp = MultipartForm Mem AuthnResponseBody :> PostRedir '[HTML] (WithCookieAndLocation ST)
 
 type APIMeta'     = "meta" :> APIMeta
 type APIAuthReq'  = "authreq" :> APIAuthReq
@@ -75,15 +75,17 @@ type API = APIMeta'
 
 api :: forall err m. SPHandler (Error err) m => ST -> HandleVerdict m -> ServerT API m
 api appName handleVerdict =
-       meta appName defRequestIssuer defResponseURI
-  :<|> authreq' defRequestIssuer
-  :<|> authresp' defRequestIssuer defResponseURI handleVerdict
+       meta appName defSPIssuer defResponseURI
+  :<|> authreq' defSPIssuer
+  :<|> authresp' defSPIssuer defResponseURI handleVerdict
 
-defRequestIssuer :: HasConfig m => IdPId -> m Issuer
-defRequestIssuer = fmap Issuer <$> getSsoURI' (Proxy @API) (Proxy @APIAuthReq')
+-- | The 'Issuer' is an identifier of a SAML participant.  In this time, it's the SP, ie., ourselves.
+defSPIssuer :: HasConfig m => m Issuer
+defSPIssuer = Issuer <$> getSsoURI (Proxy @API) (Proxy @APIAuthResp')
 
-defResponseURI :: HasConfig m => IdPId -> m URI
-defResponseURI = getSsoURI' (Proxy @API) (Proxy @APIAuthResp')
+-- | The URI that 'AuthnResponse' values are delivered to ('APIAuthResp').
+defResponseURI :: HasConfig m => m URI
+defResponseURI = getSsoURI (Proxy @API) (Proxy @APIAuthResp')
 
 
 ----------------------------------------------------------------------
@@ -267,12 +269,11 @@ setHttpCachePolicy ap rq respond = ap rq $ respond . addHeadersToResponse httpCa
 -- | TODO: currently, meta does not fail if idp does not exist.  should we change that behavior?
 meta
   :: forall m err. (SPHandler (Error err) m, HasConfig m)
-  => ST -> (IdPId -> m Issuer) -> (IdPId -> m URI)
-  -> IdPId -> m SPMetadata
-meta appName getRequestIssuer getResponseURI idpid = do
+  => ST -> m Issuer -> m URI -> m SPMetadata
+meta appName getRequestIssuer getResponseURI = do
   enterH "meta"
-  Issuer org <- getRequestIssuer idpid
-  resp       <- getResponseURI idpid
+  Issuer org <- getRequestIssuer
+  resp       <- getResponseURI
   contacts   <- (^. cfgContacts) <$> getConfig
   Meta.mkSPMetadata appName org resp contacts
 
@@ -280,20 +281,20 @@ meta appName getRequestIssuer getResponseURI idpid = do
 -- redirect together with the IdP's URI.
 authreq
   :: (SPHandler (Error err) m)
-  => NominalDiffTime -> (IdPId -> m Issuer)
+  => NominalDiffTime -> m Issuer
   -> IdPId -> m (FormRedirect AuthnRequest)
 authreq lifeExpectancySecs getIssuer idpid = do
   enterH "authreq"
   uri <- (^. idpMetadata . edRequestURI) <$> getIdPConfig idpid
   logger Debug $ "authreq uri: " <> cs (renderURI uri)
-  req <- createAuthnRequest lifeExpectancySecs (getIssuer idpid)
+  req <- createAuthnRequest lifeExpectancySecs getIssuer
   logger Debug $ "authreq req: " <> cs (encode req)
   leaveH $ FormRedirect uri req
 
 -- | 'authreq' with request life expectancy defaulting to 8 hours.
 authreq'
   :: (SPHandler (Error err) m)
-  => (IdPId -> m Issuer)
+  => m Issuer
   -> IdPId -> m (FormRedirect AuthnRequest)
 authreq' = authreq (8 * 60 * 60)
 
@@ -302,11 +303,11 @@ authreq' = authreq (8 * 60 * 60)
 -- 'm' and return anything it likes.
 authresp
   :: SPHandler (Error err) m
-  => (IdPId -> m Issuer) -> (IdPId -> m URI) -> (AuthnResponse -> AccessVerdict -> m resp)
-  -> IdPId -> AuthnResponseBody -> m resp
-authresp getRequestIssuerURI getResponseURI handleVerdictAction idpid body = do
+  => m Issuer -> m URI -> (AuthnResponse -> AccessVerdict -> m resp)
+  -> AuthnResponseBody -> m resp
+authresp getSPIssuer getResponseURI handleVerdictAction body = do
   enterH "authresp: entering"
-  jctx :: JudgeCtx      <- JudgeCtx <$> getRequestIssuerURI idpid <*> getResponseURI idpid
+  jctx :: JudgeCtx      <- JudgeCtx <$> getSPIssuer <*> getResponseURI
   resp :: AuthnResponse <- fromAuthnResponseBody body
   logger Debug $ "authresp: " <> ppShow resp
   verdict <- judge resp jctx
@@ -316,13 +317,13 @@ authresp getRequestIssuerURI getResponseURI handleVerdictAction idpid body = do
 -- | a variant of 'authresp' with a less general verdict handler.
 authresp'
   :: SPHandler (Error err) m
-  => (IdPId -> m Issuer) -> (IdPId -> m URI) -> HandleVerdict m
-  -> IdPId -> AuthnResponseBody -> m (WithCookieAndLocation ST)
-authresp' getRequestIssuerURI getResponseURI handleVerdict idpid body = do
+  => m Issuer -> m URI -> HandleVerdict m
+  -> AuthnResponseBody -> m (WithCookieAndLocation ST)
+authresp' getRequestIssuerURI getResponseURI handleVerdict body = do
   let handleVerdictAction resp verdict = case handleVerdict of
         HandleVerdictRedirect onsuccess -> simpleHandleVerdict onsuccess verdict
         HandleVerdictRaw action -> throwError . CustomServant =<< action resp verdict
-  authresp getRequestIssuerURI getResponseURI handleVerdictAction idpid body
+  authresp getRequestIssuerURI getResponseURI handleVerdictAction body
 
 
 type OnSuccessRedirect m = UserRef -> m (Cky, URI)
