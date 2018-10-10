@@ -59,6 +59,7 @@ dependencies:
   - errors
   - exceptions
   - filepath
+  - ghc-prim
   - hourglass
   - http-media
   - http-types

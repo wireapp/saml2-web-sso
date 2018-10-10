@@ -7,6 +7,7 @@ import Control.Monad
 import Data.EitherR
 import Data.Generics.Uniplate.Data
 import Data.List
+import Servant
 import Data.String.Conversions
 import Data.Typeable
 import GHC.Stack
@@ -21,6 +22,12 @@ import Text.XML
 import Util.Orphans ()
 
 import qualified Data.Text.Lazy.IO as LT
+
+
+-- | pipe the output of `curl https://.../initiate-login/...` into this to take a look.
+readAuthReq :: String -> IO ()
+readAuthReq raw = do
+  print $ mimeUnrender @HTML @(FormRedirect Document) Proxy (cs raw)
 
 
 render' :: Document -> LT

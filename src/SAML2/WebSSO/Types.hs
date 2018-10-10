@@ -571,6 +571,20 @@ rspInResponseTo aresp = case ids of
       =<< (^. assContents . sasSubject . subjectConfirmations)
       =<< toList (aresp ^. rspPayload)
 
+getUserRef :: (HasCallStack, MonadError String m) => AuthnResponse -> m UserRef
+getUserRef resp = do
+  let assertions = resp ^. rspPayload
+
+  issuer :: Issuer <- case nub $ (^. assIssuer) <$> assertions of
+    i :| [] -> pure i
+    bad -> throwError $ "bad issuers: " <> show bad
+
+  subject :: NameID <- case nub $ (^. assContents . sasSubject) <$> assertions of
+    Subject s _ :| [] -> pure s
+    bad -> throwError $ "bad subjects: " <> show bad
+
+  pure $ UserRef issuer subject
+
 
 ----------------------------------------------------------------------
 -- why is this not in the resp. packages?
