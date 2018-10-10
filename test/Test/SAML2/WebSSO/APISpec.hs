@@ -233,15 +233,20 @@ spec = describe "API" $ do
       context "unknown key"  $ check False False False
 
   describe "cookies" $ do
-    let c1 = toggleCookie @CookieName "/" Nothing
-        c2 = toggleCookie @CookieName "/" (Just ("nick", defReqTTL))
-        rndtrip
+    let rndtrip
           = parseUrlPiece @Cky
           . cs . snd
           . cookieToHeader
 
-    it  "roundtrip-1" $ Left "missing cookie value" `shouldBe` rndtrip c1
-    it  "roundtrip-2" $ Right c2 `shouldBe` rndtrip c2
+    it  "roundtrip-1" $ do
+      ctx <- mkTestCtxSimple
+      c1 <- ioFromTestSP ctx $ toggleCookie @CookieName "/" Nothing
+      rndtrip c1 `shouldBe` Left "missing cookie value"
+
+    it  "roundtrip-2" $ do
+      ctx <- mkTestCtxSimple
+      c2 <- ioFromTestSP ctx $ toggleCookie @CookieName "/" (Just ("nick", defReqTTL))
+      rndtrip c2 `shouldBe` Right c2
 
 
   describe "meta" . withapp (Proxy @APIMeta') (meta "toy-sp" defSPIssuer defResponseURI) mkTestCtxSimple $ do

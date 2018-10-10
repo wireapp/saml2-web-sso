@@ -10,12 +10,14 @@ module SAML2.WebSSO.Cookie
   ) where
 
 import Control.Monad.Except
+import Lens.Micro ((<&>))
 import Data.Binary.Builder (toLazyByteString)
 import Data.Proxy
 import Data.String.Conversions
 import Data.Time
 import GHC.TypeLits (KnownSymbol, symbolVal)
 import GHC.Types
+import SAML2.WebSSO.SP
 import SAML2.WebSSO.Types
 import SAML2.WebSSO.XML
 import Servant.API as Servant hiding (URI(..))
@@ -52,13 +54,14 @@ headerValueToCookie txt = do
     of errs@(_:_) -> throwError $ ST.intercalate ", " errs
        []         -> pure (SimpleSetCookie cookie)
 
-toggleCookie :: forall name. KnownSymbol name => SBS -> Maybe (ST, NominalDiffTime) -> SimpleSetCookie name
-toggleCookie path = SimpleSetCookie . \case
-  Just (value, ttl) -> cookie
+toggleCookie :: forall name m. (SP m, KnownSymbol name) => SBS -> Maybe (ST, NominalDiffTime) -> m (SimpleSetCookie name)
+toggleCookie path = fmap SimpleSetCookie . \case
+  Just (value, ttl) -> getNow <&> \now -> cookie
     { setCookieValue = cs value
+    , setCookieExpires = Just . fromTime $ ttl `addTime` now
     , setCookieMaxAge = Just $ realToFrac ttl
     }
-  Nothing -> cookie
+  Nothing -> pure cookie
     { setCookieValue = ""
     , setCookieExpires = Just $ fromTime beginningOfTime
     , setCookieMaxAge = Just (-1)
@@ -68,6 +71,7 @@ toggleCookie path = SimpleSetCookie . \case
       { setCookieName = cookieName (Proxy @name)
       , setCookieSecure = True
       , setCookiePath = Just path
+      , setCookieHttpOnly = True
       , setCookieSameSite = Just sameSiteStrict
       }
 

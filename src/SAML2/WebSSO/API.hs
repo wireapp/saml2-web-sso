@@ -335,7 +335,10 @@ type Cky = Cky.SimpleSetCookie CookieName
 type CookieName = "saml2-web-sso"
 
 simpleOnSuccess :: SPHandler (Error err) m => OnSuccessRedirect m
-simpleOnSuccess uid = (Cky.toggleCookie "/" $ Just (userRefToST uid, defReqTTL),) . (^. cfgSPAppURI) <$> getConfig
+simpleOnSuccess uid = do
+  cky    <- Cky.toggleCookie "/" $ Just (userRefToST uid, defReqTTL)
+  appuri <- (^. cfgSPAppURI) <$> getConfig
+  pure (cky, appuri)
 
 -- | We support two cases: redirect with a cookie, and a generic response with arbitrary status,
 -- headers, and body.  The latter case fits the 'ServantErr' type well, but we give it a more

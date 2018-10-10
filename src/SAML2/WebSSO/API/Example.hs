@@ -84,7 +84,8 @@ mkLoginOption icfg = (renderURI $ icfg ^. idpMetadata . edIssuer . fromIssuer,) 
 localLogout :: SPHandler SimpleError m => m (WithCookieAndLocation ST)
 localLogout = do
   uri <- getPath SpPathHome
-  pure . addHeader (toggleCookie "/" Nothing) . addHeader uri $ "Logged out locally, redirecting to " <> renderURI uri
+  cky <- toggleCookie "/" Nothing
+  pure . addHeader cky . addHeader uri $ "Logged out locally, redirecting to " <> renderURI uri
 
 -- | as in [3/4.4]
 singleLogout :: (HasCallStack, SP m) => m (WithCookieAndLocation ST)
