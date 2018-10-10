@@ -234,7 +234,7 @@ spec = describe "API" $ do
 
   describe "cookies" $ do
     let c1 = toggleCookie @CookieName "/" Nothing
-        c2 = toggleCookie @CookieName "/" (Just "nick")
+        c2 = toggleCookie @CookieName "/" (Just ("nick", defReqTTL))
         rndtrip
           = parseUrlPiece @Cky
           . cs . snd

@@ -13,6 +13,7 @@ import Control.Monad.Except
 import Data.Binary.Builder (toLazyByteString)
 import Data.Proxy
 import Data.String.Conversions
+import Data.Time
 import GHC.TypeLits (KnownSymbol, symbolVal)
 import GHC.Types
 import SAML2.WebSSO.Types
@@ -51,10 +52,11 @@ headerValueToCookie txt = do
     of errs@(_:_) -> throwError $ ST.intercalate ", " errs
        []         -> pure (SimpleSetCookie cookie)
 
-toggleCookie :: forall name. KnownSymbol name => SBS -> Maybe ST -> SimpleSetCookie name
+toggleCookie :: forall name. KnownSymbol name => SBS -> Maybe (ST, NominalDiffTime) -> SimpleSetCookie name
 toggleCookie path = SimpleSetCookie . \case
-  Just value -> cookie
+  Just (value, ttl) -> cookie
     { setCookieValue = cs value
+    , setCookieMaxAge = Just $ realToFrac ttl
     }
   Nothing -> cookie
     { setCookieValue = ""

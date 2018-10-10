@@ -296,7 +296,10 @@ authreq'
   :: (SPHandler (Error err) m)
   => m Issuer
   -> IdPId -> m (FormRedirect AuthnRequest)
-authreq' = authreq (8 * 60 * 60)
+authreq' = authreq defReqTTL
+
+defReqTTL :: NominalDiffTime
+defReqTTL = 8 * 60 * 60
 
 -- | parse and validate response, and pass the verdict to a user-provided verdict handler.  the
 -- handler takes a response and a verdict (provided by this package), and can cause any effects in
@@ -332,7 +335,7 @@ type Cky = Cky.SimpleSetCookie CookieName
 type CookieName = "saml2-web-sso"
 
 simpleOnSuccess :: SPHandler (Error err) m => OnSuccessRedirect m
-simpleOnSuccess uid = (Cky.toggleCookie "/" . Just . userRefToST $ uid,) . (^. cfgSPAppURI) <$> getConfig
+simpleOnSuccess uid = (Cky.toggleCookie "/" $ Just (userRefToST uid, defReqTTL),) . (^. cfgSPAppURI) <$> getConfig
 
 -- | We support two cases: redirect with a cookie, and a generic response with arbitrary status,
 -- headers, and body.  The latter case fits the 'ServantErr' type well, but we give it a more
