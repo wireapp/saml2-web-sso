@@ -17,12 +17,14 @@
 -- This module works best if imported qualified.
 --
 -- FUTUREWORK: servant-server is quite heavy.  we should have a cabal flag to exclude it.
-module SAML2.WebSSO.API where
+module SAML2.WebSSO.API
+  ( module SAML2.WebSSO.API
+  , module SAML2.WebSSO.API.Servant
+  ) where
 
 import Control.Monad.Except hiding (ap)
 import Data.EitherR
 import Data.Function
-import Data.List
 import Data.List.NonEmpty (NonEmpty)
 import Data.Maybe (catMaybes)
 import Data.Proxy
@@ -30,11 +32,8 @@ import Data.String.Conversions
 import Data.Time
 import GHC.Generics
 import Lens.Micro
-import Network.HTTP.Media ((//))
-import Network.HTTP.Types
-import Network.Wai hiding (Response)
-import Network.Wai.Internal as Wai
 import SAML2.Util
+import SAML2.WebSSO.API.Servant
 import SAML2.WebSSO.Config
 import SAML2.WebSSO.Error as SamlErr
 import SAML2.WebSSO.SP
@@ -53,7 +52,6 @@ import URI.ByteString
 import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
 import qualified Data.Text as ST
-import qualified Network.HTTP.Types.Header as HttpTypes
 import qualified SAML2.WebSSO.Cookie as Cky
 import qualified SAML2.WebSSO.XML.Meta as Meta
 
@@ -112,6 +110,19 @@ parseAuthnResponseBody base64 = do
   pure resp
 
 
+authnResponseBodyToMultipart :: AuthnResponse -> MultipartData tag
+authnResponseBodyToMultipart resp = MultipartData [Input "SAMLResponse" (cs $ renderAuthnResponseBody resp)] []
+
+instance FromMultipart Mem AuthnResponseBody where
+  fromMultipart resp = Just (AuthnResponseBody eval)
+    where
+      eval :: forall m err. SPStoreIdP (Error err) m => m AuthnResponse
+      eval = do
+        base64 <- maybe (throwError . BadSamlResponse $ "no SAMLResponse in the body") pure $
+                  lookupInput "SAMLResponse" resp
+        parseAuthnResponseBody (cs base64)
+
+
 -- | Pull assertions sub-forest and pass all trees in it to 'verify' individually.  The 'LBS'
 -- argument must be a valid 'AuthnResponse'.  All assertions need to be signed by the issuer
 -- given in the arguments using the same key.
@@ -147,53 +158,7 @@ simpleVerifyAuthnResponse (Just issuer) raw = do
 
 
 ----------------------------------------------------------------------
--- servant, wai plumbing
-
--- TODO: move this section to module "SAML2.WebSSO.API.ServantPlumbing"?
-
-type GetRedir = Verb 'GET 307
-type PostRedir = Verb 'POST 303
-
-
--- | There is a tiny package `servant-xml`, which does essentially what this type and its
--- 'Mime{,Un}Render' instances do, but inlining this package seems easier.
-data XML
-
-instance Accept XML where
-  contentType Proxy = "application" // "xml"
-
-instance {-# OVERLAPPABLE #-} HasXMLRoot a => MimeRender XML a where
-  mimeRender Proxy = cs . encode
-
-instance {-# OVERLAPPABLE #-} HasXMLRoot a => MimeUnrender XML a where
-  mimeUnrender Proxy = fmapL show . decode . cs
-
-
-data HTML
-
-instance  Accept HTML where
-  contentType Proxy = "text" // "html"
-
-instance MimeRender HTML ST where
-  mimeRender Proxy msg = mkHtml
-    [xml|
-      <body>
-        <p>
-          #{msg}
-    |]
-
-authnResponseBodyToMultipart :: AuthnResponse -> MultipartData tag
-authnResponseBodyToMultipart resp = MultipartData [Input "SAMLResponse" (cs $ renderAuthnResponseBody resp)] []
-
-instance FromMultipart Mem AuthnResponseBody where
-  fromMultipart resp = Just (AuthnResponseBody eval)
-    where
-      eval :: forall m err. SPStoreIdP (Error err) m => m AuthnResponse
-      eval = do
-        base64 <- maybe (throwError . BadSamlResponse $ "no SAMLResponse in the body") pure $
-                  lookupInput "SAMLResponse" resp
-        parseAuthnResponseBody (cs base64)
-
+-- form redirect
 
 -- | [2/3.5.4]
 data FormRedirect xml = FormRedirect URI xml
@@ -229,38 +194,6 @@ instance HasXMLRoot xml => Servant.MimeUnrender HTML (FormRedirect xml) where
     uri  <- fmapL (<> (": " <> show formAction)) . parseURI' $ mconcat formAction
     resp <- fmapL (<> (": " <> show formBody)) $ decode . cs =<< (EL.decode . cs $ mconcat formBody)
     pure $ FormRedirect uri resp
-
-mkHtml :: [Node] -> LBS
-mkHtml nodes = renderLBS def doc
-  where
-    doc      = Document (Prologue [] (Just doctyp) []) root []
-    doctyp   = Doctype "html" (Just $ PublicID "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd")
-    root     = Element "html" rootattr nodes
-    rootattr = Map.fromList [("xmlns", "http://www.w3.org/1999/xhtml"), ("xml:lang", "en")]
-
-
-type WithCookieAndLocation = Headers '[Servant.Header "Set-Cookie" Cky, Servant.Header "Location" URI]
-
-instance ToHttpApiData URI where
-  toUrlPiece = renderURI
-
-
--- | [3.5.5.1] Caching
-setHttpCachePolicy :: Middleware
-setHttpCachePolicy ap rq respond = ap rq $ respond . addHeadersToResponse httpCachePolicy
-  where
-    httpCachePolicy :: HttpTypes.ResponseHeaders
-    httpCachePolicy = [("Cache-Control", "no-cache, no-store"), ("Pragma", "no-cache")]
-
-    addHeadersToResponse :: HttpTypes.ResponseHeaders -> Wai.Response -> Wai.Response
-    addHeadersToResponse extraHeaders resp = case resp of
-      ResponseFile status hdrs filepath part -> ResponseFile status (updH hdrs) filepath part
-      ResponseBuilder status hdrs builder    -> ResponseBuilder status (updH hdrs) builder
-      ResponseStream status hdrs body        -> ResponseStream status (updH hdrs) body
-      ResponseRaw action resp'               -> ResponseRaw action $
-                                                    addHeadersToResponse extraHeaders resp'
-      where
-        updH hdrs = nubBy ((==) `on` fst) $ extraHeaders ++ hdrs
 
 
 ----------------------------------------------------------------------
@@ -331,6 +264,7 @@ authresp' getRequestIssuerURI getResponseURI handleVerdict body = do
 
 type OnSuccessRedirect m = UserRef -> m (Cky, URI)
 
+type WithCookieAndLocation = Headers '[Servant.Header "Set-Cookie" Cky, Servant.Header "Location" URI]
 type Cky = Cky.SimpleSetCookie CookieName
 type CookieName = "saml2-web-sso"
 
