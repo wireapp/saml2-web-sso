@@ -126,8 +126,10 @@ genContactPerson = do
   _cntPhone     <- Gen.maybe genNiceWord
   pure ContactPerson {..}
 
-genEmail :: Gen URI  -- TODO: get a little more inspired here?
-genEmail = pure [uri|email:somebody@example.com|]
+genEmail :: Gen URI
+genEmail = do
+  loc <- genNiceWord
+  pure . unsafeParseURI $ "email:" <> loc <> "@example.com"
 
 genAuthnRequest :: Gen AuthnRequest
 genAuthnRequest = AuthnRequest <$> genID <*> genVersion <*> genTime <*> genIssuer <*> Gen.maybe genNameIDPolicy
