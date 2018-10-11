@@ -37,8 +37,9 @@ genURI = genURI' Nothing
 
 -- | arbitrary 'URI' with restricted length.
 --
--- TODO: uri-bytestring has Arbitrary instances, but they are internal as of now.
--- https://github.com/Soostone/uri-bytestring/issues/45
+-- uri-bytestring has Arbitrary instances, but they are likely to remain internal.  also we're not
+-- sure what restrictions we'll need to impose on those in roder to get the URIs of the shape
+-- required here.  https://github.com/Soostone/uri-bytestring/issues/45
 genURI' :: Maybe (Range Int) -> Gen URI
 genURI' _ = pure [uri|http://wire.com/|]
 
@@ -137,7 +138,7 @@ genTime = pure $ unsafeReadTime "2013-03-18T07:33:56Z"
 genDuration :: Gen Duration
 genDuration = pure Duration
 
-genNominalDifftime :: Gen NominalDiffTime  -- TODO: get rid of this and use 'genDuration'
+genNominalDifftime :: Gen NominalDiffTime
 genNominalDifftime = fromIntegral <$> Gen.int (Range.linear 0 1000000)
 
 genID :: Gen (ID a)
@@ -336,7 +337,7 @@ genFormRedirect :: Gen a -> Gen (FormRedirect a)
 genFormRedirect genBody = FormRedirect <$> genURI <*> genBody
 
 
--- TODO: the following should be TH-generated entirely (take all declarations matching '^gen' and
+-- FUTUREWORK: the following could be TH-generated entirely (take all declarations matching '^gen' and
 -- turn the resp. types into Arbitrary instances).
 
 instance Arbitrary Assertion where

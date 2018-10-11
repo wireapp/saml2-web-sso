@@ -204,10 +204,11 @@ timeFormat = "%Y-%m-%dT%H:%M:%S%QZ"
 instance Show Time where
   showsPrec _ (Time t) = showString . show $ formatTime defaultTimeLocale timeFormat t
 
-data Duration = Duration  -- TODO: https://www.w3.org/TR/xmlschema-2/#duration
+data Duration = Duration  -- TODO: https://www.w3.org/TR/xmlschema-2/#duration. one this is one,
+                          -- grep this package for uses of NominalDiffTime and replace them.
   deriving (Eq, Show, Generic)
 
-addTime :: NominalDiffTime -> Time -> Time  -- TODO: use 'Duration' instaed of 'NominalDiffTime'
+addTime :: NominalDiffTime -> Time -> Time
 addTime n (Time t) = Time $ addUTCTime n t
 
 -- | IDs must be globally unique between all communication parties and adversaries with a negligible
@@ -400,10 +401,8 @@ data SubjectConfirmation = SubjectConfirmation
   }
   deriving (Eq, Show, Generic)
 
--- | [3/4.1.4.2]
---
--- TODO: we should implement the rest of the options here.  this may be relevant for some clients,
--- and we are not required to base our access policy on it.
+-- | [3/3] there is also @holder-of-key@ and @sender-vouches@, but the first seems a bit esoteric
+-- and the second is just silly, so this library only supports @bearer@.
 data SubjectConfirmationMethod
   = SubjectConfirmationMethodBearer  -- ^ @"urn:oasis:names:tc:SAML:2.0:cm:bearer"@
   deriving (Eq, Show, Enum, Bounded, Generic)

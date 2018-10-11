@@ -199,7 +199,6 @@ instance HasXMLRoot xml => Servant.MimeUnrender HTML (FormRedirect xml) where
 ----------------------------------------------------------------------
 -- handlers
 
--- | TODO: currently, meta does not fail if idp does not exist.  should we change that behavior?
 meta
   :: forall m err. (SPHandler (Error err) m, HasConfig m)
   => ST -> m Issuer -> m URI -> m SPMetadata

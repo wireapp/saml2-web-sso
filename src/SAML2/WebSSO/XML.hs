@@ -1,5 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+-- TODO: make sure everything in HS.* that might change the interpreation of the data
+-- we know is either 'Nothing' or we look at it.
+
 module SAML2.WebSSO.XML where
 
 import Control.Category (Category(..))
@@ -188,8 +191,6 @@ importAuthnRequest req = do
     Nothing -> pure ()
     Just dest -> die (Proxy @AuthnRequest) ("protocol destination not allowed: " <> show dest)
 
-  -- TODO: make sure everything in HS.AuthnRequest that might change the interpreation of the data
-  -- we know is 'Nothing'.  also do this on all other 'import*' functions.
   pure AuthnRequest {..}
 
 exportAuthnRequest :: AuthnRequest -> HS.AuthnRequest
@@ -389,7 +390,7 @@ importStatement bad = die (Proxy @Statement) bad
 
 importAttribute :: (HasCallStack, MonadError String m)
                 => HS.PossiblyEncrypted HS.Attribute -> m Attribute
-importAttribute bad@(HS.SoEncrypted _) = die (Proxy @Attribute) bad  -- encrypted asseritons are not implemented
+importAttribute bad@(HS.SoEncrypted _) = die (Proxy @Attribute) bad
 importAttribute (HS.NotEncrypted ass) = do
   unless (HS.attributeNameFormat ass == HS.Identified HS.AttributeNameFormatUnspecified) $
     die (Proxy @Attribute) ("unsupported format" :: String, ass)
