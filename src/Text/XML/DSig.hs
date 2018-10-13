@@ -25,7 +25,7 @@ module Text.XML.DSig
   , signRoot, signRootAt
 
     -- * testing
-  , MonadSign(MonadSign), runMonadSign, signElementIO, signElementIOAt
+  , HasMonadSign, MonadSign(MonadSign), runMonadSign, signElementIO, signElementIOAt
   )
 where
 
@@ -340,12 +340,14 @@ instance MonadError String MonadSign where
   throwError = MonadSign . throwError
   catchError (MonadSign m) handler = MonadSign $ m `catchError` (runMonadSign' . handler)
 
-signElementIO :: HasCallStack => SignPrivCreds -> [Node] -> IO [Node]
+type HasMonadSign = MonadIO
+
+signElementIO :: (HasCallStack, HasMonadSign m) => SignPrivCreds -> [Node] -> m [Node]
 signElementIO = signElementIOAt 0
 
-signElementIOAt :: HasCallStack => Int -> SignPrivCreds -> [Node] -> IO [Node]
+signElementIOAt :: (HasCallStack, HasMonadSign m) => Int -> SignPrivCreds -> [Node] -> m [Node]
 signElementIOAt sigPos creds [NodeElement el] = do
   eNodes :: Either String [Node]
-    <- runMonadSign . fmap docToNodes . signRootAt sigPos creds . mkDocument $ el
+    <- liftIO . runMonadSign . fmap docToNodes . signRootAt sigPos creds . mkDocument $ el
   either error pure eNodes
-signElementIOAt _ _ bad = throwIO . ErrorCall . show $ bad
+signElementIOAt _ _ bad = liftIO . throwIO . ErrorCall . show $ bad

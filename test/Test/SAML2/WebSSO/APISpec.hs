@@ -276,13 +276,14 @@ spec = describe "API" $ do
 
 
   describe "authresp" $ do
-    let postTestAuthnResp :: WaiSession SResponse
+    let postTestAuthnResp :: HasCallStack => WaiSession SResponse
         postTestAuthnResp = do
           ctx <- mkTestCtxWithIdP
-          spmeta <- liftIO $ ioFromTestSP ctx mkTestSPMetadata
-          authnreq :: AuthnRequest
-            <- liftIO . ioFromTestSP ctx $ createAuthnRequest 3600 defSPIssuer
-          SignedAuthnResponse aresp <- liftIO $ mkAuthnResponse sampleIdPPrivkey testIdPConfig spmeta authnreq True
+          aresp <- liftIO . ioFromTestSP ctx $ do
+            spmeta   :: SPMetadata     <- mkTestSPMetadata
+            authnreq :: AuthnRequest   <- createAuthnRequest 3600 defSPIssuer
+            SignedAuthnResponse aresp_ <- mkAuthnResponse sampleIdPPrivkey testIdPConfig spmeta authnreq True
+            pure aresp_
           postHtmlForm "/authresp" [("SAMLResponse", cs . EL.encode . renderLBS def $ aresp)]
 
     context "unknown idp" . testAuthRespApp mkTestCtxSimple $ do
@@ -315,7 +316,8 @@ spec = describe "API" $ do
       spmeta <- ioFromTestSP ctx mkTestSPMetadata
       Right authnreq :: Either SomeException AuthnRequest
         <- try . ioFromTestSP ctx $ createAuthnRequest 3600 defSPIssuer
-      SignedAuthnResponse authnrespDoc <- mkAuthnResponse sampleIdPPrivkey testIdPConfig spmeta authnreq True
+      SignedAuthnResponse authnrespDoc
+        <- ioFromTestSP ctx $ mkAuthnResponse sampleIdPPrivkey testIdPConfig spmeta authnreq True
       parseFromDocument @AuthnResponse authnrespDoc `shouldSatisfy` isRight
 
     let check :: X509.SignedCertificate -> (Either SomeException () -> Bool) -> IO ()
@@ -327,7 +329,8 @@ spec = describe "API" $ do
               spissuer  :: TestSP Issuer = defSPIssuer
           result :: Either SomeException () <- try . ioFromTestSP ctx $ do
             authnreq  <- createAuthnRequest 3600 spissuer
-            SignedAuthnResponse authnrespDoc <- liftIO $ mkAuthnResponse sampleIdPPrivkey idpcfg spmeta authnreq True
+            SignedAuthnResponse authnrespDoc
+              <- liftIO . ioFromTestSP ctx $ mkAuthnResponse sampleIdPPrivkey idpcfg spmeta authnreq True
             let authnrespLBS = renderLBS def authnrespDoc
             simpleVerifyAuthnResponse (Just idpissuer) authnrespLBS
           result `shouldSatisfy` expectation
