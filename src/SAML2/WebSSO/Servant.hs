@@ -3,7 +3,7 @@
 
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module SAML2.WebSSO.API.Servant where
+module SAML2.WebSSO.Servant where
 
 import Data.EitherR
 import Data.Function

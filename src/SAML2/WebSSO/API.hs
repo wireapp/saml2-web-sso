@@ -19,7 +19,7 @@
 -- FUTUREWORK: servant-server is quite heavy.  we should have a cabal flag to exclude it.
 module SAML2.WebSSO.API
   ( module SAML2.WebSSO.API
-  , module SAML2.WebSSO.API.Servant
+  , module SAML2.WebSSO.Servant
   ) where
 
 import Control.Monad.Except hiding (ap)
@@ -33,7 +33,7 @@ import Data.Time
 import GHC.Generics
 import Lens.Micro
 import SAML2.Util
-import SAML2.WebSSO.API.Servant
+import SAML2.WebSSO.Servant
 import SAML2.WebSSO.Config
 import SAML2.WebSSO.Error as SamlErr
 import SAML2.WebSSO.SP
