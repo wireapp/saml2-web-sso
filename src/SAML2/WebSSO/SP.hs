@@ -215,7 +215,7 @@ judge' resp = do
   either (deny . (:[])) pure . statusIsSuccess $ resp ^. rspStatus
   uref <- either (giveup . (:[])) pure $ getUserRef resp
   checkInResponseTo `mapM_` (resp ^. rspInRespTo)
-  checkNotInFuture "Issuer instant" $ resp ^. rspIssueInstant
+  checkIsInPast "Issuer instant" $ resp ^. rspIssueInstant
   maybe (pure ()) (checkDestination "response destination") (resp ^. rspDestination)
   checkAssertions (resp ^. rspIssuer) (resp ^. rspPayload) uref
 
@@ -224,11 +224,11 @@ checkInResponseTo req = do
   ok <- checkAgainstRequest req
   unless ok . deny $ ["invalid InResponseTo field: " <> show req]
 
-checkNotInFuture :: (SP m, MonadJudge m) => String -> Time -> m ()
-checkNotInFuture msg tim = do
+checkIsInPast :: (SP m, MonadJudge m) => String -> Time -> m ()
+checkIsInPast msg tim = do
   now <- getNow
   unless (tim < now) $
-    deny [msg <> " in the future: " <> show tim]
+    deny [msg <> " not in the past: " <> show tim]
 
 -- | Check that the response is intended for us (based on config's finalize-login uri stored in
 -- 'JudgeCtx').
@@ -245,7 +245,7 @@ checkDestination msg (renderURI -> expectedByIdp) = do
 checkAssertions :: (SP m, SPStore m, MonadJudge m) => Maybe Issuer -> NonEmpty Assertion -> UserRef -> m AccessVerdict
 checkAssertions missuer (toList -> assertions) uref@(UserRef issuer _) = do
   forM_ assertions $ \ass -> do
-    checkNotInFuture "Assertion IssueInstant" (ass ^. assIssueInstant)
+    checkIsInPast "Assertion IssueInstant" (ass ^. assIssueInstant)
     storeAssertion (ass ^. assID) (ass ^. assEndOfLife)
   judgeConditions `mapM_` catMaybes ((^. assConditions) <$> assertions)
 
@@ -269,7 +269,7 @@ checkAssertions missuer (toList -> assertions) uref@(UserRef issuer _) = do
 checkStatement :: (SP m, MonadJudge m) => Statement -> m ()
 checkStatement = \case
   (AuthnStatement issued _ mtimeout _) -> do
-    checkNotInFuture "AuthnStatement IssueInstance" issued
+    checkIsInPast "AuthnStatement IssueInstance" issued
     forM_ mtimeout $ \timeout -> do
       now <- getNow
       when (timeout <= now) $ deny ["AuthnStatement expired at " <> show timeout]
