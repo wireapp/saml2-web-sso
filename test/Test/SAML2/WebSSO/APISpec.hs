@@ -6,8 +6,8 @@ module Test.SAML2.WebSSO.APISpec (spec) where
 
 import Control.Concurrent.MVar (newMVar)
 import Control.Exception (SomeException, try)
-import Control.Monad.Reader
 import Control.Monad.Except
+import Control.Monad.Reader
 import Data.Either
 import Data.EitherR
 import Data.List.NonEmpty (NonEmpty((:|)))
@@ -23,6 +23,7 @@ import Servant
 import Shelly (shelly, run, setStdin, silently)
 import Test.Hspec hiding (pending)
 import Test.Hspec.Wai
+import Test.Hspec.Wai.Internal (unWaiSession)
 import Test.Hspec.Wai.Matcher
 import Text.XML as XML
 import URI.ByteString.QQ
@@ -60,16 +61,22 @@ base64ours = pure . cs . EL.encode . cs
 base64theirs sbs = shelly . silently $ cs <$> (setStdin (cs sbs) >> run "/usr/bin/base64" ["--wrap", "0"])
 
 
-testAuthRespApp :: IO Ctx -> SpecWith Application -> Spec
+testAuthRespApp :: IO Ctx -> SpecWith (Ctx, Application) -> Spec
 testAuthRespApp = withapp (Proxy @APIAuthResp')
   (authresp' defSPIssuer defResponseURI (HandleVerdictRedirect simpleOnSuccess))
 
 withapp
   :: forall (api :: *). (HasServer api '[])
-  => Proxy api -> ServerT api TestSP -> IO Ctx -> SpecWith Application -> Spec
-withapp proxy handler mkctx = with (mkctx <&> \ctx -> serve proxy
-                                     (hoistServer (Proxy @api) (nt @SimpleError @TestSP ctx) handler :: Server api)
-                                   )
+  => Proxy api -> ServerT api TestSP -> IO Ctx -> SpecWith (Ctx, Application) -> Spec
+withapp proxy handler mkctx = with (mkctx <&> \ctx -> (ctx, app ctx))
+  where
+    app ctx = serve proxy (hoistServer (Proxy @api) (nt @SimpleError @TestSP ctx) handler :: Server api)
+
+runtest :: (Ctx -> WaiSession a) -> ((Ctx, Application) -> IO a)
+runtest test (ctx, app) = unWaiSession (test ctx) `runSession` app
+
+runtest' :: WaiSession a -> ((Ctx, Application) -> IO a)
+runtest' action = runtest (\_ctx -> action)
 
 
 hedgehogTests :: Hedgehog.Group
@@ -83,8 +90,8 @@ hedgehogTests = Hedgehog.Group "hedgehog tests" $
 
 burnIdP :: FilePath -> FilePath -> ST -> ST -> Spec
 burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
-  let ctx :: IO Ctx
-      ctx = do
+  let mkctx :: IO Ctx
+      mkctx = do
         testCtx1 <- mkTestCtxSimple
         reqstore <- newMVar $ Map.fromList
           -- it would be probably better to also take this ID (and timeout?) as an argument(s).
@@ -100,14 +107,14 @@ burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
       getIdP = Yaml.decodeThrow . cs =<< readSampleIO cfgPath
 
   describe ("smoke tests: " <> show cfgPath) $ do
-    describe "authreq" . withapp (Proxy @APIAuthReq') (authreq' defSPIssuer) ctx $ do
-      it "responds with 200" $ do
+    describe "authreq" . withapp (Proxy @APIAuthReq') (authreq' defSPIssuer) mkctx $ do
+      it "responds with 200" . runtest' $ do
         idp <- liftIO getIdP
         get ("/authreq/" <> cs (idPIdToST (idp ^. idpId)))
           `shouldRespondWith` 200 { matchBody = bodyContains "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" }
 
-    describe "authresp" . testAuthRespApp ctx $ do
-      it "responds with 303" $ do
+    describe "authresp" . testAuthRespApp mkctx $ do
+      it "responds with 303" . runtest' $ do
         sample <- liftIO $ cs <$> readSampleIO respXmlPath
         let postresp = postHtmlForm "/authresp" body
             body = [("SAMLResponse", sample)]
@@ -236,35 +243,34 @@ spec = describe "API" $ do
 
 
   describe "meta" . withapp (Proxy @APIMeta') (meta "toy-sp" defSPIssuer defResponseURI) mkTestCtxSimple $ do
-    it "responds with 200 and an 'SPSSODescriptor'" $ do
+    it "responds with 200 and an 'SPSSODescriptor'" . runtest' $ do
       get "/meta"
         `shouldRespondWith` 200 { matchBody = bodyContains "OrganizationName xml:lang=\"EN\">toy-sp" }
 
 
   describe "authreq" $ do
     context "invalid uuid" . withapp (Proxy @APIAuthReq') (authreq' defSPIssuer) mkTestCtxSimple $ do
-      it "responds with 400" $ do
+      it "responds with 400" . runtest' $ do
         get "/authreq/broken-uuid" `shouldRespondWith` 400
 
     context "unknown idp" . withapp (Proxy @APIAuthReq') (authreq' defSPIssuer) mkTestCtxSimple $ do
-      it "responds with 404" $ do
+      it "responds with 404" . runtest' $ do
         get "/authreq/6bf0dfb0-754f-11e8-b71d-00163e5e6c14" `shouldRespondWith` 404
 
     context "known idp" . withapp (Proxy @APIAuthReq') (authreq' defSPIssuer) mkTestCtxWithIdP $ do
-      it "responds with 200" $ do
+      it "responds with 200" . runtest' $ do
         let idpid = testIdPConfig ^. idpId . to (cs . idPIdToST)
         get ("/authreq/" <> idpid) `shouldRespondWith` 200
 
-      it "responds with a body that contains the IdPs response URL" $ do
+      it "responds with a body that contains the IdPs response URL" . runtest' $ do
         let idpid = testIdPConfig ^. idpId . to (cs . idPIdToST)
         get ("/authreq/" <> idpid) `shouldRespondWith` 200
           { matchBody = bodyContains . cs . renderURI $ testIdPConfig ^. idpMetadata . edRequestURI }
 
 
   describe "authresp" $ do
-    let postTestAuthnResp :: HasCallStack => WaiSession SResponse
-        postTestAuthnResp = do
-          ctx <- mkTestCtxWithIdP
+    let postTestAuthnResp :: HasCallStack => Ctx -> WaiSession SResponse
+        postTestAuthnResp ctx = do
           aresp <- liftIO . ioFromTestSP ctx $ do
             spmeta   :: SPMetadata     <- mkTestSPMetadata
             authnreq :: AuthnRequest   <- createAuthnRequest 3600 defSPIssuer
@@ -274,18 +280,18 @@ spec = describe "API" $ do
 
     context "unknown idp" . testAuthRespApp mkTestCtxSimple $ do
       let errmsg = "Unknown IdP: Issuer"
-      it "responds with 404" $ do
-        postTestAuthnResp `shouldRespondWith`
+      it "responds with 404" . runtest $ \ctx -> do
+        postTestAuthnResp ctx `shouldRespondWith`
           404
 
     context "known idp, bad timestamp" . testAuthRespApp mkTestCtxWithIdP $ do
-      xit "responds with 402" $ do
-        postTestAuthnResp `shouldRespondWith`
+      it "responds with 402" . runtest $ \ctx -> do
+        postTestAuthnResp ctx `shouldRespondWith`
           403 { matchBody = bodyContains "violation of NotBefore condition" }
 
     context "known idp, good timestamp" . testAuthRespApp mkTestCtxWithIdP $ do
-      xit "responds with 303" $ do
-        postTestAuthnResp `shouldRespondWith`
+      it "responds with 303" . runtest $ \ctx -> do
+        postTestAuthnResp ctx `shouldRespondWith`
           303 { matchBody = bodyContains "<body><p>SSO successful, redirecting to https://zb2.zerobuzz.net:60443/authresp" }
 
 
