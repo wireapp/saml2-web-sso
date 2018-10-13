@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module SAML2.WebSSO.SP where
@@ -116,11 +115,7 @@ getSsoURI :: forall m endpoint api.
                   , HasConfig m
                   , IsElem endpoint api
                   , HasLink endpoint
-#if MIN_VERSION_servant(0,14,0)
-                  , ToHttpApiData (MkLink endpoint Link)
-#else
                   , ToHttpApiData (MkLink endpoint)
-#endif
                   )
                => Proxy api -> Proxy endpoint -> m URI
 getSsoURI proxyAPI proxyAPIAuthResp = extpath . (^. cfgSPSsoURI) <$> getConfig
@@ -135,11 +130,7 @@ getSsoURI proxyAPI proxyAPIAuthResp = extpath . (^. cfgSPSsoURI) <$> getConfig
 getSsoURI' :: forall endpoint api a (f :: * -> *) t.
               ( HasConfig f
               , MkLink endpoint ~ (t -> a)
-#if MIN_VERSION_servant(0,14,0)
-              , HasLink endpoint Link
-#else
               , HasLink endpoint
-#endif
               , ToHttpApiData a
               , IsElem endpoint api
               ) => Proxy api -> Proxy endpoint -> t -> f URI

@@ -1,9 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE CPP #-}
 
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module SAML2.WebSSO.Servant where
+module SAML2.WebSSO.Servant
+  ( module SAML2.WebSSO.Servant
+  , module SAML2.WebSSO.Servant.CPP
+  ) where
 
 import Data.EitherR
 import Data.Function
@@ -15,8 +17,9 @@ import Network.HTTP.Types
 import Network.Wai hiding (Response)
 import Network.Wai.Internal as Wai
 import SAML2.Util
+import SAML2.WebSSO.Servant.CPP
 import SAML2.WebSSO.XML
-import Servant.API as Servant hiding (URI(..))
+import Servant.API as Servant hiding (MkLink, URI(..))
 import Text.Hamlet.XML
 import Text.XML
 import URI.ByteString

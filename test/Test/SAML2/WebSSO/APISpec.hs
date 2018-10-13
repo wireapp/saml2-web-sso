@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 {-# OPTIONS_GHC -Wno-unused-binds -Wno-incomplete-patterns -Wno-incomplete-uni-patterns -Wno-orphans #-}
@@ -21,9 +20,6 @@ import SAML2.WebSSO.Test.Arbitrary (genFormRedirect, genAuthnRequest)
 import SAML2.WebSSO.Test.Credentials
 import SAML2.WebSSO.Test.MockResponse
 import Servant
-#if !MIN_VERSION_servant_server(0,12,0)
-import Servant.Utils.Enter
-#endif
 import Shelly (shelly, run, setStdin, silently)
 import Test.Hspec hiding (pending)
 import Test.Hspec.Wai
@@ -68,21 +64,11 @@ testAuthRespApp :: IO Ctx -> SpecWith Application -> Spec
 testAuthRespApp = withapp (Proxy @APIAuthResp')
   (authresp' defSPIssuer defResponseURI (HandleVerdictRedirect simpleOnSuccess))
 
--- on servant-0.12 or later, use 'hoistServer':
--- <https://github.com/haskell-servant/servant/blob/master/servant/CHANGELOG.md#significant-changes-1>
-withapp :: forall (api :: *).
-  (
-#if !MIN_VERSION_servant_server(0,12,0)
-    Enter (ServerT api TestSP) TestSP Handler (Server api),
-#endif
-    HasServer api '[]
-  ) => Proxy api -> ServerT api TestSP -> IO Ctx -> SpecWith Application -> Spec
+withapp
+  :: forall (api :: *). (HasServer api '[])
+  => Proxy api -> ServerT api TestSP -> IO Ctx -> SpecWith Application -> Spec
 withapp proxy handler mkctx = with (mkctx <&> \ctx -> serve proxy
-#if MIN_VERSION_servant_server(0,12,0)
                                      (hoistServer (Proxy @api) (nt @SimpleError @TestSP ctx) handler :: Server api)
-#else
-                                     (enter (NT (nt @SimpleError @TestSP ctx)) handler :: Server api)
-#endif
                                    )
 
 

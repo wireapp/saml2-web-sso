@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE CPP #-}
 
 {-# OPTIONS_GHC -Wno-orphans #-}
 
