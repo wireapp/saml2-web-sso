@@ -228,7 +228,7 @@ checkIsInPast :: (SP m, MonadJudge m) => String -> Time -> m ()
 checkIsInPast msg tim = do
   now <- getNow
   unless (tim < now) $
-    deny [msg <> " not in the past: " <> show tim]
+    deny [msg <> " not in the past: " <> show tim <> " >= " <> show now]
 
 -- | Check that the response is intended for us (based on config's finalize-login uri stored in
 -- 'JudgeCtx').

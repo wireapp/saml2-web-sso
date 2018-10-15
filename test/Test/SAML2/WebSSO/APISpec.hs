@@ -4,7 +4,7 @@
 
 module Test.SAML2.WebSSO.APISpec (spec) where
 
-import Control.Concurrent.MVar (newMVar)
+import Control.Concurrent.MVar
 import Control.Exception (SomeException, try)
 import Control.Monad.Except
 import Control.Monad.Reader
@@ -61,21 +61,21 @@ base64ours = pure . cs . EL.encode . cs
 base64theirs sbs = shelly . silently $ cs <$> (setStdin (cs sbs) >> run "/usr/bin/base64" ["--wrap", "0"])
 
 
-testAuthRespApp :: IO Ctx -> SpecWith (Ctx, Application) -> Spec
+testAuthRespApp :: IO CtxV -> SpecWith (CtxV, Application) -> Spec
 testAuthRespApp = withapp (Proxy @APIAuthResp')
   (authresp' defSPIssuer defResponseURI (HandleVerdictRedirect simpleOnSuccess))
 
 withapp
   :: forall (api :: *). (HasServer api '[])
-  => Proxy api -> ServerT api TestSP -> IO Ctx -> SpecWith (Ctx, Application) -> Spec
+  => Proxy api -> ServerT api TestSP -> IO CtxV -> SpecWith (CtxV, Application) -> Spec
 withapp proxy handler mkctx = with (mkctx <&> \ctx -> (ctx, app ctx))
   where
     app ctx = serve proxy (hoistServer (Proxy @api) (nt @SimpleError @TestSP ctx) handler :: Server api)
 
-runtest :: (Ctx -> WaiSession a) -> ((Ctx, Application) -> IO a)
+runtest :: (CtxV -> WaiSession a) -> ((CtxV, Application) -> IO a)
 runtest test (ctx, app) = unWaiSession (test ctx) `runSession` app
 
-runtest' :: WaiSession a -> ((Ctx, Application) -> IO a)
+runtest' :: WaiSession a -> ((CtxV, Application) -> IO a)
 runtest' action = runtest (\_ctx -> action)
 
 
@@ -90,18 +90,22 @@ hedgehogTests = Hedgehog.Group "hedgehog tests" $
 
 burnIdP :: FilePath -> FilePath -> ST -> ST -> Spec
 burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
-  let mkctx :: IO Ctx
+  let mkctx :: IO CtxV
       mkctx = do
         testCtx1 <- mkTestCtxSimple
-        reqstore <- newMVar $ Map.fromList
-          -- it would be probably better to also take this ID (and timeout?) as an argument(s).
-          [ (ID "idcf2299ac551b42f1aa9b88804ed308c2", unsafeReadTime "2019-04-14T10:53:57Z")
-          , (ID "idafecfcff5cc64345b6ddde7ee47b4838", unsafeReadTime "2019-04-14T10:53:57Z")
-          ]
-        getIdP <&> \idp -> testCtx1 & ctxConfig . cfgIdps .~ [idp]
-                                    & ctxNow .~ unsafeReadTime currentTime
-                                    & ctxConfig . cfgSPAppURI .~ unsafeParseURI audienceURI
-                                    & ctxRequestStore .~ reqstore
+        let reqstore = Map.fromList
+              -- it would be probably better to also take this ID (and timeout?) as an argument(s).
+              [ (ID "idcf2299ac551b42f1aa9b88804ed308c2", unsafeReadTime "2019-04-14T10:53:57Z")
+              , (ID "idafecfcff5cc64345b6ddde7ee47b4838", unsafeReadTime "2019-04-14T10:53:57Z")
+              ]
+        idp <- getIdP
+        modifyMVar_ testCtx1 $ pure .
+          ( (ctxConfig . cfgIdps .~ [idp])
+          . (ctxNow .~ unsafeReadTime currentTime)
+          . (ctxConfig . cfgSPAppURI .~ unsafeParseURI audienceURI)
+          . (ctxRequestStore .~ reqstore)
+          )
+        pure testCtx1
 
       getIdP :: IO IdPConfig_
       getIdP = Yaml.decodeThrow . cs =<< readSampleIO cfgPath
@@ -269,30 +273,32 @@ spec = describe "API" $ do
 
 
   describe "authresp" $ do
-    let postTestAuthnResp :: HasCallStack => Ctx -> WaiSession SResponse
-        postTestAuthnResp ctx = do
+    let postTestAuthnResp :: HasCallStack => CtxV -> Bool -> WaiSession SResponse
+        postTestAuthnResp ctx badTimeStamp = do
           aresp <- liftIO . ioFromTestSP ctx $ do
             spmeta   :: SPMetadata     <- mkTestSPMetadata
             authnreq :: AuthnRequest   <- createAuthnRequest 3600 defSPIssuer
-            SignedAuthnResponse aresp_ <- mkAuthnResponse sampleIdPPrivkey testIdPConfig spmeta authnreq True
+            SignedAuthnResponse aresp_
+              <- (if badTimeStamp then timeTravel 1800 else id) $
+                 mkAuthnResponse sampleIdPPrivkey testIdPConfig spmeta authnreq True
             pure aresp_
           postHtmlForm "/authresp" [("SAMLResponse", cs . EL.encode . renderLBS def $ aresp)]
 
     context "unknown idp" . testAuthRespApp mkTestCtxSimple $ do
       let errmsg = "Unknown IdP: Issuer"
       it "responds with 404" . runtest $ \ctx -> do
-        postTestAuthnResp ctx `shouldRespondWith`
+        postTestAuthnResp ctx False `shouldRespondWith`
           404
 
     context "known idp, bad timestamp" . testAuthRespApp mkTestCtxWithIdP $ do
       it "responds with 402" . runtest $ \ctx -> do
-        postTestAuthnResp ctx `shouldRespondWith`
+        postTestAuthnResp ctx True `shouldRespondWith`
           403 { matchBody = bodyContains "violation of NotBefore condition" }
 
     context "known idp, good timestamp" . testAuthRespApp mkTestCtxWithIdP $ do
       it "responds with 303" . runtest $ \ctx -> do
-        postTestAuthnResp ctx `shouldRespondWith`
-          303 { matchBody = bodyContains "<body><p>SSO successful, redirecting to https://zb2.zerobuzz.net:60443/authresp" }
+        postTestAuthnResp ctx False `shouldRespondWith`
+          303 { matchBody = bodyContains "<body><p>SSO successful, redirecting to" }
 
 
   xdescribe "idp smoke tests" $ do
@@ -315,7 +321,8 @@ spec = describe "API" $ do
     let check :: X509.SignedCertificate -> (Either SomeException () -> Bool) -> IO ()
         check cert expectation = do
           let idpcfg = testIdPConfig & idpMetadata . edCertAuthnResponse .~ (cert :| [])
-          ctx <- mkTestCtxSimple <&> ctxConfig . cfgIdps .~ [idpcfg]
+          ctx <- mkTestCtxSimple
+          modifyMVar_ ctx $ pure . (ctxConfig . cfgIdps .~ [idpcfg])
           spmeta <- ioFromTestSP ctx mkTestSPMetadata
           let idpissuer :: Issuer        = idpcfg ^. idpMetadata . edIssuer
               spissuer  :: TestSP Issuer = defSPIssuer

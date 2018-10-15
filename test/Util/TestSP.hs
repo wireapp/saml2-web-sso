@@ -7,11 +7,12 @@ import Control.Concurrent.MVar
 import Control.Exception (throwIO, ErrorCall(..))
 import Control.Monad.Except
 import Control.Monad.Reader
-import Control.Monad.State
 import Data.EitherR
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Maybe
+import Data.Time
 import Data.UUID as UUID
+import GHC.Stack
 import Lens.Micro
 import SAML2.WebSSO
 import SAML2.WebSSO.API.Example
@@ -20,18 +21,22 @@ import Servant.Server
 import URI.ByteString.QQ
 import Util.Types
 
+import qualified Data.Map as Map
 
-mkTestCtxSimple :: MonadIO m => m Ctx
+
+mkTestCtxSimple :: MonadIO m => m CtxV
 mkTestCtxSimple = liftIO $ do
-  let _ctxNow         = timeNow  -- constant time value, see below
-      _ctxConfig      = fallbackConfig & cfgLogLevel .~ Fatal
-  _ctxAssertionStore <- newMVar mempty
-  _ctxRequestStore   <- newMVar mempty
-  pure Ctx {..}
+  let _ctxNow            = timeNow  -- constant time value, see below
+      _ctxConfig         = fallbackConfig & cfgLogLevel .~ Fatal
+      _ctxAssertionStore = mempty
+      _ctxRequestStore   = mempty
+  newMVar Ctx {..}
 
-mkTestCtxWithIdP :: MonadIO m => m Ctx
+mkTestCtxWithIdP :: MonadIO m => m CtxV
 mkTestCtxWithIdP = liftIO $ do
-  mkTestCtxSimple <&> ctxConfig . cfgIdps .~ [testIdPConfig]
+  ctxmv <- mkTestCtxSimple
+  liftIO $ modifyMVar_ ctxmv (pure . (ctxConfig . cfgIdps .~ [testIdPConfig]))
+  pure ctxmv
 
 testIdPConfig :: IdPConfig_
 testIdPConfig = IdPConfig {..}
@@ -73,32 +78,51 @@ timeIn10minutes = unsafeReadTime "2018-03-11T17:23:00.01Z"
 timeIn20minutes :: Time
 timeIn20minutes = unsafeReadTime "2018-03-11T17:33:00Z"
 
+modifyCtx :: (HasCallStack, MonadIO m, MonadReader CtxV m) => (Ctx -> (Ctx, a)) -> m a
+modifyCtx f = do
+  ctx <- ask
+  liftIO $ modifyMVar ctx (pure . f)
 
-newtype TestSP a = TestSP { runTestSP :: StateT Ctx (ExceptT SimpleError IO) a }
-  deriving (Functor, Applicative, Monad, MonadIO, MonadState Ctx, MonadError SimpleError)
+modifyCtx_ :: (HasCallStack, MonadIO m, MonadReader CtxV m) => (Ctx -> Ctx) -> m ()
+modifyCtx_ = modifyCtx . ((, ()) .)
+
+-- | run an action at a time specified relative to now.
+timeTravel :: (HasCallStack, MonadIO m, MonadReader CtxV m) => NominalDiffTime -> m a -> m a
+timeTravel distance action = do
+  let mv dist_ = modifyCtx_ (ctxNow %~ (dist_ `addTime`))
+  mv distance
+  result <- action
+  mv (-distance)
+  pure result
+
+
+newtype TestSP a = TestSP { runTestSP :: ReaderT CtxV (ExceptT SimpleError IO) a }
+  deriving (Functor, Applicative, Monad, MonadIO, MonadReader CtxV, MonadError SimpleError)
 
 instance HasConfig TestSP where
   type ConfigExtra TestSP = ()
-  getConfig = gets (^. ctxConfig)
+  getConfig = (^. ctxConfig) <$> (liftIO . readMVar =<< ask)
 
 instance SP TestSP where
-  -- Make TestSP to move forward in time with each look at the clock.
-  getNow = state (\s -> (s ^. ctxNow, s & ctxNow %~ (1 `addTime`)))
+  -- Make TestSP to move forward in time after each look at the clock.
+  getNow = modifyCtx (\ctx -> (ctx & ctxNow %~ (1 `addTime`), ctx ^. ctxNow))
 
 instance SPStore TestSP where
   storeRequest req keepAroundUntil = do
-    store <- gets (^. ctxRequestStore)
-    simpleStoreRequest store req keepAroundUntil
+    modifyCtx_ (ctxRequestStore %~ Map.insert req keepAroundUntil)
 
   checkAgainstRequest req = do
-    store <- gets (^. ctxRequestStore)
     now <- getNow
-    simpleCheckAgainstRequest store req now
+    reqs <- modifyCtx (\ctx -> (ctx, ctx ^. ctxRequestStore))
+    pure $ Map.lookup req reqs > Just now
 
   storeAssertion aid time = do
-    store <- gets (^. ctxAssertionStore)
     now <- getNow
-    simpleStoreAssertion store now aid time
+    modifyCtx $ \ctx -> ( ctx & ctxAssertionStore %~ Map.insert aid time
+                        , case Map.lookup aid (ctx ^. ctxAssertionStore) of
+                            Just time' -> time' < now
+                            Nothing -> True
+                        )
 
 instance SPStoreIdP SimpleError TestSP where
   storeIdPConfig _ = pure ()
@@ -106,15 +130,15 @@ instance SPStoreIdP SimpleError TestSP where
   getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpMetadata . edIssuer)
 
 instance SPHandler SimpleError TestSP where
-  type NTCTX TestSP = Ctx
+  type NTCTX TestSP = CtxV
 
-  nt :: forall x. Ctx -> TestSP x -> Handler x
+  nt :: forall x. CtxV -> TestSP x -> Handler x
   nt = handlerFromTestSP
 
-handlerFromTestSP :: Ctx -> TestSP a -> Handler a
-handlerFromTestSP ctx (TestSP m) = Handler . ExceptT . fmap (fmapL toServantErr) . runExceptT $ m `evalStateT` ctx
+handlerFromTestSP :: CtxV -> TestSP a -> Handler a
+handlerFromTestSP ctx (TestSP m) = Handler . ExceptT . fmap (fmapL toServantErr) . runExceptT $ m `runReaderT` ctx
 
-ioFromTestSP :: Ctx -> TestSP a -> IO a
+ioFromTestSP :: CtxV -> TestSP a -> IO a
 ioFromTestSP ctx m = either (throwIO . ErrorCall . show) pure =<< (runExceptT . runHandler' $ handlerFromTestSP ctx m)
 
 

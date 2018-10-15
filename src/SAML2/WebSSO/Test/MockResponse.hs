@@ -47,7 +47,7 @@ mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp sp authnreq g
   let freshNCName = ("_" <>) . UUID.toText <$> createUUID
   assertionUuid <- freshNCName
   respUuid      <- freshNCName
-  now           <- ((-1) `addTime`) <$> getNow
+  now           <- getNow
 
   let issueInstant    = renderTime now
       expires         = renderTime $ 3600 `addTime` now

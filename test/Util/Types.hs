@@ -1,20 +1,19 @@
 module Util.Types where
 
 import Control.Concurrent.MVar
-import Data.String.Conversions
 import Lens.Micro.TH
 import SAML2.WebSSO
 import SAML2.WebSSO.API.Example
 
 
+type CtxV = MVar Ctx
+
 data Ctx = Ctx
   { _ctxNow            :: Time
   , _ctxConfig         :: Config_
-  , _ctxAssertionStore :: MVar AssertionStore
-  , _ctxRequestStore   :: MVar RequestStore
+  , _ctxAssertionStore :: AssertionStore
+  , _ctxRequestStore   :: RequestStore
   }
-
-instance Show Ctx where
-  show (Ctx n c _ _) = "(Ctx " <> show (n, c) <> ")"
+  deriving (Eq, Show)
 
 makeLenses ''Ctx

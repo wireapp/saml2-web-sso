@@ -163,13 +163,15 @@ specJudgeT = do
                                                            -- actually passes.
 
     it "violate condition not-before" $ do
-      testCtx2 <- mkTestCtxWithIdP
-      verdict <- ioFromTestSP (testCtx2 & ctxNow .~ timeLongAgo) $ judge resp jctx
+      ctx <- mkTestCtxWithIdP
+      modifyMVar_ ctx $ pure . (ctxNow .~ timeLongAgo)
+      verdict <- ioFromTestSP ctx $ judge resp jctx
       isDenied verdict
 
     it "violate condition not-on-or-after" $ do
-      testCtx2 <- mkTestCtxWithIdP
-      verdict <- ioFromTestSP (testCtx2 & ctxNow .~ timeIn20minutes) $ judge resp jctx
+      ctx <- mkTestCtxWithIdP
+      modifyMVar_ ctx $ pure . (ctxNow .~ timeIn20minutes)
+      verdict <- ioFromTestSP ctx $ judge resp jctx
       isDenied verdict
 
     it "satisfy all conditions" $ do
