@@ -4,6 +4,7 @@ module Util.Misc where
 
 import Control.Exception (throwIO, ErrorCall(ErrorCall))
 import Control.Monad
+import Shelly (shelly, run, setStdin, silently)
 import Data.EitherR
 import Data.Generics.Uniplate.Data
 import Data.List
@@ -18,9 +19,10 @@ import System.IO.Temp
 import System.Process (system)
 import Test.Hspec
 import Text.Show.Pretty
-import Text.XML
+import Text.XML as XML
 import Util.Orphans ()
 
+import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Text.Lazy.IO as LT
 
 
@@ -136,3 +138,29 @@ renderAndParse doc = case parseText def $ renderText def { rsPretty = True } doc
 isSignature :: Node -> Bool
 isSignature (NodeElement (Element name _ _)) = name == "{http://www.w3.org/2000/09/xmldsig#}Signature"
 isSignature _ = False
+
+
+
+----------------------------------------------------------------------
+-- helpers
+
+passes :: Expectation
+passes = True `shouldBe` True
+
+
+newtype SomeSAMLRequest = SomeSAMLRequest { fromSomeSAMLRequest :: XML.Document }
+  deriving (Eq, Show)
+
+instance HasFormRedirect SomeSAMLRequest where
+  formRedirectFieldName _ = "SAMLRequest"
+
+instance HasXML SomeSAMLRequest where
+  nameSpaces Proxy = []
+  parse = fmap SomeSAMLRequest . parse
+
+instance HasXMLRoot SomeSAMLRequest where
+  renderRoot (SomeSAMLRequest doc) = renderRoot doc
+
+base64ours, base64theirs :: HasCallStack => SBS -> IO SBS
+base64ours = pure . cs . EL.encode . cs
+base64theirs sbs = shelly . silently $ cs <$> (setStdin (cs sbs) >> run "/usr/bin/base64" ["--wrap", "0"])

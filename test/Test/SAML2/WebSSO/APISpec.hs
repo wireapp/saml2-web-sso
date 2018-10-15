@@ -20,10 +20,8 @@ import SAML2.WebSSO.Test.Arbitrary (genFormRedirect, genAuthnRequest)
 import SAML2.WebSSO.Test.Credentials
 import SAML2.WebSSO.Test.MockResponse
 import Servant
-import Shelly (shelly, run, setStdin, silently)
 import Test.Hspec hiding (pending)
 import Test.Hspec.Wai
-import Test.Hspec.Wai.Internal (unWaiSession)
 import Test.Hspec.Wai.Matcher
 import Text.XML as XML
 import URI.ByteString.QQ
@@ -34,49 +32,6 @@ import qualified Data.Map as Map
 import qualified Data.X509 as X509
 import qualified Data.Yaml as Yaml
 import qualified Hedgehog
-
-
-----------------------------------------------------------------------
--- helpers
-
-passes :: Expectation
-passes = True `shouldBe` True
-
-
-newtype SomeSAMLRequest = SomeSAMLRequest { fromSomeSAMLRequest :: XML.Document }
-  deriving (Eq, Show)
-
-instance HasFormRedirect SomeSAMLRequest where
-  formRedirectFieldName _ = "SAMLRequest"
-
-instance HasXML SomeSAMLRequest where
-  nameSpaces Proxy = []
-  parse = fmap SomeSAMLRequest . parse
-
-instance HasXMLRoot SomeSAMLRequest where
-  renderRoot (SomeSAMLRequest doc) = renderRoot doc
-
-base64ours, base64theirs :: HasCallStack => SBS -> IO SBS
-base64ours = pure . cs . EL.encode . cs
-base64theirs sbs = shelly . silently $ cs <$> (setStdin (cs sbs) >> run "/usr/bin/base64" ["--wrap", "0"])
-
-
-testAuthRespApp :: IO CtxV -> SpecWith (CtxV, Application) -> Spec
-testAuthRespApp = withapp (Proxy @APIAuthResp')
-  (authresp' defSPIssuer defResponseURI (HandleVerdictRedirect simpleOnSuccess))
-
-withapp
-  :: forall (api :: *). (HasServer api '[])
-  => Proxy api -> ServerT api TestSP -> IO CtxV -> SpecWith (CtxV, Application) -> Spec
-withapp proxy handler mkctx = with (mkctx <&> \ctx -> (ctx, app ctx))
-  where
-    app ctx = serve proxy (hoistServer (Proxy @api) (nt @SimpleError @TestSP ctx) handler :: Server api)
-
-runtest :: (CtxV -> WaiSession a) -> ((CtxV, Application) -> IO a)
-runtest test (ctx, app) = unWaiSession (test ctx) `runSession` app
-
-runtest' :: WaiSession a -> ((CtxV, Application) -> IO a)
-runtest' action = runtest (\_ctx -> action)
 
 
 hedgehogTests :: Hedgehog.Group

@@ -14,10 +14,14 @@ import Data.Time
 import Data.UUID as UUID
 import GHC.Stack
 import Lens.Micro
+import Network.Wai.Test (runSession)
 import SAML2.WebSSO
-import SAML2.WebSSO.API.Example
+import SAML2.WebSSO.API.Example (simpleGetIdPConfigBy)
 import SAML2.WebSSO.Test.Credentials
-import Servant.Server
+import Servant
+import Test.Hspec
+import Test.Hspec.Wai
+import Test.Hspec.Wai.Internal (unWaiSession)
 import URI.ByteString.QQ
 import Util.Types
 
@@ -153,3 +157,21 @@ instance SPStoreIdP SimpleError TestSPStoreIdP where
   storeIdPConfig = error "n/a"
   getIdPConfig = error "n/a"
   getIdPConfigByIssuer _ = maybe (throwError $ UnknownIdP "<n/a>") pure =<< ask
+
+
+testAuthRespApp :: IO CtxV -> SpecWith (CtxV, Application) -> Spec
+testAuthRespApp = withapp (Proxy @APIAuthResp')
+  (authresp' defSPIssuer defResponseURI (HandleVerdictRedirect simpleOnSuccess))
+
+withapp
+  :: forall (api :: *). (HasServer api '[])
+  => Proxy api -> ServerT api TestSP -> IO CtxV -> SpecWith (CtxV, Application) -> Spec
+withapp proxy handler mkctx = with (mkctx <&> \ctx -> (ctx, app ctx))
+  where
+    app ctx = serve proxy (hoistServer (Proxy @api) (nt @SimpleError @TestSP ctx) handler :: Server api)
+
+runtest :: (CtxV -> WaiSession a) -> ((CtxV, Application) -> IO a)
+runtest test (ctx, app) = unWaiSession (test ctx) `runSession` app
+
+runtest' :: WaiSession a -> ((CtxV, Application) -> IO a)
+runtest' action = runtest (\_ctx -> action)
