@@ -221,10 +221,13 @@ judge' :: (HasCallStack, MonadJudge m, SP m, SPStore m) => AuthnResponse -> m Ac
 judge' resp = do
   either (deny . (:[])) pure . statusIsSuccess $ resp ^. rspStatus
   uref <- either (giveup . (:[])) pure $ getUserRef resp
-  checkInResponseTo "response" `mapM_` (resp ^. rspInRespTo)
+  inRespTo <- either (giveup . (:[])) pure $ rspInResponseTo resp
+  checkInResponseTo "response" inRespTo
   checkIsInPast "Issuer instant" $ resp ^. rspIssueInstant
   maybe (pure ()) (checkDestination "response destination") (resp ^. rspDestination)
-  checkAssertions (resp ^. rspIssuer) (resp ^. rspPayload) uref
+  verdict <- checkAssertions (resp ^. rspIssuer) (resp ^. rspPayload) uref
+  unStoreID inRespTo
+  pure verdict
 
 checkInResponseTo :: (SPStore m, MonadJudge m) => String -> ID AuthnRequest -> m ()
 checkInResponseTo loc req = do
@@ -334,6 +337,8 @@ checkSubjectConfirmationData bearer confdat = do
   getNow >>= \now -> when (now >= confdat ^. scdNotOnOrAfter) $
     deny ["SubjectConfirmation with invalid NotOnOrAfter: " <> show (confdat ^. scdNotOnOrAfter)]
 
+  -- the following line is redundant with the call to 'rspInResponseTo' in 'judge'' above, but...
+  -- better redundant than sorry?
   checkInResponseTo "assertion" `mapM_` (confdat ^. scdInResponseTo)
 
 judgeConditions :: (HasCallStack, MonadJudge m, SP m) => Conditions -> m ()
