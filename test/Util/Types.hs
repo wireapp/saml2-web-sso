@@ -10,7 +10,7 @@ type CtxV = MVar Ctx
 
 data Ctx = Ctx
   { _ctxNow            :: Time
-  , _ctxConfig         :: Config_
+  , _ctxConfig         :: Config
   , _ctxAssertionStore :: AssertionStore
   , _ctxRequestStore   :: RequestStore
   }

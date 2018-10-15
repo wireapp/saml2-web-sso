@@ -39,7 +39,7 @@ mkTestCtxSimple = liftIO $ do
 mkTestCtxWithIdP :: MonadIO m => m CtxV
 mkTestCtxWithIdP = liftIO $ do
   ctxmv <- mkTestCtxSimple
-  liftIO $ modifyMVar_ ctxmv (pure . (ctxConfig . cfgIdps .~ [testIdPConfig]))
+  liftIO $ modifyMVar_ ctxmv (pure . (ctxConfig . _ .~ [testIdPConfig]))
   pure ctxmv
 
 testIdPConfig :: IdPConfig_
@@ -104,7 +104,6 @@ newtype TestSP a = TestSP { runTestSP :: ReaderT CtxV (ExceptT SimpleError IO) a
   deriving (Functor, Applicative, Monad, MonadIO, MonadReader CtxV, MonadError SimpleError)
 
 instance HasConfig TestSP where
-  type ConfigExtra TestSP = ()
   getConfig = (^. ctxConfig) <$> (liftIO . readMVar =<< ask)
 
 instance SP TestSP where
@@ -149,6 +148,7 @@ instance SPStoreID Assertion TestSP where
 
 
 instance SPStoreIdP SimpleError TestSP where
+  type IdPConfigExtra TestSP = ()
   storeIdPConfig _ = pure ()
   getIdPConfig = simpleGetIdPConfigBy (^. idpId)
   getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpMetadata . edIssuer)
@@ -170,10 +170,10 @@ newtype TestSPStoreIdP a = TestSPStoreIdP { runTestSPStoreIdP :: ExceptT SimpleE
   deriving (Functor, Applicative, Monad, MonadReader (Maybe IdPConfig_), MonadError SimpleError)
 
 instance HasConfig TestSPStoreIdP where
-  type ConfigExtra TestSPStoreIdP = ()
   getConfig = error "n/a"
 
 instance SPStoreIdP SimpleError TestSPStoreIdP where
+  type IdPConfigExtra TestSPStoreIdP = ()
   storeIdPConfig = error "n/a"
   getIdPConfig = error "n/a"
   getIdPConfigByIssuer _ = maybe (throwError $ UnknownIdP "<n/a>") pure =<< ask

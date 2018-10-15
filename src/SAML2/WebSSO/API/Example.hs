@@ -60,7 +60,7 @@ appapi = spapi :<|> api "toy-sp" (HandleVerdictRedirect simpleOnSuccess)
 
 loginStatus :: SP m => Maybe Cky -> m LoginStatus
 loginStatus cookie = do
-  idpids     <- (^. cfgIdps) <$> getConfig
+  idpids     <- _
   loginOpts  <- mkLoginOption `mapM` idpids
   logoutPath <- getPath' SpPathLocalLogout
   pure $ maybe (NotLoggedIn loginOpts) (LoggedInAs logoutPath . cs . setSimpleCookieValue) cookie
@@ -119,7 +119,7 @@ instance MimeRender HTML LoginStatus where
 newtype SimpleSP a = SimpleSP (ReaderT SimpleSPCtx (ExceptT SimpleError IO) a)
   deriving (Functor, Applicative, Monad, MonadIO, MonadReader SimpleSPCtx, MonadError SimpleError)
 
-type SimpleSPCtx = (Config_, MVar RequestStore, MVar AssertionStore)
+type SimpleSPCtx = (Config, MVar RequestStore, MVar AssertionStore)
 type RequestStore = Map.Map (ID AuthnRequest) Time
 type AssertionStore = Map.Map (ID Assertion) Time
 
@@ -129,7 +129,7 @@ instance SPHandler SimpleError SimpleSP where
   type NTCTX SimpleSP = SimpleSPCtx
   nt ctx (SimpleSP m) = Handler . ExceptT . fmap (fmapL toServantErr) . runExceptT $ m `runReaderT` ctx
 
-mkSimpleSPCtx :: Config_ -> IO SimpleSPCtx
+mkSimpleSPCtx :: Config -> IO SimpleSPCtx
 mkSimpleSPCtx cfg = (,,) cfg <$> newMVar mempty <*> newMVar mempty
 
 instance SP SimpleSP where
@@ -181,17 +181,17 @@ instance SPStoreID Assertion SimpleSP where
   isAliveID = simpleIsAliveID (_3)
 
 instance HasConfig SimpleSP where
-  type ConfigExtra SimpleSP = ()
   getConfig = (^. _1) <$> SimpleSP ask
 
 instance SPStoreIdP SimpleError SimpleSP where
+  type IdPConfigExtra SimpleSP = ()
   storeIdPConfig _ = pure ()
   getIdPConfig = simpleGetIdPConfigBy (^. idpId)
   getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpMetadata . edIssuer)
 
 simpleGetIdPConfigBy :: (MonadError (Error err) m, HasConfig m, Show a, Ord a)
-                     => (IdPConfig (ConfigExtra m) -> a) -> a -> m (IdPConfig (ConfigExtra m))
-simpleGetIdPConfigBy mkkey idpname = maybe crash' pure . Map.lookup idpname . mkmap . (^. cfgIdps) =<< getConfig
+                     => (IdPConfig (IdPConfigExtra m) -> a) -> a -> m (IdPConfig (IdPConfigExtra m))
+simpleGetIdPConfigBy mkkey idpname = maybe crash' pure . Map.lookup idpname . mkmap . _ =<< getConfig
   where
     crash' = throwError (UnknownIdP . cs . show $ idpname)
     mkmap = Map.fromList . fmap (mkkey &&& id)

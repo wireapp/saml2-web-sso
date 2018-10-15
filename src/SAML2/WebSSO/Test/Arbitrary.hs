@@ -68,8 +68,8 @@ genNiceWord :: Gen ST
 genNiceWord = genNiceText (Range.singleton 1)
 
 
-genConfig :: Gen extra -> Gen (Config extra)
-genConfig genextra = do
+genConfig :: Gen Config
+genConfig = do
   _cfgVersion    <- genVersion
   _cfgLogLevel   <- Gen.enumBounded
   _cfgSPHost     <- cs <$> genNiceWord
@@ -77,8 +77,6 @@ genConfig genextra = do
   _cfgSPAppURI   <- genURI
   _cfgSPSsoURI   <- genURI
   _cfgContacts   <- (:|) <$> genSPContactPerson <*> Gen.list (Range.linear 0 3) genSPContactPerson
-  _cfgIdps       <- pure mempty
-  _cfgExtraInfo  <- Gen.maybe genextra
   pure Config{..}
 
 genSPContactPerson :: Gen ContactPerson
@@ -357,8 +355,8 @@ instance Arbitrary AuthnRequest where
 instance Arbitrary Conditions where
   arbitrary = TQH.hedgehog genConditions
 
-instance Arbitrary extra => Arbitrary (Config extra) where
-  arbitrary = TQH.hedgehog (genConfig $ THQ.quickcheck arbitrary)
+instance Arbitrary Config where
+  arbitrary = TQH.hedgehog genConfig
 
 instance Arbitrary Duration where
   arbitrary = TQH.hedgehog genDuration

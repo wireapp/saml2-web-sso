@@ -55,9 +55,10 @@ class SPStoreID i m where
 
 
 class (MonadError err m) => SPStoreIdP err m where
-  storeIdPConfig       :: IdPConfig (ConfigExtra m) -> m ()
-  getIdPConfig         :: IdPId -> m (IdPConfig (ConfigExtra m))
-  getIdPConfigByIssuer :: Issuer -> m (IdPConfig (ConfigExtra m))
+  type family IdPConfigExtra m :: *
+  storeIdPConfig       :: IdPConfig (IdPConfigExtra m) -> m ()
+  getIdPConfig         :: IdPId -> m (IdPConfig (IdPConfigExtra m))
+  getIdPConfigByIssuer :: Issuer -> m (IdPConfig (IdPConfigExtra m))
 
 
 -- | HTTP handling of the service provider.
@@ -196,7 +197,6 @@ instance (Functor m, Applicative m, Monad m) => Monad (JudgeT m) where
   (JudgeT x) >>= f = JudgeT (x >>= fromJudgeT . f)
 
 instance (HasConfig m) => HasConfig (JudgeT m) where
-  type ConfigExtra (JudgeT m) = ConfigExtra m
   getConfig = JudgeT . lift . lift . lift $ getConfig
 
 instance SP m => SP (JudgeT m) where
