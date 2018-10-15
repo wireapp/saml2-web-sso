@@ -82,7 +82,8 @@ instance HasConfig TestSP where
   getConfig = gets (^. ctxConfig)
 
 instance SP TestSP where
-  getNow = gets (^. ctxNow)
+  -- Make TestSP to move forward in time with each look at the clock.
+  getNow = state (\s -> (s ^. ctxNow, s & ctxNow %~ (1 `addTime`)))
 
 instance SPStore TestSP where
   storeRequest req keepAroundUntil = do
