@@ -117,7 +117,7 @@ instance MimeRender HTML LoginStatus where
 -- a simple concrete monad
 
 newtype SimpleSP a = SimpleSP (ReaderT SimpleSPCtx (ExceptT SimpleError IO) a)
-  deriving (Functor, Applicative, Monad, MonadError SimpleError)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadReader SimpleSPCtx, MonadError SimpleError)
 
 type SimpleSPCtx = (Config_, MVar RequestStore, MVar AssertionStore)
 type RequestStore = Map.Map (ID AuthnRequest) Time
@@ -137,20 +137,48 @@ instance SP SimpleSP where
   createUUID       = SimpleSP $ createUUIDIO
   getNow           = SimpleSP $ getNowIO
 
-instance SPStore SimpleSP where
-  storeRequest req keepAroundUntil = do
-    store <- (^. _2) <$> SimpleSP ask
-    SimpleSP $ simpleStoreRequest store req keepAroundUntil
+simpleStoreID
+  :: (MonadIO m, MonadReader ctx m)
+  => Lens' ctx (MVar (Map (ID a) Time)) -> ID a -> Time -> m ()
+simpleStoreID sel item endOfLife = do
+  store <- asks (^. sel)
+  liftIO $ modifyMVar_ store (pure . simpleStoreID' item endOfLife)
 
-  checkAgainstRequest req = do
-    store <- (^. _2) <$> SimpleSP ask
-    now <- getNow
-    SimpleSP $ simpleCheckAgainstRequest store req now
+simpleStoreID' :: ID a -> Time -> Map (ID a) Time -> Map (ID a) Time
+simpleStoreID' = Map.insert
 
-  storeAssertion aid tim = do
-    store <- (^. _3) <$> SimpleSP ask
-    now <- getNow
-    SimpleSP $ simpleStoreAssertion store now aid tim
+simpleUnStoreID
+  :: (MonadIO m, MonadReader ctx m)
+  => Lens' ctx (MVar (Map (ID a) Time)) -> (ID a) -> m ()
+simpleUnStoreID sel item = do
+  store <- asks (^. sel)
+  liftIO $ modifyMVar_ store (pure . simpleUnStoreID' item)
+
+simpleUnStoreID' :: ID a -> Map (ID a) Time -> Map (ID a) Time
+simpleUnStoreID' = Map.delete
+
+simpleIsAliveID
+  :: (MonadIO m, MonadReader ctx m, SP m)
+  => Lens' ctx (MVar (Map (ID a) Time)) -> ID a -> m Bool
+simpleIsAliveID sel item = do
+  now <- getNow
+  store <- asks (^. sel)
+  items <- liftIO $ readMVar store
+  pure $ simpleIsAliveID' now item items
+
+simpleIsAliveID' :: Time -> ID a -> Map (ID a) Time -> Bool
+simpleIsAliveID' now item items = maybe False (>= now) (Map.lookup item items)
+
+
+instance SPStoreID AuthnRequest SimpleSP where
+  storeID   = simpleStoreID   (_2)
+  unStoreID = simpleUnStoreID (_2)
+  isAliveID = simpleIsAliveID (_2)
+
+instance SPStoreID Assertion SimpleSP where
+  storeID   = simpleStoreID   (_3)
+  unStoreID = simpleUnStoreID (_3)
+  isAliveID = simpleIsAliveID (_3)
 
 instance HasConfig SimpleSP where
   type ConfigExtra SimpleSP = ()
@@ -167,27 +195,6 @@ simpleGetIdPConfigBy mkkey idpname = maybe crash' pure . Map.lookup idpname . mk
   where
     crash' = throwError (UnknownIdP . cs . show $ idpname)
     mkmap = Map.fromList . fmap (mkkey &&& id)
-
-simpleStoreRequest :: MonadIO m => MVar RequestStore -> ID AuthnRequest -> Time -> m ()
-simpleStoreRequest store req keepAroundUntil =
-  liftIO $ modifyMVar_ store (pure . Map.insert req keepAroundUntil)
-
-simpleCheckAgainstRequest :: MonadIO m => MVar RequestStore -> ID AuthnRequest -> Time -> m Bool
-simpleCheckAgainstRequest store req now =
-  (> Just now) . Map.lookup req <$> liftIO (readMVar store)
-
-simpleStoreAssertion :: MonadIO m => MVar AssertionStore -> Time -> ID Assertion -> Time -> m Bool
-simpleStoreAssertion store now aid time = do
-  let go :: AssertionStore -> (AssertionStore, Bool)
-      go = (_2 %~ Prelude.null) . runWriter . Map.alterF go' aid
-
-      go' :: Maybe Time -> Writer [()] (Maybe Time)
-      go' (Just time') = if time' < now
-        then pure $ Just time
-        else tell [()] >> pure (Just (maximum [time, time']))
-      go' Nothing = pure $ Just time
-
-  liftIO $ modifyMVar store (pure . go)
 
 
 ----------------------------------------------------------------------

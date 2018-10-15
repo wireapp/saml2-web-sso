@@ -16,7 +16,7 @@ import GHC.Stack
 import Lens.Micro
 import Network.Wai.Test (runSession)
 import SAML2.WebSSO
-import SAML2.WebSSO.API.Example (simpleGetIdPConfigBy)
+import SAML2.WebSSO.API.Example (simpleStoreID', simpleUnStoreID', simpleIsAliveID', simpleGetIdPConfigBy)
 import SAML2.WebSSO.Test.Credentials
 import Servant
 import Test.Hspec
@@ -111,22 +111,42 @@ instance SP TestSP where
   -- Make TestSP to move forward in time after each look at the clock.
   getNow = modifyCtx (\ctx -> (ctx & ctxNow %~ (1 `addTime`), ctx ^. ctxNow))
 
-instance SPStore TestSP where
-  storeRequest req keepAroundUntil = do
-    modifyCtx_ (ctxRequestStore %~ Map.insert req keepAroundUntil)
 
-  checkAgainstRequest req = do
-    now <- getNow
-    reqs <- modifyCtx (\ctx -> (ctx, ctx ^. ctxRequestStore))
-    pure $ Map.lookup req reqs > Just now
+-- | These helpers are very similar to the ones in "SAML2.WebSSO.API.Example".  Exercise to the
+-- reader: implement only once, use twice.
+simpleStoreID
+  :: (MonadIO m, MonadReader (MVar ctx) m)
+  => Lens' ctx (Map.Map (ID a) Time) -> ID a -> Time -> m ()
+simpleStoreID sel item endOfLife = do
+  store <- ask
+  liftIO $ modifyMVar_ store (pure . (sel %~ simpleStoreID' item endOfLife))
 
-  storeAssertion aid time = do
-    now <- getNow
-    modifyCtx $ \ctx -> ( ctx & ctxAssertionStore %~ Map.insert aid time
-                        , case Map.lookup aid (ctx ^. ctxAssertionStore) of
-                            Just time' -> time' < now
-                            Nothing -> True
-                        )
+simpleUnStoreID
+  :: (MonadIO m, MonadReader (MVar ctx) m)
+  => Lens' ctx (Map.Map (ID a) Time) -> ID a -> m ()
+simpleUnStoreID sel item = do
+  store <- ask
+  liftIO $ modifyMVar_ store (pure . (sel %~ simpleUnStoreID' item))
+
+simpleIsAliveID
+  :: (MonadIO m, MonadReader (MVar ctx) m, SP m)
+  => Lens' ctx (Map.Map (ID a) Time) -> ID a -> m Bool
+simpleIsAliveID sel item = do
+  now   <- getNow
+  store <- ask
+  items <- liftIO $ readMVar store
+  pure $ simpleIsAliveID' now item (items ^. sel)
+
+instance SPStoreID AuthnRequest TestSP where
+  storeID   = simpleStoreID   ctxRequestStore
+  unStoreID = simpleUnStoreID ctxRequestStore
+  isAliveID = simpleIsAliveID ctxRequestStore
+
+instance SPStoreID Assertion TestSP where
+  storeID   = simpleStoreID   ctxAssertionStore
+  unStoreID = simpleUnStoreID ctxAssertionStore
+  isAliveID = simpleIsAliveID ctxAssertionStore
+
 
 instance SPStoreIdP SimpleError TestSP where
   storeIdPConfig _ = pure ()

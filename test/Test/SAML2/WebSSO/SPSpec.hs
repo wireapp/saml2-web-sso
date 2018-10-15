@@ -8,10 +8,10 @@ import Control.Concurrent.MVar
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Lens.Micro
 import SAML2.WebSSO
-import SAML2.WebSSO.API.Example
+import SAML2.WebSSO.API.Example (AssertionStore)
 import Test.Hspec
-import Util
 import URI.ByteString.QQ
+import Util
 
 import qualified Data.Map as Map
 import qualified Samples
@@ -23,10 +23,10 @@ instance HasConfig IO where
 
 instance SP IO
 
-instance SPStore IO where
-  storeRequest = undefined
-  checkAgainstRequest = undefined
-  storeAssertion = undefined
+instance SPStoreID any IO where
+  storeID   = undefined
+  unStoreID = undefined
+  isAliveID = undefined
 
 
 ----------------------------------------------------------------------
@@ -40,73 +40,40 @@ spec = describe "SP" $ do
       it "ago <= now" $ (timeLongAgo <= timeNow) `shouldBe` True
       it "now <= now" $ (timeNow     <= timeNow) `shouldBe` True
 
-  specSimpleSP
+  specStoreAssertion
   specJudgeT
   specExecuteVerdict
 
 
-specSimpleSP :: Spec
-specSimpleSP = describe "SimpleSP" $ do
--- TODO: test SimpleSP a lot better.
+specStoreAssertion :: Spec
+specStoreAssertion = describe "storeAssertion" . before mkTestCtxSimple $ do
+    let peek :: CtxV -> IO AssertionStore
+        peek ctx = ((^. ctxAssertionStore) <$> readMVar ctx)
 
-  describe "simpleStoreRequest" $ do
-    it "stores requests" $ do
-      store <- newMVar mempty
-      simpleStoreRequest store (ID "3") timeNow `shouldReturn` ()
-      (Map.toList <$> readMVar store) `shouldReturn` [(ID "3", timeNow)]
-
-  describe "simpleCheckAgainstRequest" $ do
-    context "end-of-life has not been reached" $ do
-      it "finds stored request" $ do
-        store <- newMVar (Map.fromList [(ID "3", timeIn10minutes)])
-        simpleCheckAgainstRequest store (ID "3") timeNow `shouldReturn` True
-
-    context "end-of-life has been reached" $ do
-      it "does not find stored request" $ do
-        store <- newMVar (Map.fromList [(ID "3", timeLongAgo)])
-        simpleCheckAgainstRequest store (ID "3") timeNow `shouldReturn` False
-
-    context "request is not stored" $ do
-      it "does not find stored request" $ do
-        store <- newMVar mempty
-        simpleCheckAgainstRequest store (ID "3") timeNow `shouldReturn` False
-
-  describe "simpleStoreAssertion" $ do
     context "id is new" $ do
-      let mkstore = newMVar mempty
-
-      it "stores id" $ do
-        store <- mkstore
-        _ <- simpleStoreAssertion store timeNow (ID "phoo") timeIn10minutes
-        takeMVar store `shouldReturn` Map.fromList [(ID "phoo", timeIn10minutes)]
-
-      it "returns True" $ do
-        store <- mkstore
-        simpleStoreAssertion store timeNow (ID "phoo") timeIn10minutes `shouldReturn` True
+      it "stores id and returns True" $ \ctx -> do
+        ioFromTestSP ctx (storeAssertion (ID "phoo") timeIn10minutes)
+          `shouldReturn` True
+        peek ctx
+          `shouldReturn` Map.fromList [(ID "phoo", timeIn10minutes)]
 
     context "id is already in the map, but life time is exceeded" $ do
-      let mkstore = newMVar (Map.fromList [(ID "phoo", timeLongAgo)])
-
-      it "stores id" $ do
-        store <- mkstore
-        _ <- simpleStoreAssertion store timeNow (ID "phoo") timeIn10minutes
-        takeMVar store `shouldReturn` Map.fromList [(ID "phoo", timeIn10minutes)]
-
-      it "returns True" $ do
-        store <- mkstore
-        simpleStoreAssertion store timeNow (ID "phoo") timeIn10minutes `shouldReturn` True
+      it "stores id and returns True" $ \ctx -> do
+        _ <- ioFromTestSP ctx $ storeAssertion (ID "phoo") timeLongAgo  -- warmup
+        ioFromTestSP ctx (storeAssertion (ID "phoo") timeIn10minutes)
+          `shouldReturn` True
+        peek ctx
+          `shouldReturn` Map.fromList [(ID "phoo", timeIn10minutes)]
 
     context "id is already in the map and still alive" $ do
-      let mkstore = newMVar (Map.fromList [(ID "phoo", timeIn20minutes)])
-
-      it "keeps map unchanged" $ do
-        store <- mkstore
-        _ <- simpleStoreAssertion store timeNow (ID "phoo") timeIn10minutes
-        takeMVar store `shouldReturn` Map.fromList [(ID "phoo", timeIn20minutes)]
-
-      it "returns False" $ do
-        store <- mkstore
-        simpleStoreAssertion store timeNow (ID "phoo") timeIn10minutes `shouldReturn` False
+      it "keeps map unchanged and returns False" $ \ctx -> do
+        _ <- ioFromTestSP ctx $ storeAssertion (ID "phoo") timeIn20minutes  -- warmup
+        bef <- peek ctx
+        ioFromTestSP ctx (storeAssertion (ID "phoo") timeIn10minutes)
+          `shouldReturn` False
+        aft <- peek ctx
+        bef
+          `shouldBe` aft
 
 
 specJudgeT :: Spec

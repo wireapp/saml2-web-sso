@@ -58,6 +58,7 @@ dependencies:
   - data-default
   - errors
   - exceptions
+  - extra
   - filepath
   - ghc-prim
   - hourglass

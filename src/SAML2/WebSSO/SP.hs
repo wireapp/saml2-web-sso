@@ -3,6 +3,7 @@
 module SAML2.WebSSO.SP where
 
 import Control.Monad.Except
+import Control.Monad.Extra (ifM)
 import Control.Monad.Reader
 import Control.Monad.Writer
 import Data.Foldable (toList)
@@ -44,23 +45,20 @@ class (HasConfig m, Monad m) => SP m where
   default getNow :: MonadIO m => m Time
   getNow = getNowIO
 
-class (SP m) => SPStore m where
-  -- Store 'AuthnRequest' for later check against the recipient in the 'AuthnResponse'.  Will be
-  -- stored until 'Time', afterwards is considered garbage-collectible.
-  storeRequest :: ID AuthnRequest -> Time -> m ()
 
-  -- Do we know of an 'AuthnRequest' with that 'ID'?
-  checkAgainstRequest :: ID AuthnRequest -> m Bool
+type SPStore m = (SP m, SPStoreID AuthnRequest m, SPStoreID Assertion m)
 
-  -- Store 'Assertion's to prevent replay attack.  'Time' argument is end of life (IDs may be
-  -- garbage collected after that time).  Iff assertion has already been stored and is not dead yet,
-  -- return 'False'.
-  storeAssertion :: ID Assertion -> Time -> m Bool
+class SPStoreID i m where
+  storeID   :: ID i -> Time -> m ()
+  unStoreID :: ID i -> m ()
+  isAliveID :: ID i -> m Bool  -- ^ stored and not timed out.
+
 
 class (MonadError err m) => SPStoreIdP err m where
   storeIdPConfig       :: IdPConfig (ConfigExtra m) -> m ()
   getIdPConfig         :: IdPId -> m (IdPConfig (ConfigExtra m))
   getIdPConfigByIssuer :: Issuer -> m (IdPConfig (ConfigExtra m))
+
 
 -- | HTTP handling of the service provider.
 class (SP m, SPStore m, SPStoreIdP err m, MonadError err m) => SPHandler err m where
@@ -70,6 +68,15 @@ class (SP m, SPStore m, SPStoreIdP err m, MonadError err m) => SPHandler err m w
 
 ----------------------------------------------------------------------
 -- combinators
+
+-- | Store 'Assertion's to prevent replay attack.  'Time' argument is end of life (IDs may be
+-- garbage collected after that time).  Iff assertion has already been stored and is still alive,
+-- return 'False'.
+storeAssertion :: SPStore m => ID Assertion -> Time -> m Bool
+storeAssertion item endOfLife = ifM
+  (isAliveID item)
+  (pure False)
+  (True <$ storeID item endOfLife)
 
 loggerConfIO :: (HasConfig m, MonadIO m) => Level -> String -> m ()
 loggerConfIO level msg = do
@@ -103,7 +110,7 @@ createAuthnRequest lifeExpectancySecs getIssuer = do
   _rqIssueInstant <- getNow
   _rqIssuer       <- getIssuer
   let _rqNameIDPolicy = Just $ NameIdPolicy NameIDFUnspecified Nothing True
-  storeRequest _rqID (addTime lifeExpectancySecs _rqIssueInstant)
+  storeID _rqID (addTime lifeExpectancySecs _rqIssueInstant)
   pure AuthnRequest{..}
 
 
@@ -197,10 +204,10 @@ instance SP m => SP (JudgeT m) where
   createUUID       = JudgeT . lift . lift . lift $ createUUID
   getNow           = JudgeT . lift . lift . lift $ getNow
 
-instance SPStore m => SPStore (JudgeT m) where
-  storeRequest r      = JudgeT . lift . lift . lift . storeRequest r
-  checkAgainstRequest = JudgeT . lift . lift . lift . checkAgainstRequest
-  storeAssertion i    = JudgeT . lift . lift . lift . storeAssertion i
+instance (Monad m, SPStoreID i m) => SPStoreID i (JudgeT m) where
+  storeID item = JudgeT . lift . lift . lift . storeID item
+  unStoreID    = JudgeT . lift . lift . lift . unStoreID
+  isAliveID    = JudgeT . lift . lift . lift . isAliveID
 
 
 -- | [3/4.1.4.2], [3/4.1.4.3]; specific to active-directory:
@@ -221,7 +228,7 @@ judge' resp = do
 
 checkInResponseTo :: (SPStore m, MonadJudge m) => ID AuthnRequest -> m ()
 checkInResponseTo req = do
-  ok <- checkAgainstRequest req
+  ok <- isAliveID req
   unless ok . deny $ ["invalid InResponseTo field: " <> show req]
 
 checkIsInPast :: (SP m, MonadJudge m) => String -> Time -> m ()
