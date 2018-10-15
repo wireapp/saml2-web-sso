@@ -221,15 +221,15 @@ judge' :: (HasCallStack, MonadJudge m, SP m, SPStore m) => AuthnResponse -> m Ac
 judge' resp = do
   either (deny . (:[])) pure . statusIsSuccess $ resp ^. rspStatus
   uref <- either (giveup . (:[])) pure $ getUserRef resp
-  checkInResponseTo `mapM_` (resp ^. rspInRespTo)
+  checkInResponseTo "response" `mapM_` (resp ^. rspInRespTo)
   checkIsInPast "Issuer instant" $ resp ^. rspIssueInstant
   maybe (pure ()) (checkDestination "response destination") (resp ^. rspDestination)
   checkAssertions (resp ^. rspIssuer) (resp ^. rspPayload) uref
 
-checkInResponseTo :: (SPStore m, MonadJudge m) => ID AuthnRequest -> m ()
-checkInResponseTo req = do
+checkInResponseTo :: (SPStore m, MonadJudge m) => String -> ID AuthnRequest -> m ()
+checkInResponseTo loc req = do
   ok <- isAliveID req
-  unless ok . deny $ ["invalid InResponseTo field: " <> show req]
+  unless ok . deny $ ["invalid InResponseTo field in " <> loc <> ": " <> show req]
 
 checkIsInPast :: (SP m, MonadJudge m) => String -> Time -> m ()
 checkIsInPast msg tim = do
@@ -334,7 +334,7 @@ checkSubjectConfirmationData bearer confdat = do
   getNow >>= \now -> when (now >= confdat ^. scdNotOnOrAfter) $
     deny ["SubjectConfirmation with invalid NotOnOrAfter: " <> show (confdat ^. scdNotOnOrAfter)]
 
-  checkInResponseTo `mapM_` (confdat ^. scdInResponseTo)
+  checkInResponseTo "assertion" `mapM_` (confdat ^. scdInResponseTo)
 
 judgeConditions :: (HasCallStack, MonadJudge m, SP m) => Conditions -> m ()
 judgeConditions (Conditions lowlimit uplimit onetimeuse maudiences) = do
