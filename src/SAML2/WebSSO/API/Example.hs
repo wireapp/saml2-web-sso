@@ -10,6 +10,7 @@ module SAML2.WebSSO.API.Example where
 
 import Control.Arrow ((&&&))
 import Control.Concurrent.MVar
+import Control.Lens
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.Writer
@@ -19,7 +20,6 @@ import Data.Proxy
 import Data.String.Conversions
 import Data.UUID as UUID
 import GHC.Stack
-import Lens.Micro
 import Network.Wai hiding (Response)
 import SAML2.Util
 import SAML2.WebSSO
@@ -30,12 +30,30 @@ import Text.XML
 import URI.ByteString
 
 
+newtype SimpleSP a = SimpleSP (ReaderT SimpleSPCtx (ExceptT SimpleError IO) a)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadReader SimpleSPCtx, MonadError SimpleError)
+
+data SimpleSPCtx = SimpleSPCtx
+  { _spctxConfig :: Config
+  , _spctxIdP    :: [IdPConfig_]
+  , _spctxReq    :: MVar RequestStore
+  , _spctxAss    :: MVar AssertionStore
+  }
+
+type RequestStore = Map.Map (ID AuthnRequest) Time
+type AssertionStore = Map.Map (ID Assertion) Time
+
+makeLenses ''SimpleSPCtx
+
+type MonadApp m = (MonadReader SimpleSPCtx m, SPHandler SimpleError m)
+
+
 -- | The most straight-forward 'Application' that can be constructed from 'api', 'API'.
-app :: IO Application
-app = app' (Proxy @SimpleSP) =<< mkSimpleSPCtx =<< configIO
+app :: Config -> [IdPConfig_] -> IO Application
+app cfg idps = app' (Proxy @SimpleSP) =<< mkSimpleSPCtx cfg idps
 
 app'
-  :: forall (m :: * -> *). (SP m, SPHandler SimpleError m)
+  :: forall (m :: * -> *). (SP m, MonadApp m)
   => Proxy m -> NTCTX m -> IO Application
 app' Proxy ctx = do
   let served :: Application
@@ -52,15 +70,15 @@ type APPAPI =
        "sp"  :> SPAPI
   :<|> "sso" :> API
 
-spapi :: SPHandler SimpleError m => ServerT SPAPI m
+spapi :: (MonadApp m) => ServerT SPAPI m
 spapi = loginStatus :<|> localLogout :<|> singleLogout
 
-appapi :: SPHandler SimpleError m => ServerT APPAPI m
+appapi :: (MonadApp m) => ServerT APPAPI m
 appapi = spapi :<|> api "toy-sp" (HandleVerdictRedirect simpleOnSuccess)
 
-loginStatus :: SP m => Maybe Cky -> m LoginStatus
+loginStatus :: (MonadReader SimpleSPCtx m, SP m) => Maybe Cky -> m LoginStatus
 loginStatus cookie = do
-  idpids     <- _
+  idpids     <- asks (^. spctxIdP)
   loginOpts  <- mkLoginOption `mapM` idpids
   logoutPath <- getPath' SpPathLocalLogout
   pure $ maybe (NotLoggedIn loginOpts) (LoggedInAs logoutPath . cs . setSimpleCookieValue) cookie
@@ -116,21 +134,14 @@ instance MimeRender HTML LoginStatus where
 ----------------------------------------------------------------------
 -- a simple concrete monad
 
-newtype SimpleSP a = SimpleSP (ReaderT SimpleSPCtx (ExceptT SimpleError IO) a)
-  deriving (Functor, Applicative, Monad, MonadIO, MonadReader SimpleSPCtx, MonadError SimpleError)
-
-type SimpleSPCtx = (Config, MVar RequestStore, MVar AssertionStore)
-type RequestStore = Map.Map (ID AuthnRequest) Time
-type AssertionStore = Map.Map (ID Assertion) Time
-
 -- | If you read the 'Config' initially in 'IO' and then pass it into the monad via 'Reader', you
 -- safe disk load and redundant debug logs.
 instance SPHandler SimpleError SimpleSP where
   type NTCTX SimpleSP = SimpleSPCtx
   nt ctx (SimpleSP m) = Handler . ExceptT . fmap (fmapL toServantErr) . runExceptT $ m `runReaderT` ctx
 
-mkSimpleSPCtx :: Config -> IO SimpleSPCtx
-mkSimpleSPCtx cfg = (,,) cfg <$> newMVar mempty <*> newMVar mempty
+mkSimpleSPCtx :: Config -> [IdPConfig_] -> IO SimpleSPCtx
+mkSimpleSPCtx cfg idps = SimpleSPCtx cfg idps <$> newMVar mempty <*> newMVar mempty
 
 instance SP SimpleSP where
   logger level msg = getConfig >>= \cfg -> SimpleSP (loggerIO (cfg ^. cfgLogLevel) level msg)
@@ -171,17 +182,17 @@ simpleIsAliveID' now item items = maybe False (>= now) (Map.lookup item items)
 
 
 instance SPStoreID AuthnRequest SimpleSP where
-  storeID   = simpleStoreID   (_2)
-  unStoreID = simpleUnStoreID (_2)
-  isAliveID = simpleIsAliveID (_2)
+  storeID   = simpleStoreID   spctxReq
+  unStoreID = simpleUnStoreID spctxReq
+  isAliveID = simpleIsAliveID spctxReq
 
 instance SPStoreID Assertion SimpleSP where
-  storeID   = simpleStoreID   (_3)
-  unStoreID = simpleUnStoreID (_3)
-  isAliveID = simpleIsAliveID (_3)
+  storeID   = simpleStoreID   spctxAss
+  unStoreID = simpleUnStoreID spctxAss
+  isAliveID = simpleIsAliveID spctxAss
 
 instance HasConfig SimpleSP where
-  getConfig = (^. _1) <$> SimpleSP ask
+  getConfig = (^. spctxConfig) <$> SimpleSP ask
 
 instance SPStoreIdP SimpleError SimpleSP where
   type IdPConfigExtra SimpleSP = ()
@@ -189,9 +200,12 @@ instance SPStoreIdP SimpleError SimpleSP where
   getIdPConfig = simpleGetIdPConfigBy (^. idpId)
   getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpMetadata . edIssuer)
 
-simpleGetIdPConfigBy :: (MonadError (Error err) m, HasConfig m, Show a, Ord a)
-                     => (IdPConfig (IdPConfigExtra m) -> a) -> a -> m (IdPConfig (IdPConfigExtra m))
-simpleGetIdPConfigBy mkkey idpname = maybe crash' pure . Map.lookup idpname . mkmap . _ =<< getConfig
+simpleGetIdPConfigBy
+  :: (MonadReader SimpleSPCtx m, MonadError (Error err) m, HasConfig m, Show a, Ord a)
+  => (IdPConfig_ -> a) -> a -> m IdPConfig_
+simpleGetIdPConfigBy mkkey idpname = do
+  idps <- asks (^. spctxIdP)
+  maybe crash' pure . Map.lookup idpname $ mkmap idps
   where
     crash' = throwError (UnknownIdP . cs . show $ idpname)
     mkmap = Map.fromList . fmap (mkkey &&& id)
