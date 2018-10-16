@@ -55,7 +55,7 @@ burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
               ]
         idp <- getIdP
         modifyMVar_ testCtx1 $ pure .
-          ( (ctxConfig . _ .~ [idp])
+          ( (ctxIdPs .~ [idp])
           . (ctxNow .~ unsafeReadTime currentTime)
           . (ctxConfig . cfgSPAppURI .~ unsafeParseURI audienceURI)
           . (ctxRequestStore .~ reqstore)
@@ -277,7 +277,7 @@ spec = describe "API" $ do
         check cert expectation = do
           let idpcfg = testIdPConfig & idpMetadata . edCertAuthnResponse .~ (cert :| [])
           ctx <- mkTestCtxSimple
-          modifyMVar_ ctx $ pure . (ctxConfig . _ .~ [idpcfg])
+          modifyMVar_ ctx $ pure . (ctxIdPs .~ [idpcfg])
           spmeta <- ioFromTestSP ctx mkTestSPMetadata
           let idpissuer :: Issuer        = idpcfg ^. idpMetadata . edIssuer
               spissuer  :: TestSP Issuer = defSPIssuer

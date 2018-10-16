@@ -30,6 +30,9 @@ import Text.XML
 import URI.ByteString
 
 
+----------------------------------------------------------------------
+-- a simple concrete monad
+
 newtype SimpleSP a = SimpleSP (ReaderT SimpleSPCtx (ExceptT SimpleError IO) a)
   deriving (Functor, Applicative, Monad, MonadIO, MonadReader SimpleSPCtx, MonadError SimpleError)
 
@@ -45,94 +48,8 @@ type AssertionStore = Map.Map (ID Assertion) Time
 
 makeLenses ''SimpleSPCtx
 
-type MonadApp m = (MonadReader SimpleSPCtx m, SPHandler SimpleError m)
+type MonadApp m = (GetAllIdPs SimpleError m, SPHandler SimpleError m)
 
-
--- | The most straight-forward 'Application' that can be constructed from 'api', 'API'.
-app :: Config -> [IdPConfig_] -> IO Application
-app cfg idps = app' (Proxy @SimpleSP) =<< mkSimpleSPCtx cfg idps
-
-app'
-  :: forall (m :: * -> *). (SP m, MonadApp m)
-  => Proxy m -> NTCTX m -> IO Application
-app' Proxy ctx = do
-  let served :: Application
-      served = serve (Proxy @APPAPI)
-                   (hoistServer (Proxy @APPAPI) (nt @SimpleError @m ctx) appapi :: Server APPAPI)
-  pure . setHttpCachePolicy $ served
-
-type SPAPI =
-       Header "Cookie" Cky :> Get '[HTML] LoginStatus
-  :<|> "logout" :> "local" :> GetRedir '[HTML] (WithCookieAndLocation ST)
-  :<|> "logout" :> "single" :> GetRedir '[HTML] (WithCookieAndLocation ST)
-
-type APPAPI =
-       "sp"  :> SPAPI
-  :<|> "sso" :> API
-
-spapi :: (MonadApp m) => ServerT SPAPI m
-spapi = loginStatus :<|> localLogout :<|> singleLogout
-
-appapi :: (MonadApp m) => ServerT APPAPI m
-appapi = spapi :<|> api "toy-sp" (HandleVerdictRedirect simpleOnSuccess)
-
-loginStatus :: (MonadReader SimpleSPCtx m, SP m) => Maybe Cky -> m LoginStatus
-loginStatus cookie = do
-  idpids     <- asks (^. spctxIdP)
-  loginOpts  <- mkLoginOption `mapM` idpids
-  logoutPath <- getPath' SpPathLocalLogout
-  pure $ maybe (NotLoggedIn loginOpts) (LoggedInAs logoutPath . cs . setSimpleCookieValue) cookie
-
-mkLoginOption :: SP m => IdPConfig a -> m (ST, ST)
-mkLoginOption icfg = (renderURI $ icfg ^. idpMetadata . edIssuer . fromIssuer,) <$> getPath' (SsoPathAuthnReq (icfg ^. idpId))
-
--- | only logout on this SP.
-localLogout :: SPHandler SimpleError m => m (WithCookieAndLocation ST)
-localLogout = do
-  uri <- getPath SpPathHome
-  cky <- toggleCookie "/" Nothing
-  pure . addHeader cky . addHeader uri $ "Logged out locally, redirecting to " <> renderURI uri
-
--- | as in [3/4.4]
-singleLogout :: (HasCallStack, SP m) => m (WithCookieAndLocation ST)
-singleLogout = error "not implemented."
-
-data LoginStatus
-  = NotLoggedIn [(ST{- issuer -}, ST{- authreq path -})]
-  | LoggedInAs ST ST
-  deriving (Eq, Show)
-
-instance MimeRender HTML LoginStatus where
-  mimeRender Proxy (NotLoggedIn loginOpts)
-    = mkHtml
-      [xml|
-        <body>
-          [not logged in]
-          $forall loginOpt <- loginOpts
-            ^{mkform loginOpt}
-      |]
-      where
-        mkform :: (ST, ST) -> [Node]
-        mkform (issuer, path) =
-          [xml|
-            <form action=#{path} method="get">
-              <input type="submit" value="log in via #{issuer}">
-          |]
-
-  mimeRender Proxy (LoggedInAs logoutPath name)
-    = mkHtml
-      [xml|
-        <body>
-        [logged in as #{name}]
-          <form action=#{logoutPath} method="get">
-            <input type="submit" value="logout">
-          <p>
-            (this is local logout; logout via IdP is not implemented.)
-      |]
-
-
-----------------------------------------------------------------------
--- a simple concrete monad
 
 -- | If you read the 'Config' initially in 'IO' and then pass it into the monad via 'Reader', you
 -- safe disk load and redundant debug logs.
@@ -196,19 +113,111 @@ instance HasConfig SimpleSP where
 
 instance SPStoreIdP SimpleError SimpleSP where
   type IdPConfigExtra SimpleSP = ()
-  storeIdPConfig _ = pure ()
-  getIdPConfig = simpleGetIdPConfigBy (^. idpId)
-  getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpMetadata . edIssuer)
+  storeIdPConfig _     = pure ()
+  getIdPConfig         = simpleGetIdPConfigBy (asks (^. spctxIdP)) (^. idpId)
+  getIdPConfigByIssuer = simpleGetIdPConfigBy (asks (^. spctxIdP)) (^. idpMetadata . edIssuer)
 
 simpleGetIdPConfigBy
-  :: (MonadReader SimpleSPCtx m, MonadError (Error err) m, HasConfig m, Show a, Ord a)
-  => (IdPConfig_ -> a) -> a -> m IdPConfig_
-simpleGetIdPConfigBy mkkey idpname = do
-  idps <- asks (^. spctxIdP)
+  :: (MonadError (Error err) m, HasConfig m, Show a, Ord a)
+  => m [IdPConfig_] -> (IdPConfig_ -> a) -> a -> m IdPConfig_
+simpleGetIdPConfigBy getIdps mkkey idpname = do
+  idps <- getIdps
   maybe crash' pure . Map.lookup idpname $ mkmap idps
   where
     crash' = throwError (UnknownIdP . cs . show $ idpname)
     mkmap = Map.fromList . fmap (mkkey &&& id)
+
+class SPStoreIdP err m => GetAllIdPs err m where
+  getAllIdPs :: m [IdPConfig (IdPConfigExtra m)]
+
+instance GetAllIdPs SimpleError SimpleSP where
+  getAllIdPs = asks (^. spctxIdP)
+
+
+----------------------------------------------------------------------
+-- the app
+
+-- | The most straight-forward 'Application' that can be constructed from 'api', 'API'.
+app :: Config -> [IdPConfig_] -> IO Application
+app cfg idps = app' (Proxy @SimpleSP) =<< mkSimpleSPCtx cfg idps
+
+app'
+  :: forall (m :: * -> *). (SP m, MonadApp m)
+  => Proxy m -> NTCTX m -> IO Application
+app' Proxy ctx = do
+  let served :: Application
+      served = serve (Proxy @APPAPI)
+                   (hoistServer (Proxy @APPAPI) (nt @SimpleError @m ctx) appapi :: Server APPAPI)
+  pure . setHttpCachePolicy $ served
+
+type SPAPI =
+       Header "Cookie" Cky :> Get '[HTML] LoginStatus
+  :<|> "logout" :> "local" :> GetRedir '[HTML] (WithCookieAndLocation ST)
+  :<|> "logout" :> "single" :> GetRedir '[HTML] (WithCookieAndLocation ST)
+
+type APPAPI =
+       "sp"  :> SPAPI
+  :<|> "sso" :> API
+
+spapi :: (MonadApp m) => ServerT SPAPI m
+spapi = loginStatus :<|> localLogout :<|> singleLogout
+
+appapi :: (MonadApp m) => ServerT APPAPI m
+appapi = spapi :<|> api "toy-sp" (HandleVerdictRedirect simpleOnSuccess)
+
+loginStatus :: (GetAllIdPs err m, SP m) => Maybe Cky -> m LoginStatus
+loginStatus cookie = do
+  idpids     <- getAllIdPs
+  loginOpts  <- mkLoginOption `mapM` idpids
+  logoutPath <- getPath' SpPathLocalLogout
+  pure $ maybe (NotLoggedIn loginOpts) (LoggedInAs logoutPath . cs . setSimpleCookieValue) cookie
+
+mkLoginOption :: SP m => IdPConfig a -> m (ST, ST)
+mkLoginOption icfg = (renderURI $ icfg ^. idpMetadata . edIssuer . fromIssuer,) <$> getPath' (SsoPathAuthnReq (icfg ^. idpId))
+
+-- | only logout on this SP.
+localLogout :: SPHandler SimpleError m => m (WithCookieAndLocation ST)
+localLogout = do
+  uri <- getPath SpPathHome
+  cky <- toggleCookie "/" Nothing
+  pure . addHeader cky . addHeader uri $ "Logged out locally, redirecting to " <> renderURI uri
+
+-- | as in [3/4.4]
+singleLogout :: (HasCallStack, SP m) => m (WithCookieAndLocation ST)
+singleLogout = error "not implemented."
+
+data LoginStatus
+  = NotLoggedIn [(ST{- issuer -}, ST{- authreq path -})]
+  | LoggedInAs ST ST
+  deriving (Eq, Show)
+
+instance MimeRender HTML LoginStatus where
+  mimeRender Proxy (NotLoggedIn loginOpts)
+    = mkHtml
+      [xml|
+        <body>
+          [not logged in]
+          $forall loginOpt <- loginOpts
+            ^{mkform loginOpt}
+      |]
+      where
+        mkform :: (ST, ST) -> [Node]
+        mkform (issuer, path) =
+          [xml|
+            <form action=#{path} method="get">
+              <input type="submit" value="log in via #{issuer}">
+          |]
+
+  mimeRender Proxy (LoggedInAs logoutPath name)
+    = mkHtml
+      [xml|
+        <body>
+        [logged in as #{name}]
+          <form action=#{logoutPath} method="get">
+            <input type="submit" value="logout">
+          <p>
+            (this is local logout; logout via IdP is not implemented.)
+      |]
 
 
 ----------------------------------------------------------------------

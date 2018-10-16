@@ -9,8 +9,9 @@ import SAML2.WebSSO.Config
 
 main :: IO ()
 main = do
-  config <- configIO @()
+  config <- configIO
+  idps   <- idpConfigIO config
   let settings = defaultSettings
         & setHost (fromString $ config ^. cfgSPHost)
         . setPort (config ^. cfgSPPort)
-  runSettings settings =<< app
+  runSettings settings =<< app config idps

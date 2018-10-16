@@ -5,6 +5,7 @@
 -- FUTUREWORK: set `-XNoDeriveAnyClass`.
 module SAML2.WebSSO.Config where
 
+import Control.Exception
 import Control.Monad (when)
 import Data.Aeson
 import Data.List.NonEmpty
@@ -121,6 +122,21 @@ readConfig filepath =
 -- `$SAML2_WEB_SSO_ROOT/server.yaml`.  Warns if env does not contain the root.
 writeConfig :: Config -> IO ()
 writeConfig cfg = (`Yaml.encodeFile` cfg) =<< configFilePath
+
+idpConfigIO :: Config -> IO [IdPConfig_]
+idpConfigIO cfg = readIdPConfig cfg =<< idpConfigFilePath
+
+idpConfigFilePath :: IO FilePath
+idpConfigFilePath = (</> "idps.yaml") <$> getEnv "SAML2_WEB_SSO_ROOT"
+
+readIdPConfig :: Config -> FilePath -> IO [IdPConfig_]
+readIdPConfig cfg filepath =
+  either (throwIO . ErrorCall . show) (\cnf -> info cnf >> pure cnf)
+  =<< Yaml.decodeFileEither filepath
+  where
+    info :: [IdPConfig_] -> IO ()
+    info idps = when (cfg ^. cfgLogLevel >= Info) $
+      hPutStrLn stderr . cs . Yaml.encode $ idps
 
 
 ----------------------------------------------------------------------

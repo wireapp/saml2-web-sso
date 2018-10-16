@@ -16,7 +16,7 @@ import GHC.Stack
 import Lens.Micro
 import Network.Wai.Test (runSession)
 import SAML2.WebSSO
-import SAML2.WebSSO.API.Example (simpleStoreID', simpleUnStoreID', simpleIsAliveID', simpleGetIdPConfigBy)
+import SAML2.WebSSO.API.Example (GetAllIdPs(..), simpleStoreID', simpleUnStoreID', simpleIsAliveID', simpleGetIdPConfigBy)
 import SAML2.WebSSO.Test.Credentials
 import Servant
 import Test.Hspec
@@ -32,6 +32,7 @@ mkTestCtxSimple :: MonadIO m => m CtxV
 mkTestCtxSimple = liftIO $ do
   let _ctxNow            = timeNow  -- constant time value, see below
       _ctxConfig         = fallbackConfig & cfgLogLevel .~ Fatal
+      _ctxIdPs           = mempty
       _ctxAssertionStore = mempty
       _ctxRequestStore   = mempty
   newMVar Ctx {..}
@@ -39,7 +40,7 @@ mkTestCtxSimple = liftIO $ do
 mkTestCtxWithIdP :: MonadIO m => m CtxV
 mkTestCtxWithIdP = liftIO $ do
   ctxmv <- mkTestCtxSimple
-  liftIO $ modifyMVar_ ctxmv (pure . (ctxConfig . _ .~ [testIdPConfig]))
+  liftIO $ modifyMVar_ ctxmv (pure . (ctxIdPs .~ [testIdPConfig]))
   pure ctxmv
 
 testIdPConfig :: IdPConfig_
@@ -150,14 +151,20 @@ instance SPStoreID Assertion TestSP where
 instance SPStoreIdP SimpleError TestSP where
   type IdPConfigExtra TestSP = ()
   storeIdPConfig _ = pure ()
-  getIdPConfig = simpleGetIdPConfigBy (^. idpId)
-  getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpMetadata . edIssuer)
+  getIdPConfig = simpleGetIdPConfigBy readIdPs (^. idpId)
+  getIdPConfigByIssuer = simpleGetIdPConfigBy readIdPs (^. idpMetadata . edIssuer)
+
+instance GetAllIdPs SimpleError TestSP where
+  getAllIdPs = (^. ctxIdPs) <$> (ask >>= liftIO . readMVar)
 
 instance SPHandler SimpleError TestSP where
   type NTCTX TestSP = CtxV
 
   nt :: forall x. CtxV -> TestSP x -> Handler x
   nt = handlerFromTestSP
+
+readIdPs :: TestSP [IdPConfig_]
+readIdPs = ((^. ctxIdPs) <$> (ask >>= liftIO . readMVar))
 
 handlerFromTestSP :: CtxV -> TestSP a -> Handler a
 handlerFromTestSP ctx (TestSP m) = Handler . ExceptT . fmap (fmapL toServantErr) . runExceptT $ m `runReaderT` ctx

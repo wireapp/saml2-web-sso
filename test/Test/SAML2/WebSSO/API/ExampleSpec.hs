@@ -8,7 +8,7 @@ import Data.Typeable
 import SAML2.WebSSO.API.Example (app')
 import Test.Hspec hiding (pending)
 import Test.Hspec.Wai
-import Util
+import Util (TestSP, mkTestCtxSimple)
 
 spec :: Spec
 spec = describe "API.Example" $ do
