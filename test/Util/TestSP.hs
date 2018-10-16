@@ -173,19 +173,6 @@ ioFromTestSP :: CtxV -> TestSP a -> IO a
 ioFromTestSP ctx m = either (throwIO . ErrorCall . show) pure =<< (runExceptT . runHandler' $ handlerFromTestSP ctx m)
 
 
-newtype TestSPStoreIdP a = TestSPStoreIdP { runTestSPStoreIdP :: ExceptT SimpleError (Reader (Maybe IdPConfig_)) a }
-  deriving (Functor, Applicative, Monad, MonadReader (Maybe IdPConfig_), MonadError SimpleError)
-
-instance HasConfig TestSPStoreIdP where
-  getConfig = error "n/a"
-
-instance SPStoreIdP SimpleError TestSPStoreIdP where
-  type IdPConfigExtra TestSPStoreIdP = ()
-  storeIdPConfig = error "n/a"
-  getIdPConfig = error "n/a"
-  getIdPConfigByIssuer _ = maybe (throwError $ UnknownIdP "<n/a>") pure =<< ask
-
-
 testAuthRespApp :: IO CtxV -> SpecWith (CtxV, Application) -> Spec
 testAuthRespApp = withapp (Proxy @APIAuthResp')
   (authresp' defSPIssuer defResponseURI (HandleVerdictRedirect simpleOnSuccess))

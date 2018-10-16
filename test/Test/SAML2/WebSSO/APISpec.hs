@@ -8,7 +8,6 @@ import Control.Concurrent.MVar
 import Control.Exception (SomeException, try)
 import Control.Lens
 import Control.Monad.Except
-import Control.Monad.Reader
 import Data.Either
 import Data.EitherR
 import Data.List.NonEmpty (NonEmpty((:|)))
@@ -162,21 +161,25 @@ spec = describe "API" $ do
 
             resp :: LBS
               <- cs <$> readSampleIO respfile
-            cfg :: IdPConfig_
+            idpcfg :: IdPConfig_
               <- either (error . show) pure
                    =<< (Yaml.decodeEither' . cs <$> readSampleIO "microsoft-idp-config.yaml")
 
-            let rungo :: TestSPStoreIdP a -> Either ServantErr a
-                rungo (TestSPStoreIdP action) = fmapL toServantErr $ runExceptT action `runReader` mcfg
-                  where
-                    mcfg = if knownkey then Just cfg else Nothing
+            let run :: TestSP a -> IO a
+                run action = do
+                  ctx <- mkTestCtxSimple
+                  when knownkey $
+                    modifyMVar_ ctx (pure . (ctxIdPs .~ [idpcfg | knownkey]))
+                  ioFromTestSP ctx action
 
-                go :: TestSPStoreIdP ()
-                go = simpleVerifyAuthnResponse (Just $ Issuer [uri|http://some_issuer/|]) resp
+                issuer = idpcfg ^. idpMetadata . edIssuer
+
+                go :: TestSP ()
+                go = simpleVerifyAuthnResponse (Just issuer) resp
 
             if expectOutcome
-              then rungo go `shouldBe` Right ()
-              else rungo go `shouldSatisfy` isLeft
+              then run go `shouldReturn` ()
+              else run go `shouldThrow` anyException
 
     context "good signature" $ do
       context "known key"    $ check True True True
