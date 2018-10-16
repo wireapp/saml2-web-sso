@@ -5,8 +5,8 @@
 module Test.SAML2.WebSSO.SPSpec (spec) where
 
 import Control.Concurrent.MVar
+import Control.Lens
 import Data.List.NonEmpty (NonEmpty((:|)))
-import Lens.Micro
 import SAML2.WebSSO
 import SAML2.WebSSO.API.Example (AssertionStore)
 import Test.Hspec

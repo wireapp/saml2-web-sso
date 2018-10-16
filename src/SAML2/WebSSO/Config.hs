@@ -6,13 +6,12 @@
 module SAML2.WebSSO.Config where
 
 import Control.Exception
+import Control.Lens hiding (Level, (.=))
 import Control.Monad (when)
 import Data.Aeson
 import Data.List.NonEmpty
 import Data.String.Conversions
 import GHC.Generics
-import Lens.Micro
-import Lens.Micro.TH
 import SAML2.WebSSO.Types
 import System.Environment
 import System.FilePath

@@ -1,7 +1,7 @@
 module Util.Types where
 
 import Control.Concurrent.MVar
-import Lens.Micro.TH
+import Control.Lens
 import SAML2.WebSSO
 import SAML2.WebSSO.API.Example
 

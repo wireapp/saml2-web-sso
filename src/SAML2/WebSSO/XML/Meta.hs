@@ -14,13 +14,13 @@ module SAML2.WebSSO.XML.Meta
   , renderIdPMetadata
   ) where
 
+import Control.Lens hiding (element)
 import Control.Monad.Except
 import Data.List.NonEmpty as NL
 import Data.Maybe
 import Data.Proxy
 import Data.String.Conversions
 import GHC.Stack
-import Lens.Micro
 import SAML2.Util
 import SAML2.WebSSO.SP
 import SAML2.WebSSO.Types

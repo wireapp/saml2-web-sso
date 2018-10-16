@@ -30,6 +30,7 @@ module Text.XML.DSig
 where
 
 import Control.Exception (throwIO, try, ErrorCall(ErrorCall), SomeException)
+import Control.Lens
 import Control.Monad.Except
 import Data.Either (isRight)
 import Data.EitherR (fmapL)
@@ -39,7 +40,6 @@ import Data.Monoid ((<>))
 import Data.String.Conversions
 import Data.UUID as UUID
 import GHC.Stack
-import Lens.Micro ((<&>))
 import Network.URI (URI, parseRelativeReference)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Random (random, mkStdGen)
@@ -321,7 +321,7 @@ injectSignedInfoAtRoot sigPos signedInfo (XML.Document prol (Element tag attrs n
   pure $ XML.Document prol (Element tag attrs (insertAt sigPos (XML.NodeElement signedInfoXML) nodes)) epil
   where
     insertAt :: Int -> a -> [a] -> [a]
-    insertAt pos el els = case Prelude.splitAt pos els of (pre, post) -> pre <> [el] <> post
+    insertAt pos el els = case Prelude.splitAt pos els of (prefix, suffix) -> prefix <> [el] <> suffix
 
 
 ----------------------------------------------------------------------

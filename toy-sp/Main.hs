@@ -1,7 +1,7 @@
 module Main where
 
+import Control.Lens
 import Data.String
-import Lens.Micro ((^.), (&))
 import Network.Wai.Handler.Warp (runSettings, defaultSettings, setHost, setPort)
 import SAML2.WebSSO.API.Example (app)
 import SAML2.WebSSO.Config

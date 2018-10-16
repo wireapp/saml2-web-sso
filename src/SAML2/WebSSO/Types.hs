@@ -3,7 +3,7 @@
 
 module SAML2.WebSSO.Types where
 
-import Control.Lens (makePrisms)  -- FUTUREWORK: this is missing in microlens-th
+import Control.Lens
 import Control.Monad.Except
 import Data.Aeson
 import Data.Aeson.TH
@@ -15,8 +15,6 @@ import Data.Time (UTCTime(..), NominalDiffTime, formatTime, defaultTimeLocale, a
 import Data.UUID as UUID
 import GHC.Generics (Generic)
 import GHC.Stack
-import Lens.Micro
-import Lens.Micro.TH
 import SAML2.Util
 import SAML2.WebSSO.Orphans ()
 import SAML2.WebSSO.Types.TH (deriveJSONOptions)

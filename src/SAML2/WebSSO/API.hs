@@ -21,16 +21,15 @@ module SAML2.WebSSO.API
   , module SAML2.WebSSO.Servant
   ) where
 
+import Control.Lens hiding (element)
 import Control.Monad.Except hiding (ap)
 import Data.EitherR
-import Data.Function
 import Data.List.NonEmpty (NonEmpty)
 import Data.Maybe (catMaybes)
 import Data.Proxy
 import Data.String.Conversions
 import Data.Time
 import GHC.Generics
-import Lens.Micro
 import SAML2.Util
 import SAML2.WebSSO.Servant
 import SAML2.WebSSO.Config

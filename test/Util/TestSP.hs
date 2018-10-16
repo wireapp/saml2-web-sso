@@ -5,6 +5,7 @@ module Util.TestSP where
 
 import Control.Concurrent.MVar
 import Control.Exception (throwIO, ErrorCall(..))
+import Control.Lens
 import Control.Monad.Except
 import Control.Monad.Reader
 import Data.EitherR
@@ -13,7 +14,6 @@ import Data.Maybe
 import Data.Time
 import Data.UUID as UUID
 import GHC.Stack
-import Lens.Micro
 import Network.Wai.Test (runSession)
 import SAML2.WebSSO
 import SAML2.WebSSO.API.Example (GetAllIdPs(..), simpleStoreID', simpleUnStoreID', simpleIsAliveID', simpleGetIdPConfigBy)

@@ -3,12 +3,12 @@
 
 module SAML2.WebSSO.Test.MockResponse where
 
+import Control.Lens
 import Control.Monad.IO.Class
 import Data.Generics.Uniplate.Data
 import Data.String.Conversions
 import Data.UUID as UUID
 import GHC.Stack
-import Lens.Micro
 import SAML2.Util
 import SAML2.WebSSO
 import Text.Hamlet.XML (xml)

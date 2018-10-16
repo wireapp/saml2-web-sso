@@ -7,6 +7,7 @@ module SAML2.WebSSO.XML where
 
 import Control.Category (Category(..))
 import Control.Exception (SomeException)
+import Control.Lens
 import Control.Monad
 import Control.Monad.Except
 import Data.EitherR
@@ -17,7 +18,6 @@ import Data.String.Conversions
 import Data.Time
 import Data.Typeable (Proxy(Proxy), Typeable)
 import GHC.Stack
-import Lens.Micro
 import Prelude hiding ((.), id)
 import SAML2.Util
 import SAML2.WebSSO.Types

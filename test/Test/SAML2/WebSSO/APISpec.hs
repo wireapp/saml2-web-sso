@@ -6,13 +6,13 @@ module Test.SAML2.WebSSO.APISpec (spec) where
 
 import Control.Concurrent.MVar
 import Control.Exception (SomeException, try)
+import Control.Lens
 import Control.Monad.Except
 import Control.Monad.Reader
 import Data.Either
 import Data.EitherR
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.String.Conversions
-import Lens.Micro
 import Network.Wai.Test
 import SAML2.Util
 import SAML2.WebSSO

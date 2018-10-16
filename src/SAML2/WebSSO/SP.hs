@@ -2,6 +2,7 @@
 
 module SAML2.WebSSO.SP where
 
+import Control.Lens hiding (Level)
 import Control.Monad.Except
 import Control.Monad.Extra (ifM)
 import Control.Monad.Reader
@@ -14,8 +15,6 @@ import Data.String.Conversions
 import Data.Time
 import Data.UUID (UUID)
 import GHC.Stack
-import Lens.Micro
-import Lens.Micro.TH
 import SAML2.Util
 import SAML2.WebSSO.Config
 import SAML2.WebSSO.Types
