@@ -57,6 +57,9 @@ instance SPHandler SimpleError SimpleSP where
   type NTCTX SimpleSP = SimpleSPCtx
   nt ctx (SimpleSP m) = Handler . ExceptT . fmap (fmapL toServantErr) . runExceptT $ m `runReaderT` ctx
 
+runSimpleSP :: SimpleSPCtx -> SimpleSP a -> IO (Either SimpleError a)
+runSimpleSP ctx (SimpleSP action) = runExceptT $ action `runReaderT` ctx
+
 mkSimpleSPCtx :: Config -> [IdPConfig_] -> IO SimpleSPCtx
 mkSimpleSPCtx cfg idps = SimpleSPCtx cfg idps <$> newMVar mempty <*> newMVar mempty
 
@@ -113,7 +116,7 @@ instance HasConfig SimpleSP where
 
 instance SPStoreIdP SimpleError SimpleSP where
   type IdPConfigExtra SimpleSP = ()
-  storeIdPConfig _     = pure ()
+  storeIdPConfig _     = error "instance SPStoreIdP SimpleError SimpleSP: storeIdPConfig not implemented."
   getIdPConfig         = simpleGetIdPConfigBy (asks (^. spctxIdP)) (^. idpId)
   getIdPConfigByIssuer = simpleGetIdPConfigBy (asks (^. spctxIdP)) (^. idpMetadata . edIssuer)
 

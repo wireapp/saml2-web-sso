@@ -28,6 +28,7 @@ import Util.Types
 import qualified Data.Map as Map
 
 
+-- | FUTUREWORK: we already have 'SimpleSP'; is there a good reason why we need both types?
 newtype TestSP a = TestSP { runTestSP :: ReaderT CtxV (ExceptT SimpleError IO) a }
   deriving (Functor, Applicative, Monad, MonadIO, MonadReader CtxV, MonadError SimpleError)
 
