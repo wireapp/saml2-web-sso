@@ -28,79 +28,6 @@ import Util.Types
 import qualified Data.Map as Map
 
 
-mkTestCtxSimple :: MonadIO m => m CtxV
-mkTestCtxSimple = liftIO $ do
-  let _ctxNow            = timeNow  -- constant time value, see below
-      _ctxConfig         = fallbackConfig & cfgLogLevel .~ Fatal
-      _ctxIdPs           = mempty
-      _ctxAssertionStore = mempty
-      _ctxRequestStore   = mempty
-  newMVar Ctx {..}
-
-mkTestCtxWithIdP :: MonadIO m => m CtxV
-mkTestCtxWithIdP = liftIO $ do
-  ctxmv <- mkTestCtxSimple
-  liftIO $ modifyMVar_ ctxmv (pure . (ctxIdPs .~ [testIdPConfig]))
-  pure ctxmv
-
-testIdPConfig :: IdPConfig_
-testIdPConfig = IdPConfig {..}
-  where
-    _idpId               = IdPId . fromJust . UUID.fromText $ "035ed888-c196-11e8-8278-7b25a2639572"
-    _idpMetadata         = IdPMetadata {..}
-    _edIssuer            = Issuer [uri|http://sample-idp.com/issuer|]
-    _edRequestURI        = [uri|http://sample-idp.com/request|]
-    _edCertAuthnResponse = sampleIdPCert :| []
-    _idpExtraInfo        = ()
-
-mkTestSPMetadata :: HasConfig m => m SPMetadata
-mkTestSPMetadata = do
-  let _spID             = ID "_4b7e1488-c0c6-11e8-aef0-9fe604f9513a"
-      _spValidUntil     = fromTime $ addTime (60 * 60 * 24 * 365) timeNow
-      _spCacheDuration  = 2592000
-      _spOrgName        = "drnick"
-      _spOrgDisplayName = "drnick"
-      _spContacts       = fallbackContact :| []
-  _spOrgURL            <- (^. fromIssuer) <$> defSPIssuer
-  _spResponseURL       <- defResponseURI
-  pure SPMetadata {..}
-
-
--- | Use this to see more output on a per-test basis.
-verbose :: Ctx -> Ctx
-verbose = ctxConfig . cfgLogLevel .~ Debug
-
-
-timeLongAgo     :: Time
-timeLongAgo     = unsafeReadTime "1918-04-14T09:58:58.457Z"
-
-timeNow         :: Time
-timeNow         = unsafeReadTime "2018-03-11T17:13:13Z"
-
-timeIn10minutes :: Time
-timeIn10minutes = unsafeReadTime "2018-03-11T17:23:00.01Z"
-
-timeIn20minutes :: Time
-timeIn20minutes = unsafeReadTime "2018-03-11T17:33:00Z"
-
-modifyCtx :: (HasCallStack, MonadIO m, MonadReader CtxV m) => (Ctx -> (Ctx, a)) -> m a
-modifyCtx f = do
-  ctx <- ask
-  liftIO $ modifyMVar ctx (pure . f)
-
-modifyCtx_ :: (HasCallStack, MonadIO m, MonadReader CtxV m) => (Ctx -> Ctx) -> m ()
-modifyCtx_ = modifyCtx . ((, ()) .)
-
--- | run an action at a time specified relative to now.
-timeTravel :: (HasCallStack, MonadIO m, MonadReader CtxV m) => NominalDiffTime -> m a -> m a
-timeTravel distance action = do
-  let mv dist_ = modifyCtx_ (ctxNow %~ (dist_ `addTime`))
-  mv distance
-  result <- action
-  mv (-distance)
-  pure result
-
-
 newtype TestSP a = TestSP { runTestSP :: ReaderT CtxV (ExceptT SimpleError IO) a }
   deriving (Functor, Applicative, Monad, MonadIO, MonadReader CtxV, MonadError SimpleError)
 
@@ -189,3 +116,76 @@ runtest test (ctx, app) = unWaiSession (test ctx) `runSession` app
 
 runtest' :: WaiSession a -> ((CtxV, Application) -> IO a)
 runtest' action = runtest (\_ctx -> action)
+
+
+mkTestCtxSimple :: MonadIO m => m CtxV  -- TODO: move this block up to newtype TestSP to the bottom of the module.  or split up the module.
+mkTestCtxSimple = liftIO $ do
+  let _ctxNow            = timeNow  -- constant time value, see below
+      _ctxConfig         = fallbackConfig & cfgLogLevel .~ Fatal
+      _ctxIdPs           = mempty
+      _ctxAssertionStore = mempty
+      _ctxRequestStore   = mempty
+  newMVar Ctx {..}
+
+mkTestCtxWithIdP :: MonadIO m => m CtxV
+mkTestCtxWithIdP = liftIO $ do
+  ctxmv <- mkTestCtxSimple
+  liftIO $ modifyMVar_ ctxmv (pure . (ctxIdPs .~ [testIdPConfig]))
+  pure ctxmv
+
+testIdPConfig :: IdPConfig_
+testIdPConfig = IdPConfig {..}
+  where
+    _idpId               = IdPId . fromJust . UUID.fromText $ "035ed888-c196-11e8-8278-7b25a2639572"
+    _idpMetadata         = IdPMetadata {..}
+    _edIssuer            = Issuer [uri|http://sample-idp.com/issuer|]
+    _edRequestURI        = [uri|http://sample-idp.com/request|]
+    _edCertAuthnResponse = sampleIdPCert :| []
+    _idpExtraInfo        = ()
+
+mkTestSPMetadata :: HasConfig m => m SPMetadata
+mkTestSPMetadata = do
+  let _spID             = ID "_4b7e1488-c0c6-11e8-aef0-9fe604f9513a"
+      _spValidUntil     = fromTime $ addTime (60 * 60 * 24 * 365) timeNow
+      _spCacheDuration  = 2592000
+      _spOrgName        = "drnick"
+      _spOrgDisplayName = "drnick"
+      _spContacts       = fallbackContact :| []
+  _spOrgURL            <- (^. fromIssuer) <$> defSPIssuer
+  _spResponseURL       <- defResponseURI
+  pure SPMetadata {..}
+
+
+-- | Use this to see more output on a per-test basis.
+verbose :: Ctx -> Ctx
+verbose = ctxConfig . cfgLogLevel .~ Debug
+
+
+timeLongAgo     :: Time
+timeLongAgo     = unsafeReadTime "1918-04-14T09:58:58.457Z"
+
+timeNow         :: Time
+timeNow         = unsafeReadTime "2018-03-11T17:13:13Z"
+
+timeIn10minutes :: Time
+timeIn10minutes = unsafeReadTime "2018-03-11T17:23:00.01Z"
+
+timeIn20minutes :: Time
+timeIn20minutes = unsafeReadTime "2018-03-11T17:33:00Z"
+
+modifyCtx :: (HasCallStack, MonadIO m, MonadReader CtxV m) => (Ctx -> (Ctx, a)) -> m a
+modifyCtx f = do
+  ctx <- ask
+  liftIO $ modifyMVar ctx (pure . f)
+
+modifyCtx_ :: (HasCallStack, MonadIO m, MonadReader CtxV m) => (Ctx -> Ctx) -> m ()
+modifyCtx_ = modifyCtx . ((, ()) .)
+
+-- | run an action at a time specified relative to now.
+timeTravel :: (HasCallStack, MonadIO m, MonadReader CtxV m) => NominalDiffTime -> m a -> m a
+timeTravel distance action = do
+  let mv dist_ = modifyCtx_ (ctxNow %~ (dist_ `addTime`))
+  mv distance
+  result <- action
+  mv (-distance)
+  pure result
