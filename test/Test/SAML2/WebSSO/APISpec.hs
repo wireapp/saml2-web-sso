@@ -160,9 +160,11 @@ spec = describe "API" $ do
                   then "microsoft-authnresponse-2.xml"
                   else "microsoft-authnresponse-2-badsig.xml"
 
-            resp :: LBS <- cs <$> readSampleIO respfile
-            (cfg :: IdPConfig_) <- either (error . show) pure
-                                   =<< (Yaml.decodeEither' . cs <$> readSampleIO "microsoft-idp-config.yaml")
+            resp :: LBS
+              <- cs <$> readSampleIO respfile
+            cfg :: IdPConfig_
+              <- either (error . show) pure
+                   =<< (Yaml.decodeEither' . cs <$> readSampleIO "microsoft-idp-config.yaml")
 
             let rungo :: TestSPStoreIdP a -> Either ServantErr a
                 rungo (TestSPStoreIdP action) = fmapL toServantErr $ runExceptT action `runReader` mcfg
