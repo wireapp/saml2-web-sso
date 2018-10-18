@@ -58,14 +58,13 @@ dependencies:
   - data-default
   - errors
   - exceptions
+  - extra
   - filepath
   - ghc-prim
   - hourglass
   - http-media
   - http-types
   - memory
-  - microlens
-  - microlens-th
   - mtl
   - network-uri
   - random

@@ -3,13 +3,12 @@
 
 module SAML2.WebSSO.Test.MockResponse where
 
+import Control.Lens
+import Control.Monad.IO.Class
 import Data.Generics.Uniplate.Data
 import Data.String.Conversions
-import Data.Time (getCurrentTime)
 import Data.UUID as UUID
-import Data.UUID.V4 as UUID
 import GHC.Stack
-import Lens.Micro
 import SAML2.Util
 import SAML2.WebSSO
 import Text.Hamlet.XML (xml)
@@ -20,17 +19,18 @@ import Text.XML.DSig
 newtype SignedAuthnResponse = SignedAuthnResponse { fromSignedAuthnResponse :: Document }
   deriving (Eq, Show)
 
+-- | See tests on how this is used.
 mkAuthnResponse
-  :: HasCallStack
-  => SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> IO SignedAuthnResponse
+  :: (HasCallStack, HasMonadSign m, HasLogger m, HasCreateUUID m, HasNow m)
+  => SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> m SignedAuthnResponse
 mkAuthnResponse creds idp spmeta areq grant = do
-  subj <- opaqueNameID . UUID.toText <$> UUID.nextRandom
+  subj <- opaqueNameID . UUID.toText <$> createUUID
   mkAuthnResponseWithSubj subj creds idp spmeta areq grant
 
 mkAuthnResponseWithSubj
-  :: HasCallStack
+  :: (HasCallStack, HasMonadSign m, HasCreateUUID m, HasNow m)
   => NameID
-  -> SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> IO SignedAuthnResponse
+  -> SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> m SignedAuthnResponse
 mkAuthnResponseWithSubj subj = mkAuthnResponseWithModif modif id
   where
     modif = transformBis
@@ -41,14 +41,14 @@ mkAuthnResponseWithSubj subj = mkAuthnResponseWithModif modif id
       ]
 
 mkAuthnResponseWithModif
-  :: HasCallStack
+  :: (HasCallStack, HasMonadSign m, HasCreateUUID m, HasNow m)
   => ([Node] -> [Node]) -> ([Node] -> [Node])
-  -> SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> IO SignedAuthnResponse
+  -> SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> m SignedAuthnResponse
 mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp sp authnreq grantAccess = do
-  let freshNCName = ("_" <>) . UUID.toText <$> UUID.nextRandom
+  let freshNCName = ("_" <>) . UUID.toText <$> createUUID
   assertionUuid <- freshNCName
   respUuid      <- freshNCName
-  now           <- Time <$> getCurrentTime
+  now           <- getNow
 
   let issueInstant    = renderTime now
       expires         = renderTime $ 3600 `addTime` now
@@ -61,7 +61,7 @@ mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp sp authnreq g
         | otherwise   = "urn:oasis:names:tc:SAML:2.0:status:Requester"
 
   assertion :: [Node]
-    <- signElementIOAt 1 creds . modifUnsignedAssertion . repairNamespaces $
+    <- liftIO $ signElementIOAt 1 creds . modifUnsignedAssertion . repairNamespaces $
       [xml|
         <Assertion
           xmlns="urn:oasis:names:tc:SAML:2.0:assertion"

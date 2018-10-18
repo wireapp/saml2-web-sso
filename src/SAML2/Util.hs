@@ -3,11 +3,11 @@
 module SAML2.Util (module SAML2.Util, module Text.XML.Util)
 where
 
+import Control.Lens
 import Control.Monad.Except
 import Data.String.Conversions
 import Data.Typeable
 import GHC.Stack
-import Lens.Micro
 import Text.XML.Util
 import URI.ByteString
 

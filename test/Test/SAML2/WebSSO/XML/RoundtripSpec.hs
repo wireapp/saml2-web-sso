@@ -32,7 +32,7 @@ prop_tripSPMetadata = mkprop genSPMetadata
 prop_tripAuthnRequest :: Property
 prop_tripAuthnRequest = mkprop genAuthnRequest
 
--- TODO: enable and fix
+-- FUTUREWORK: enable and fix
 -- prop_tripAuthnResponse :: Property
 -- prop_tripAuthnResponse = mkprop (Gen.prune genAuthnResponse)
   -- without the 'prune', this triggers https://github.com/hedgehogqa/haskell-hedgehog/issues/174

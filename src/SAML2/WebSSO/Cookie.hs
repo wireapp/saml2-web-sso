@@ -9,8 +9,8 @@ module SAML2.WebSSO.Cookie
   , setSimpleCookieValue
   ) where
 
+import Control.Lens
 import Control.Monad.Except
-import Lens.Micro ((<&>))
 import Data.Binary.Builder (toLazyByteString)
 import Data.Proxy
 import Data.String.Conversions

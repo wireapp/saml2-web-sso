@@ -37,8 +37,9 @@ genURI = genURI' Nothing
 
 -- | arbitrary 'URI' with restricted length.
 --
--- TODO: uri-bytestring has Arbitrary instances, but they are internal as of now.
--- https://github.com/Soostone/uri-bytestring/issues/45
+-- uri-bytestring has Arbitrary instances, but they are likely to remain internal.  also we're not
+-- sure what restrictions we'll need to impose on those in roder to get the URIs of the shape
+-- required here.  https://github.com/Soostone/uri-bytestring/issues/45
 genURI' :: Maybe (Range Int) -> Gen URI
 genURI' _ = pure [uri|http://wire.com/|]
 
@@ -67,8 +68,8 @@ genNiceWord :: Gen ST
 genNiceWord = genNiceText (Range.singleton 1)
 
 
-genConfig :: Gen extra -> Gen (Config extra)
-genConfig genextra = do
+genConfig :: Gen Config
+genConfig = do
   _cfgVersion    <- genVersion
   _cfgLogLevel   <- Gen.enumBounded
   _cfgSPHost     <- cs <$> genNiceWord
@@ -76,8 +77,6 @@ genConfig genextra = do
   _cfgSPAppURI   <- genURI
   _cfgSPSsoURI   <- genURI
   _cfgContacts   <- (:|) <$> genSPContactPerson <*> Gen.list (Range.linear 0 3) genSPContactPerson
-  _cfgIdps       <- pure mempty
-  _cfgExtraInfo  <- Gen.maybe genextra
   pure Config{..}
 
 genSPContactPerson :: Gen ContactPerson
@@ -125,8 +124,10 @@ genContactPerson = do
   _cntPhone     <- Gen.maybe genNiceWord
   pure ContactPerson {..}
 
-genEmail :: Gen URI  -- TODO: get a little more inspired here?
-genEmail = pure [uri|email:somebody@example.com|]
+genEmail :: Gen URI
+genEmail = do
+  loc <- genNiceWord
+  pure . unsafeParseURI $ "email:" <> loc <> "@example.com"
 
 genAuthnRequest :: Gen AuthnRequest
 genAuthnRequest = AuthnRequest <$> genID <*> genVersion <*> genTime <*> genIssuer <*> Gen.maybe genNameIDPolicy
@@ -137,7 +138,7 @@ genTime = pure $ unsafeReadTime "2013-03-18T07:33:56Z"
 genDuration :: Gen Duration
 genDuration = pure Duration
 
-genNominalDifftime :: Gen NominalDiffTime  -- TODO: get rid of this and use 'genDuration'
+genNominalDifftime :: Gen NominalDiffTime
 genNominalDifftime = fromIntegral <$> Gen.int (Range.linear 0 1000000)
 
 genID :: Gen (ID a)
@@ -336,7 +337,7 @@ genFormRedirect :: Gen a -> Gen (FormRedirect a)
 genFormRedirect genBody = FormRedirect <$> genURI <*> genBody
 
 
--- TODO: the following should be TH-generated entirely (take all declarations matching '^gen' and
+-- FUTUREWORK: the following could be TH-generated entirely (take all declarations matching '^gen' and
 -- turn the resp. types into Arbitrary instances).
 
 instance Arbitrary Assertion where
@@ -354,8 +355,8 @@ instance Arbitrary AuthnRequest where
 instance Arbitrary Conditions where
   arbitrary = TQH.hedgehog genConditions
 
-instance Arbitrary extra => Arbitrary (Config extra) where
-  arbitrary = TQH.hedgehog (genConfig $ THQ.quickcheck arbitrary)
+instance Arbitrary Config where
+  arbitrary = TQH.hedgehog genConfig
 
 instance Arbitrary Duration where
   arbitrary = TQH.hedgehog genDuration

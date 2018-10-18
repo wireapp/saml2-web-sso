@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
 
@@ -11,6 +10,7 @@ module SAML2.WebSSO.API.Example where
 
 import Control.Arrow ((&&&))
 import Control.Concurrent.MVar
+import Control.Lens
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.Writer
@@ -20,39 +20,141 @@ import Data.Proxy
 import Data.String.Conversions
 import Data.UUID as UUID
 import GHC.Stack
-import Lens.Micro
 import Network.Wai hiding (Response)
 import SAML2.Util
 import SAML2.WebSSO
 import Servant.API hiding (URI(..))
 import Servant.Server
-#if !MIN_VERSION_servant_server(0,12,0)
-import Servant.Utils.Enter
-#endif
 import Text.Hamlet.XML
 import Text.XML
 import URI.ByteString
 
 
--- | The most straight-forward 'Application' that can be constructed from 'api', 'API'.
-app :: IO Application
-app = app' (Proxy @SimpleSP) =<< mkSimpleSPCtx =<< configIO
+----------------------------------------------------------------------
+-- a simple concrete monad
 
-app' :: forall (m :: * -> *).
-        (
-#if !MIN_VERSION_servant_server(0,12,0)
-          Enter (ServerT APPAPI m) m Handler (Server APPAPI),
-#endif
-          SP m, SPHandler SimpleError m
-        ) => Proxy m -> NTCTX m -> IO Application
+newtype SimpleSP a = SimpleSP (ReaderT SimpleSPCtx (ExceptT SimpleError IO) a)
+  deriving (Functor, Applicative, Monad, MonadIO, MonadReader SimpleSPCtx, MonadError SimpleError)
+
+data SimpleSPCtx = SimpleSPCtx
+  { _spctxConfig :: Config
+  , _spctxIdP    :: [IdPConfig_]
+  , _spctxReq    :: MVar RequestStore
+  , _spctxAss    :: MVar AssertionStore
+  }
+
+type RequestStore = Map.Map (ID AuthnRequest) Time
+type AssertionStore = Map.Map (ID Assertion) Time
+
+makeLenses ''SimpleSPCtx
+
+type MonadApp m = (GetAllIdPs SimpleError m, SPHandler SimpleError m)
+
+
+-- | If you read the 'Config' initially in 'IO' and then pass it into the monad via 'Reader', you
+-- safe disk load and redundant debug logs.
+instance SPHandler SimpleError SimpleSP where
+  type NTCTX SimpleSP = SimpleSPCtx
+  nt ctx (SimpleSP m) = Handler . ExceptT . fmap (fmapL toServantErr) . runExceptT $ m `runReaderT` ctx
+
+runSimpleSP :: SimpleSPCtx -> SimpleSP a -> IO (Either SimpleError a)
+runSimpleSP ctx (SimpleSP action) = runExceptT $ action `runReaderT` ctx
+
+mkSimpleSPCtx :: Config -> [IdPConfig_] -> IO SimpleSPCtx
+mkSimpleSPCtx cfg idps = SimpleSPCtx cfg idps <$> newMVar mempty <*> newMVar mempty
+
+instance HasLogger SimpleSP where
+  logger level msg = getConfig >>= \cfg -> SimpleSP (loggerIO (cfg ^. cfgLogLevel) level msg)
+
+instance HasCreateUUID SimpleSP where
+  createUUID       = SimpleSP $ createUUIDIO
+
+instance HasNow SimpleSP where
+  getNow           = SimpleSP $ getNowIO
+
+simpleStoreID
+  :: (MonadIO m, MonadReader ctx m)
+  => Lens' ctx (MVar (Map (ID a) Time)) -> ID a -> Time -> m ()
+simpleStoreID sel item endOfLife = do
+  store <- asks (^. sel)
+  liftIO $ modifyMVar_ store (pure . simpleStoreID' item endOfLife)
+
+simpleStoreID' :: ID a -> Time -> Map (ID a) Time -> Map (ID a) Time
+simpleStoreID' = Map.insert
+
+simpleUnStoreID
+  :: (MonadIO m, MonadReader ctx m)
+  => Lens' ctx (MVar (Map (ID a) Time)) -> (ID a) -> m ()
+simpleUnStoreID sel item = do
+  store <- asks (^. sel)
+  liftIO $ modifyMVar_ store (pure . simpleUnStoreID' item)
+
+simpleUnStoreID' :: ID a -> Map (ID a) Time -> Map (ID a) Time
+simpleUnStoreID' = Map.delete
+
+simpleIsAliveID
+  :: (MonadIO m, MonadReader ctx m, SP m)
+  => Lens' ctx (MVar (Map (ID a) Time)) -> ID a -> m Bool
+simpleIsAliveID sel item = do
+  now <- getNow
+  store <- asks (^. sel)
+  items <- liftIO $ readMVar store
+  pure $ simpleIsAliveID' now item items
+
+simpleIsAliveID' :: Time -> ID a -> Map (ID a) Time -> Bool
+simpleIsAliveID' now item items = maybe False (>= now) (Map.lookup item items)
+
+
+instance SPStoreID AuthnRequest SimpleSP where
+  storeID   = simpleStoreID   spctxReq
+  unStoreID = simpleUnStoreID spctxReq
+  isAliveID = simpleIsAliveID spctxReq
+
+instance SPStoreID Assertion SimpleSP where
+  storeID   = simpleStoreID   spctxAss
+  unStoreID = simpleUnStoreID spctxAss
+  isAliveID = simpleIsAliveID spctxAss
+
+instance HasConfig SimpleSP where
+  getConfig = (^. spctxConfig) <$> SimpleSP ask
+
+instance SPStoreIdP SimpleError SimpleSP where
+  type IdPConfigExtra SimpleSP = ()
+  storeIdPConfig _     = error "instance SPStoreIdP SimpleError SimpleSP: storeIdPConfig not implemented."
+  getIdPConfig         = simpleGetIdPConfigBy (asks (^. spctxIdP)) (^. idpId)
+  getIdPConfigByIssuer = simpleGetIdPConfigBy (asks (^. spctxIdP)) (^. idpMetadata . edIssuer)
+
+simpleGetIdPConfigBy
+  :: (MonadError (Error err) m, HasConfig m, Show a, Ord a)
+  => m [IdPConfig_] -> (IdPConfig_ -> a) -> a -> m IdPConfig_
+simpleGetIdPConfigBy getIdps mkkey idpname = do
+  idps <- getIdps
+  maybe crash' pure . Map.lookup idpname $ mkmap idps
+  where
+    crash' = throwError (UnknownIdP . cs . show $ idpname)
+    mkmap = Map.fromList . fmap (mkkey &&& id)
+
+class SPStoreIdP err m => GetAllIdPs err m where
+  getAllIdPs :: m [IdPConfig (IdPConfigExtra m)]
+
+instance GetAllIdPs SimpleError SimpleSP where
+  getAllIdPs = asks (^. spctxIdP)
+
+
+----------------------------------------------------------------------
+-- the app
+
+-- | The most straight-forward 'Application' that can be constructed from 'api', 'API'.
+app :: Config -> [IdPConfig_] -> IO Application
+app cfg idps = app' (Proxy @SimpleSP) =<< mkSimpleSPCtx cfg idps
+
+app'
+  :: forall (m :: * -> *). (SP m, MonadApp m)
+  => Proxy m -> NTCTX m -> IO Application
 app' Proxy ctx = do
   let served :: Application
       served = serve (Proxy @APPAPI)
-#if MIN_VERSION_servant_server(0,12,0)
                    (hoistServer (Proxy @APPAPI) (nt @SimpleError @m ctx) appapi :: Server APPAPI)
-#else
-                   (enter (NT (nt @SimpleError @m ctx)) appapi :: Server APPAPI)
-#endif
   pure . setHttpCachePolicy $ served
 
 type SPAPI =
@@ -64,15 +166,15 @@ type APPAPI =
        "sp"  :> SPAPI
   :<|> "sso" :> API
 
-spapi :: SPHandler SimpleError m => ServerT SPAPI m
+spapi :: (MonadApp m) => ServerT SPAPI m
 spapi = loginStatus :<|> localLogout :<|> singleLogout
 
-appapi :: SPHandler SimpleError m => ServerT APPAPI m
+appapi :: (MonadApp m) => ServerT APPAPI m
 appapi = spapi :<|> api "toy-sp" (HandleVerdictRedirect simpleOnSuccess)
 
-loginStatus :: SP m => Maybe Cky -> m LoginStatus
+loginStatus :: (GetAllIdPs err m, SP m) => Maybe Cky -> m LoginStatus
 loginStatus cookie = do
-  idpids     <- (^. cfgIdps) <$> getConfig
+  idpids     <- getAllIdPs
   loginOpts  <- mkLoginOption `mapM` idpids
   logoutPath <- getPath' SpPathLocalLogout
   pure $ maybe (NotLoggedIn loginOpts) (LoggedInAs logoutPath . cs . setSimpleCookieValue) cookie
@@ -123,83 +225,6 @@ instance MimeRender HTML LoginStatus where
           <p>
             (this is local logout; logout via IdP is not implemented.)
       |]
-
-
-----------------------------------------------------------------------
--- a simple concrete monad
-
-newtype SimpleSP a = SimpleSP (ReaderT SimpleSPCtx (ExceptT SimpleError IO) a)
-  deriving (Functor, Applicative, Monad, MonadError SimpleError)
-
-type SimpleSPCtx = (Config_, MVar RequestStore, MVar AssertionStore)
-type RequestStore = Map.Map (ID AuthnRequest) Time
-type AssertionStore = Map.Map (ID Assertion) Time
-
--- | If you read the 'Config' initially in 'IO' and then pass it into the monad via 'Reader', you
--- safe disk load and redundant debug logs.
-instance SPHandler SimpleError SimpleSP where
-  type NTCTX SimpleSP = SimpleSPCtx
-  nt ctx (SimpleSP m) = Handler . ExceptT . fmap (fmapL toServantErr) . runExceptT $ m `runReaderT` ctx
-
-mkSimpleSPCtx :: Config_ -> IO SimpleSPCtx
-mkSimpleSPCtx cfg = (,,) cfg <$> newMVar mempty <*> newMVar mempty
-
-instance SP SimpleSP where
-  logger level msg = getConfig >>= \cfg -> SimpleSP (loggerIO (cfg ^. cfgLogLevel) level msg)
-  createUUID       = SimpleSP $ createUUIDIO
-  getNow           = SimpleSP $ getNowIO
-
-instance SPStore SimpleSP where
-  storeRequest req keepAroundUntil = do
-    store <- (^. _2) <$> SimpleSP ask
-    SimpleSP $ simpleStoreRequest store req keepAroundUntil
-
-  checkAgainstRequest req = do
-    store <- (^. _2) <$> SimpleSP ask
-    now <- getNow
-    SimpleSP $ simpleCheckAgainstRequest store req now
-
-  storeAssertion aid tim = do
-    store <- (^. _3) <$> SimpleSP ask
-    now <- getNow
-    SimpleSP $ simpleStoreAssertion store now aid tim
-
-instance HasConfig SimpleSP where
-  type ConfigExtra SimpleSP = ()
-  getConfig = (^. _1) <$> SimpleSP ask
-
-instance SPStoreIdP SimpleError SimpleSP where
-  storeIdPConfig _ = pure ()
-  getIdPConfig = simpleGetIdPConfigBy (^. idpId)
-  getIdPConfigByIssuer = simpleGetIdPConfigBy (^. idpMetadata . edIssuer)
-
-simpleGetIdPConfigBy :: (MonadError (Error err) m, HasConfig m, Show a, Ord a)
-                     => (IdPConfig (ConfigExtra m) -> a) -> a -> m (IdPConfig (ConfigExtra m))
-simpleGetIdPConfigBy mkkey idpname = maybe crash' pure . Map.lookup idpname . mkmap . (^. cfgIdps) =<< getConfig
-  where
-    crash' = throwError (UnknownIdP . cs . show $ idpname)
-    mkmap = Map.fromList . fmap (mkkey &&& id)
-
-simpleStoreRequest :: MonadIO m => MVar RequestStore -> ID AuthnRequest -> Time -> m ()
-simpleStoreRequest store req keepAroundUntil =
-  liftIO $ modifyMVar_ store (pure . Map.insert req keepAroundUntil)
-
-simpleCheckAgainstRequest :: MonadIO m => MVar RequestStore -> ID AuthnRequest -> Time -> m Bool
-simpleCheckAgainstRequest store req now =
-  (> Just now) . Map.lookup req <$> liftIO (readMVar store)
-
-simpleStoreAssertion :: MonadIO m => MVar AssertionStore -> Time -> ID Assertion -> Time -> m Bool
-simpleStoreAssertion store now aid time = do
-  let go :: AssertionStore -> (AssertionStore, Bool)
-      go = (_2 %~ Prelude.null) . runWriter . Map.alterF go' aid
-
-      go' :: Maybe Time -> Writer [()] (Maybe Time)
-      go' (Just time') = if time' < now
-        then pure $ Just time
-        else tell [()] >> pure (Just (maximum [time, time']))
-      go' Nothing = pure $ Just time
-
-  liftIO $ modifyMVar store (pure . go)
 
 
 ----------------------------------------------------------------------

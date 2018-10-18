@@ -5,14 +5,13 @@
 -- FUTUREWORK: set `-XNoDeriveAnyClass`.
 module SAML2.WebSSO.Config where
 
+import Control.Exception
+import Control.Lens hiding (Level, (.=))
 import Control.Monad (when)
 import Data.Aeson
-import Data.Maybe (fromMaybe)
 import Data.List.NonEmpty
 import Data.String.Conversions
 import GHC.Generics
-import Lens.Micro
-import Lens.Micro.TH
 import SAML2.WebSSO.Types
 import System.Environment
 import System.FilePath
@@ -26,9 +25,7 @@ import qualified Data.Yaml as Yaml
 ----------------------------------------------------------------------
 -- data types
 
-type Config_ = Config ()
-
-data Config extra = Config
+data Config = Config
   { _cfgVersion           :: Version
   , _cfgLogLevel          :: Level
   , _cfgSPHost            :: String
@@ -36,7 +33,6 @@ data Config extra = Config
   , _cfgSPAppURI          :: URI
   , _cfgSPSsoURI          :: URI
   , _cfgContacts          :: NonEmpty ContactPerson
-  , _cfgIdps              :: [IdPConfig extra]
   }
   deriving (Eq, Show, Generic)
 
@@ -50,7 +46,7 @@ data Level = Trace | Debug | Info | Warn | Error | Fatal
 
 makeLenses ''Config
 
-instance ToJSON a => ToJSON (Config a) where
+instance ToJSON Config where
   toJSON Config {..} = object $
     [ "version"    .= _cfgVersion
     , "logLevel"   .= _cfgLogLevel
@@ -59,10 +55,9 @@ instance ToJSON a => ToJSON (Config a) where
     , "spAppUri"   .= _cfgSPAppURI
     , "spSsoUri"   .= _cfgSPSsoURI
     , "contacts"   .= _cfgContacts
-    ] <>
-    [ "idps" .= _cfgIdps | not $ Prelude.null _cfgIdps ]
+    ]
 
-instance FromJSON a => FromJSON (Config a) where
+instance FromJSON Config where
   parseJSON = withObject "Config" $ \obj -> do
     _cfgVersion           <- obj .: "version"
     _cfgLogLevel          <- obj .: "logLevel"
@@ -71,14 +66,13 @@ instance FromJSON a => FromJSON (Config a) where
     _cfgSPAppURI          <- obj .: "spAppUri"
     _cfgSPSsoURI          <- obj .: "spSsoUri"
     _cfgContacts          <- obj .: "contacts"
-    _cfgIdps              <- fromMaybe [] <$> obj .:? "idps"
     pure Config {..}
 
 
 ----------------------------------------------------------------------
 -- default
 
-fallbackConfig :: Config extra
+fallbackConfig :: Config
 fallbackConfig = Config
   { _cfgVersion           = Version_2_0
   , _cfgLogLevel          = Debug
@@ -87,7 +81,6 @@ fallbackConfig = Config
   , _cfgSPAppURI          = [uri|https://example-sp.com/landing|]
   , _cfgSPSsoURI          = [uri|https://example-sp.com/sso|]
   , _cfgContacts          = fallbackContact :| []
-  , _cfgIdps              = mempty
   }
 
 fallbackContact :: ContactPerson
@@ -104,18 +97,18 @@ fallbackContact = ContactPerson
 ----------------------------------------------------------------------
 -- IO
 
-configIO :: (FromJSON extra, ToJSON extra) => IO (Config extra)
+configIO :: IO Config
 configIO = readConfig =<< configFilePath
 
 configFilePath :: IO FilePath
 configFilePath = (</> "server.yaml") <$> getEnv "SAML2_WEB_SSO_ROOT"
 
-readConfig :: forall extra. (FromJSON extra, ToJSON extra) => FilePath -> IO (Config extra)
+readConfig :: FilePath -> IO Config
 readConfig filepath =
   either (\err -> fallbackConfig <$ warn err) (\cnf -> info cnf >> pure cnf)
   =<< Yaml.decodeFileEither filepath
   where
-    info :: Config extra -> IO ()
+    info :: Config -> IO ()
     info cfg = when (cfg ^. cfgLogLevel >= Info) $
       hPutStrLn stderr . cs . Yaml.encode $ cfg
 
@@ -126,13 +119,27 @@ readConfig filepath =
 
 -- | Convenience function to write a config file if you don't already have one.  Writes to
 -- `$SAML2_WEB_SSO_ROOT/server.yaml`.  Warns if env does not contain the root.
-writeConfig :: ToJSON extra => Config extra -> IO ()
+writeConfig :: Config -> IO ()
 writeConfig cfg = (`Yaml.encodeFile` cfg) =<< configFilePath
+
+idpConfigIO :: Config -> IO [IdPConfig_]
+idpConfigIO cfg = readIdPConfig cfg =<< idpConfigFilePath
+
+idpConfigFilePath :: IO FilePath
+idpConfigFilePath = (</> "idps.yaml") <$> getEnv "SAML2_WEB_SSO_ROOT"
+
+readIdPConfig :: Config -> FilePath -> IO [IdPConfig_]
+readIdPConfig cfg filepath =
+  either (throwIO . ErrorCall . show) (\cnf -> info cnf >> pure cnf)
+  =<< Yaml.decodeFileEither filepath
+  where
+    info :: [IdPConfig_] -> IO ()
+    info idps = when (cfg ^. cfgLogLevel >= Info) $
+      hPutStrLn stderr . cs . Yaml.encode $ idps
 
 
 ----------------------------------------------------------------------
 -- class
 
 class (Monad m) => HasConfig m where
-  type family ConfigExtra m :: *
-  getConfig :: m (Config (ConfigExtra m))
+  getConfig :: m Config

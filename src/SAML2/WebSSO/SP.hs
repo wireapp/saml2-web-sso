@@ -1,9 +1,10 @@
-{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module SAML2.WebSSO.SP where
 
+import Control.Lens hiding (Level)
 import Control.Monad.Except
+import Control.Monad.Extra (ifM)
 import Control.Monad.Reader
 import Control.Monad.Writer
 import Data.Foldable (toList)
@@ -14,8 +15,6 @@ import Data.String.Conversions
 import Data.Time
 import Data.UUID (UUID)
 import GHC.Stack
-import Lens.Micro
-import Lens.Micro.TH
 import SAML2.Util
 import SAML2.WebSSO.Config
 import SAML2.WebSSO.Types
@@ -32,36 +31,38 @@ import qualified Data.UUID.V4 as UUID
 -- class
 
 -- | Application logic of the service provider.
-class (HasConfig m, Monad m) => SP m where
+type SP m = (HasConfig m, HasLogger m, HasCreateUUID m, HasNow m)
+
+class (HasConfig m) => HasLogger m where
   logger :: Level -> String -> m ()
   default logger :: MonadIO m => Level -> String -> m ()
   logger = loggerConfIO
 
+class Monad m => HasCreateUUID m where
   createUUID :: m UUID
   default createUUID :: MonadIO m => m UUID
   createUUID = createUUIDIO
 
+class Monad m => HasNow m where
   getNow :: m Time
   default getNow :: MonadIO m => m Time
   getNow = getNowIO
 
-class (SP m) => SPStore m where
-  -- Store 'AuthnRequest' for later check against the recipient in the 'AuthnResponse'.  Will be
-  -- stored until 'Time', afterwards is considered garbage-collectible.
-  storeRequest :: ID AuthnRequest -> Time -> m ()
 
-  -- Do we know of an 'AuthnRequest' with that 'ID'?
-  checkAgainstRequest :: ID AuthnRequest -> m Bool
+type SPStore m = (SP m, SPStoreID AuthnRequest m, SPStoreID Assertion m)
 
-  -- Store 'Assertion's to prevent replay attack.  'Time' argument is end of life (IDs may be
-  -- garbage collected after that time).  Iff assertion has already been stored and is not dead yet,
-  -- return 'False'.
-  storeAssertion :: ID Assertion -> Time -> m Bool
+class SPStoreID i m where
+  storeID   :: ID i -> Time -> m ()
+  unStoreID :: ID i -> m ()
+  isAliveID :: ID i -> m Bool  -- ^ stored and not timed out.
+
 
 class (MonadError err m) => SPStoreIdP err m where
-  storeIdPConfig       :: IdPConfig (ConfigExtra m) -> m ()
-  getIdPConfig         :: IdPId -> m (IdPConfig (ConfigExtra m))
-  getIdPConfigByIssuer :: Issuer -> m (IdPConfig (ConfigExtra m))
+  type family IdPConfigExtra m :: *
+  storeIdPConfig       :: IdPConfig (IdPConfigExtra m) -> m ()
+  getIdPConfig         :: IdPId -> m (IdPConfig (IdPConfigExtra m))
+  getIdPConfigByIssuer :: Issuer -> m (IdPConfig (IdPConfigExtra m))
+
 
 -- | HTTP handling of the service provider.
 class (SP m, SPStore m, SPStoreIdP err m, MonadError err m) => SPHandler err m where
@@ -71,6 +72,15 @@ class (SP m, SPStore m, SPStoreIdP err m, MonadError err m) => SPHandler err m w
 
 ----------------------------------------------------------------------
 -- combinators
+
+-- | Store 'Assertion's to prevent replay attack.  'Time' argument is end of life (IDs may be
+-- garbage collected after that time).  Iff assertion has already been stored and is still alive,
+-- return 'False'.
+storeAssertion :: SPStore m => ID Assertion -> Time -> m Bool
+storeAssertion item endOfLife = ifM
+  (isAliveID item)
+  (pure False)
+  (True <$ storeID item endOfLife)
 
 loggerConfIO :: (HasConfig m, MonadIO m) => Level -> String -> m ()
 loggerConfIO level msg = do
@@ -104,7 +114,7 @@ createAuthnRequest lifeExpectancySecs getIssuer = do
   _rqIssueInstant <- getNow
   _rqIssuer       <- getIssuer
   let _rqNameIDPolicy = Just $ NameIdPolicy NameIDFUnspecified Nothing True
-  storeRequest _rqID (addTime lifeExpectancySecs _rqIssueInstant)
+  storeID _rqID (addTime lifeExpectancySecs _rqIssueInstant)
   pure AuthnRequest{..}
 
 
@@ -116,11 +126,7 @@ getSsoURI :: forall m endpoint api.
                   , HasConfig m
                   , IsElem endpoint api
                   , HasLink endpoint
-#if MIN_VERSION_servant(0,14,0)
-                  , ToHttpApiData (MkLink endpoint Link)
-#else
                   , ToHttpApiData (MkLink endpoint)
-#endif
                   )
                => Proxy api -> Proxy endpoint -> m URI
 getSsoURI proxyAPI proxyAPIAuthResp = extpath . (^. cfgSPSsoURI) <$> getConfig
@@ -135,11 +141,7 @@ getSsoURI proxyAPI proxyAPIAuthResp = extpath . (^. cfgSPSsoURI) <$> getConfig
 getSsoURI' :: forall endpoint api a (f :: * -> *) t.
               ( HasConfig f
               , MkLink endpoint ~ (t -> a)
-#if MIN_VERSION_servant(0,14,0)
-              , HasLink endpoint Link
-#else
               , HasLink endpoint
-#endif
               , ToHttpApiData a
               , IsElem endpoint api
               ) => Proxy api -> Proxy endpoint -> t -> f URI
@@ -198,18 +200,21 @@ instance (Functor m, Applicative m, Monad m) => Monad (JudgeT m) where
   (JudgeT x) >>= f = JudgeT (x >>= fromJudgeT . f)
 
 instance (HasConfig m) => HasConfig (JudgeT m) where
-  type ConfigExtra (JudgeT m) = ConfigExtra m
   getConfig = JudgeT . lift . lift . lift $ getConfig
 
-instance SP m => SP (JudgeT m) where
+instance HasLogger m => HasLogger (JudgeT m) where
   logger level     = JudgeT . lift . lift . lift . logger level
+
+instance HasCreateUUID m => HasCreateUUID (JudgeT m) where
   createUUID       = JudgeT . lift . lift . lift $ createUUID
+
+instance HasNow m => HasNow (JudgeT m) where
   getNow           = JudgeT . lift . lift . lift $ getNow
 
-instance SPStore m => SPStore (JudgeT m) where
-  storeRequest r      = JudgeT . lift . lift . lift . storeRequest r
-  checkAgainstRequest = JudgeT . lift . lift . lift . checkAgainstRequest
-  storeAssertion i    = JudgeT . lift . lift . lift . storeAssertion i
+instance (Monad m, SPStoreID i m) => SPStoreID i (JudgeT m) where
+  storeID item = JudgeT . lift . lift . lift . storeID item
+  unStoreID    = JudgeT . lift . lift . lift . unStoreID
+  isAliveID    = JudgeT . lift . lift . lift . isAliveID
 
 
 -- | [3/4.1.4.2], [3/4.1.4.3]; specific to active-directory:
@@ -223,21 +228,24 @@ judge' :: (HasCallStack, MonadJudge m, SP m, SPStore m) => AuthnResponse -> m Ac
 judge' resp = do
   either (deny . (:[])) pure . statusIsSuccess $ resp ^. rspStatus
   uref <- either (giveup . (:[])) pure $ getUserRef resp
-  checkInResponseTo `mapM_` (resp ^. rspInRespTo)
-  checkNotInFuture "Issuer instant" $ resp ^. rspIssueInstant
+  inRespTo <- either (giveup . (:[])) pure $ rspInResponseTo resp
+  checkInResponseTo "response" inRespTo
+  checkIsInPast "Issuer instant" $ resp ^. rspIssueInstant
   maybe (pure ()) (checkDestination "response destination") (resp ^. rspDestination)
-  checkAssertions (resp ^. rspIssuer) (resp ^. rspPayload) uref
+  verdict <- checkAssertions (resp ^. rspIssuer) (resp ^. rspPayload) uref
+  unStoreID inRespTo
+  pure verdict
 
-checkInResponseTo :: (SPStore m, MonadJudge m) => ID AuthnRequest -> m ()
-checkInResponseTo req = do
-  ok <- checkAgainstRequest req
-  unless ok . deny $ ["invalid InResponseTo field: " <> show req]
+checkInResponseTo :: (SPStore m, MonadJudge m) => String -> ID AuthnRequest -> m ()
+checkInResponseTo loc req = do
+  ok <- isAliveID req
+  unless ok . deny $ ["invalid InResponseTo field in " <> loc <> ": " <> show req]
 
-checkNotInFuture :: (SP m, MonadJudge m) => String -> Time -> m ()
-checkNotInFuture msg tim = do
+checkIsInPast :: (SP m, MonadJudge m) => String -> Time -> m ()
+checkIsInPast msg tim = do
   now <- getNow
   unless (tim < now) $
-    deny [msg <> " in the future: " <> show tim]
+    deny [msg <> " not in the past: " <> show tim <> " >= " <> show now]
 
 -- | Check that the response is intended for us (based on config's finalize-login uri stored in
 -- 'JudgeCtx').
@@ -254,7 +262,7 @@ checkDestination msg (renderURI -> expectedByIdp) = do
 checkAssertions :: (SP m, SPStore m, MonadJudge m) => Maybe Issuer -> NonEmpty Assertion -> UserRef -> m AccessVerdict
 checkAssertions missuer (toList -> assertions) uref@(UserRef issuer _) = do
   forM_ assertions $ \ass -> do
-    checkNotInFuture "Assertion IssueInstant" (ass ^. assIssueInstant)
+    checkIsInPast "Assertion IssueInstant" (ass ^. assIssueInstant)
     storeAssertion (ass ^. assID) (ass ^. assEndOfLife)
   judgeConditions `mapM_` catMaybes ((^. assConditions) <$> assertions)
 
@@ -278,7 +286,7 @@ checkAssertions missuer (toList -> assertions) uref@(UserRef issuer _) = do
 checkStatement :: (SP m, MonadJudge m) => Statement -> m ()
 checkStatement = \case
   (AuthnStatement issued _ mtimeout _) -> do
-    checkNotInFuture "AuthnStatement IssueInstance" issued
+    checkIsInPast "AuthnStatement IssueInstance" issued
     forM_ mtimeout $ \timeout -> do
       now <- getNow
       when (timeout <= now) $ deny ["AuthnStatement expired at " <> show timeout]
@@ -336,7 +344,9 @@ checkSubjectConfirmationData bearer confdat = do
   getNow >>= \now -> when (now >= confdat ^. scdNotOnOrAfter) $
     deny ["SubjectConfirmation with invalid NotOnOrAfter: " <> show (confdat ^. scdNotOnOrAfter)]
 
-  checkInResponseTo `mapM_` (confdat ^. scdInResponseTo)
+  -- the following line is redundant with the call to 'rspInResponseTo' in 'judge'' above, but...
+  -- better redundant than sorry?
+  checkInResponseTo "assertion" `mapM_` (confdat ^. scdInResponseTo)
 
 judgeConditions :: (HasCallStack, MonadJudge m, SP m) => Conditions -> m ()
 judgeConditions (Conditions lowlimit uplimit onetimeuse maudiences) = do
