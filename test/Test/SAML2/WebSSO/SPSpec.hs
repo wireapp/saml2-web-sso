@@ -24,11 +24,6 @@ instance HasLogger IO
 instance HasCreateUUID IO
 instance HasNow IO
 
-instance SPStoreID any IO where
-  storeID   = undefined
-  unStoreID = undefined
-  isAliveID = undefined
-
 
 ----------------------------------------------------------------------
 -- tests
