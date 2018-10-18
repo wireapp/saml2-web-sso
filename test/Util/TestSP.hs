@@ -43,7 +43,11 @@ instance HasNow TestSP where
 
 
 -- | These helpers are very similar to the ones in "SAML2.WebSSO.API.Example".  Exercise to the
--- reader: implement only once, use twice.
+-- reader: implement only once, use twice.  (Some hints: None of the "lens through IORef/MVar/etc"
+-- libraries took off. There's http://hackage.haskell.org/package/monad-var but I haven't looked at
+-- it. You might also want to read ekmett's comments at
+-- https://www.reddit.com/r/haskell/comments/8gc8p0/extensible_monadic_lenses/. Don't ask me about
+-- monadic lenses though, I'm really clueless.)
 simpleStoreID
   :: (MonadIO m, MonadReader (MVar ctx) m)
   => Lens' ctx (Map.Map (ID a) Time) -> ID a -> Time -> m ()
