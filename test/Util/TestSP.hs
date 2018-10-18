@@ -184,7 +184,7 @@ modifyCtx f = do
 modifyCtx_ :: (HasCallStack, MonadIO m, MonadReader CtxV m) => (Ctx -> Ctx) -> m ()
 modifyCtx_ = modifyCtx . ((, ()) .)
 
--- | run an action at a time specified relative to now.
+-- | Run an action at a time specified relative to now.  This does NOT support hspec's 'parallel'.
 timeTravel :: (HasCallStack, MonadIO m, MonadReader CtxV m) => NominalDiffTime -> m a -> m a
 timeTravel distance action = do
   let mv dist_ = modifyCtx_ (ctxNow %~ (dist_ `addTime`))
