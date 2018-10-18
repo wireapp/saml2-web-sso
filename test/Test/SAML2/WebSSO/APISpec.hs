@@ -233,7 +233,10 @@ spec = describe "API" $ do
 
 
   describe "authresp" $ do
-    let postTestAuthnResp :: HasCallStack => CtxV -> Bool -> WaiSession SResponse
+    let -- Create an AuthnRequest in the SP, then call 'mkAuthnResponse' to make an 'AuthnResponse'
+        -- in the IdP, then post the 'AuthnResponse' to the appropriate SP end-point.  @spmeta@ is
+        -- needed for making the 'AuthnResponse'.
+        postTestAuthnResp :: HasCallStack => CtxV -> Bool -> WaiSession SResponse
         postTestAuthnResp ctx badTimeStamp = do
           aresp <- liftIO . ioFromTestSP ctx $ do
             spmeta   :: SPMetadata     <- mkTestSPMetadata
