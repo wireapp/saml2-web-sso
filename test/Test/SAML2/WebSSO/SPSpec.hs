@@ -20,7 +20,9 @@ import qualified Samples
 instance HasConfig IO where
   getConfig = configIO
 
-instance SP IO
+instance HasLogger IO
+instance HasCreateUUID IO
+instance HasNow IO
 
 instance SPStoreID any IO where
   storeID   = undefined

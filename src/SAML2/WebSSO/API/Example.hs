@@ -63,9 +63,13 @@ runSimpleSP ctx (SimpleSP action) = runExceptT $ action `runReaderT` ctx
 mkSimpleSPCtx :: Config -> [IdPConfig_] -> IO SimpleSPCtx
 mkSimpleSPCtx cfg idps = SimpleSPCtx cfg idps <$> newMVar mempty <*> newMVar mempty
 
-instance SP SimpleSP where
+instance HasLogger SimpleSP where
   logger level msg = getConfig >>= \cfg -> SimpleSP (loggerIO (cfg ^. cfgLogLevel) level msg)
+
+instance HasCreateUUID SimpleSP where
   createUUID       = SimpleSP $ createUUIDIO
+
+instance HasNow SimpleSP where
   getNow           = SimpleSP $ getNowIO
 
 simpleStoreID

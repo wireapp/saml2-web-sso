@@ -19,15 +19,16 @@ import Text.XML.DSig
 newtype SignedAuthnResponse = SignedAuthnResponse { fromSignedAuthnResponse :: Document }
   deriving (Eq, Show)
 
+-- | See tests on how this is used.
 mkAuthnResponse
-  :: (HasCallStack, HasMonadSign m, SP m)
+  :: (HasCallStack, HasMonadSign m, HasLogger m, HasCreateUUID m, HasNow m)
   => SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> m SignedAuthnResponse
 mkAuthnResponse creds idp spmeta areq grant = do
   subj <- opaqueNameID . UUID.toText <$> createUUID
   mkAuthnResponseWithSubj subj creds idp spmeta areq grant
 
 mkAuthnResponseWithSubj
-  :: (HasCallStack, HasMonadSign m, SP m)
+  :: (HasCallStack, HasMonadSign m, HasCreateUUID m, HasNow m)
   => NameID
   -> SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> m SignedAuthnResponse
 mkAuthnResponseWithSubj subj = mkAuthnResponseWithModif modif id
@@ -40,7 +41,7 @@ mkAuthnResponseWithSubj subj = mkAuthnResponseWithModif modif id
       ]
 
 mkAuthnResponseWithModif
-  :: (HasCallStack, HasMonadSign m, SP m)
+  :: (HasCallStack, HasMonadSign m, HasCreateUUID m, HasNow m)
   => ([Node] -> [Node]) -> ([Node] -> [Node])
   -> SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> m SignedAuthnResponse
 mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp sp authnreq grantAccess = do

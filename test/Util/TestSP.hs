@@ -35,7 +35,9 @@ newtype TestSP a = TestSP { runTestSP :: ReaderT CtxV (ExceptT SimpleError IO) a
 instance HasConfig TestSP where
   getConfig = (^. ctxConfig) <$> (liftIO . readMVar =<< ask)
 
-instance SP TestSP where
+instance HasLogger TestSP
+instance HasCreateUUID TestSP
+instance HasNow TestSP where
   -- Make TestSP to move forward in time after each look at the clock.
   getNow = modifyCtx (\ctx -> (ctx & ctxNow %~ (1 `addTime`), ctx ^. ctxNow))
 

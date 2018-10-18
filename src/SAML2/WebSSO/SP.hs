@@ -31,15 +31,19 @@ import qualified Data.UUID.V4 as UUID
 -- class
 
 -- | Application logic of the service provider.
-class (HasConfig m, Monad m) => SP m where
+type SP m = (HasConfig m, HasLogger m, HasCreateUUID m, HasNow m)
+
+class (HasConfig m) => HasLogger m where
   logger :: Level -> String -> m ()
   default logger :: MonadIO m => Level -> String -> m ()
   logger = loggerConfIO
 
+class Monad m => HasCreateUUID m where
   createUUID :: m UUID
   default createUUID :: MonadIO m => m UUID
   createUUID = createUUIDIO
 
+class Monad m => HasNow m where
   getNow :: m Time
   default getNow :: MonadIO m => m Time
   getNow = getNowIO
@@ -198,9 +202,13 @@ instance (Functor m, Applicative m, Monad m) => Monad (JudgeT m) where
 instance (HasConfig m) => HasConfig (JudgeT m) where
   getConfig = JudgeT . lift . lift . lift $ getConfig
 
-instance SP m => SP (JudgeT m) where
+instance HasLogger m => HasLogger (JudgeT m) where
   logger level     = JudgeT . lift . lift . lift . logger level
+
+instance HasCreateUUID m => HasCreateUUID (JudgeT m) where
   createUUID       = JudgeT . lift . lift . lift $ createUUID
+
+instance HasNow m => HasNow (JudgeT m) where
   getNow           = JudgeT . lift . lift . lift $ getNow
 
 instance (Monad m, SPStoreID i m) => SPStoreID i (JudgeT m) where
