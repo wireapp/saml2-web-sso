@@ -232,6 +232,10 @@ judge resp ctx = runJudgeT ctx (judge' resp)
 judge' :: (HasCallStack, MonadJudge m, SP m, SPStore m) => AuthnResponse -> m AccessVerdict
   -- TODO: dive into the code from here some more.  we also haven't looked into spar yet at all, but
   -- perhaps that's less relevant for this audit.
+
+  -- review this under the assumption that we only register one friendly idp.  we can disable idp
+  -- registration for now on nginz.
+
 judge' resp = do
   either (deny . (:[])) pure . statusIsSuccess $ resp ^. rspStatus
   uref <- either (giveup . (:[])) pure $ getUserRef resp
