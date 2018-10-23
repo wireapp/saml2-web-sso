@@ -229,7 +229,7 @@ authreq'
 authreq' = authreq defReqTTL
 
 defReqTTL :: NominalDiffTime
-defReqTTL = 8 * 60 * 60
+defReqTTL = 15 * 60  -- seconds
 
 -- | parse and validate response, and pass the verdict to a user-provided verdict handler.  the
 -- handler takes a response and a verdict (provided by this package), and can cause any effects in
