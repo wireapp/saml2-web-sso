@@ -191,7 +191,7 @@ instance HasXMLRoot xml => MimeRender HTML (FormRedirect xml) where
                          Note:
                        Since your browser does not support JavaScript, you must press the Continue button once to proceed.
                    <form action=#{uri} method="post">
-                     <input type="hidden" name="SAMLRequest" value=#{value}>  -- TODO; check for sanitization.  make example and send to review!
+                     <input type="hidden" name="SAMLRequest" value=#{value}>
                      <noscript>
                        <input type="submit" value="Continue">
              |]
