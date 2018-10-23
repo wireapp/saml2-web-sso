@@ -377,3 +377,6 @@ judgeConditions (Conditions lowlimit uplimit onetimeuse maudiences) = do
       -> deny ["I am " <> cs (renderURI us) <> ", and I am not in the target audience [" <>
                intercalate ", " (cs . renderURI <$> toList aus) <> "] of this response."]
     _ -> pure ()
+
+
+-- TODO: cert pinning for the initiate-login end-point?  could be implemented on the client side, maybe.
