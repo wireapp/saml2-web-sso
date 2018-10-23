@@ -163,9 +163,14 @@ getSsoURI' proxyAPI proxyAPIAuthResp idpid = extpath . (^. cfgSPSsoURI) <$> getC
 newtype JudgeT m a = JudgeT
   { fromJudgeT :: ExceptT [String] (WriterT [String] (ReaderT JudgeCtx m)) a }
 
+-- | Note on security: we assume that the SP has only one audience, which is defined here.  If you
+-- have, say, different groups that each register their own IdP, secure association of groups with
+-- IdPs is guaranteed by the uniqueness of the 'Issuer' TODO this is far from clear, and probably
+-- stuff we're doing in spar, so it should be documented htere.  If you want to run different
+-- services on one SP authenticated by one IdP, you may need to patch this library.
 data JudgeCtx = JudgeCtx
-  { _judgeCtxRequestIssuer :: Issuer
-  , _judgeCtxResponseURI   :: URI
+  { _judgeCtxAudience    :: Issuer
+  , _judgeCtxResponseURI :: URI
   }
 
 makeLenses ''JudgeCtx
@@ -362,7 +367,7 @@ judgeConditions (Conditions lowlimit uplimit onetimeuse maudiences) = do
   when onetimeuse $
     deny ["unsupported flag: OneTimeUse"]
 
-  Issuer us <- (^. judgeCtxRequestIssuer) <$> getJudgeCtx
+  Issuer us <- (^. judgeCtxAudience) <$> getJudgeCtx
   case maudiences of
     Just aus | us `notElem` aus
       -> deny ["I am " <> cs (renderURI us) <> ", and I am not in the target audience [" <>
