@@ -233,8 +233,6 @@ authreq lifeExpectancySecs getIssuer idpid = do
   logger Debug $ "authreq req: " <> cs (encode req)
   leaveH $ FormRedirect uri req
 
--- TODO: enforce https for authnreq redirect during idp registration.  (or did i do that already?  either way also write a test!)
-
 -- | 'authreq' with request life expectancy defaulting to 8 hours.
 authreq'
   :: (SPHandler (Error err) m)
