@@ -95,6 +95,15 @@ newtype AuthnResponseBody = AuthnResponseBody
 renderAuthnResponseBody :: AuthnResponse -> LBS
 renderAuthnResponseBody = EL.encode . cs . encode
 
+
+-- TODO: open redirect vulnerability.  make getAuthnReq a post, and the idpid is in the body, then
+-- it's harder to craft a link for phishing attacks.  open a backend-issue and check back with
+-- clients if that's possible.  if it is, we probably need to support both securer and insecurer
+-- end-points until all clients have migrated.  (attack scenario: attacker creates a team and an idp
+-- that looks like the wire login page.  then invites non-team wire user to follow link
+-- .../sso/initiate-login/....  user will enter password into "idp".  profit!)
+
+
 -- | Implies verification, hence the constraint.
 parseAuthnResponseBody :: forall m err. SPStoreIdP (Error err) m => LBS -> m AuthnResponse
 parseAuthnResponseBody base64 = do
@@ -104,9 +113,12 @@ parseAuthnResponseBody base64 = do
   resp <-
     either (throwError . BadSamlResponse . cs) pure $
     decode (cs xmltxt)
-  simpleVerifyAuthnResponse (resp ^. rspIssuer) xmltxt
+  simpleVerifyAuthnResponse (resp ^. rspIssuer) xmltxt  -- TODO: take closer look into that?
   pure resp
 
+-- TODO: unit tests using invalid signatures, invalid payloads, and valid boths, resp.
+
+-- TODO: rate limiting to request *and* response end-points.  check size first here before sig validation?
 
 authnResponseBodyToMultipart :: AuthnResponse -> MultipartData tag
 authnResponseBodyToMultipart resp = MultipartData [Input "SAMLResponse" (cs $ renderAuthnResponseBody resp)] []
@@ -179,7 +191,7 @@ instance HasXMLRoot xml => MimeRender HTML (FormRedirect xml) where
                          Note:
                        Since your browser does not support JavaScript, you must press the Continue button once to proceed.
                    <form action=#{uri} method="post">
-                     <input type="hidden" name="SAMLRequest" value=#{value}>
+                     <input type="hidden" name="SAMLRequest" value=#{value}>  -- TODO; check for sanitization.  make example and send to review!
                      <noscript>
                        <input type="submit" value="Continue">
              |]
@@ -221,6 +233,8 @@ authreq lifeExpectancySecs getIssuer idpid = do
   logger Debug $ "authreq req: " <> cs (encode req)
   leaveH $ FormRedirect uri req
 
+-- TODO: enforce https for authnreq redirect during idp registration.  (or did i do that already?  either way also write a test!)
+
 -- | 'authreq' with request life expectancy defaulting to 8 hours.
 authreq'
   :: (SPHandler (Error err) m)
@@ -246,6 +260,10 @@ authresp getSPIssuer getResponseURI handleVerdictAction body = do
   verdict <- judge resp jctx
   logger Debug $ "authresp: " <> show verdict
   handleVerdictAction resp verdict
+
+
+-- TODO: what C library do we use for DSig validation.
+
 
 -- | a variant of 'authresp' with a less general verdict handler.
 authresp'
