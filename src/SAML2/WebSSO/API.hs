@@ -97,15 +97,6 @@ newtype AuthnResponseBody = AuthnResponseBody
 renderAuthnResponseBody :: AuthnResponse -> LBS
 renderAuthnResponseBody = EL.encode . cs . encode
 
-
--- TODO: open redirect vulnerability.  make getAuthnReq a post, and the idpid is in the body, then
--- it's harder to craft a link for phishing attacks.  open a backend-issue and check back with
--- clients if that's possible.  if it is, we probably need to support both securer and insecurer
--- end-points until all clients have migrated.  (attack scenario: attacker creates a team and an idp
--- that looks like the wire login page.  then invites non-team wire user to follow link
--- .../sso/initiate-login/....  user will enter password into "idp".  profit!)
-
-
 -- | Implies verification, hence the constraint.
 parseAuthnResponseBody :: forall m err. SPStoreIdP (Error err) m => LBS -> m AuthnResponse
 parseAuthnResponseBody base64 = do
