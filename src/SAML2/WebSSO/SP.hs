@@ -163,9 +163,13 @@ getSsoURI' proxyAPI proxyAPIAuthResp idpid = extpath . (^. cfgSPSsoURI) <$> getC
 newtype JudgeT m a = JudgeT
   { fromJudgeT :: ExceptT [String] (WriterT [String] (ReaderT JudgeCtx m)) a }
 
+-- | Note on security: we assume that the SP has only one audience, which is defined here.  If you
+-- have different sub-services running on your SP, associate a dedicated IdP with each sub-service.
+-- (To be more specific, construct 'AuthnReq's to different IdPs for each sub-service.)  Secure
+-- association with the service can then be guaranteed via the 'Issuer' in the signed 'Assertion'.
 data JudgeCtx = JudgeCtx
-  { _judgeCtxRequestIssuer :: Issuer
-  , _judgeCtxResponseURI   :: URI
+  { _judgeCtxAudience    :: Issuer
+  , _judgeCtxResponseURI :: URI
   }
 
 makeLenses ''JudgeCtx
@@ -236,10 +240,12 @@ judge' resp = do
   unStoreID inRespTo
   pure verdict
 
+-- | If this fails, we could continue ('deny'), but we stop processing ('giveup') to make DOS
+-- attacks harder.
 checkInResponseTo :: (SPStore m, MonadJudge m) => String -> ID AuthnRequest -> m ()
 checkInResponseTo loc req = do
   ok <- isAliveID req
-  unless ok . deny $ ["invalid InResponseTo field in " <> loc <> ": " <> show req]
+  unless ok . giveup $ ["invalid InResponseTo field in " <> loc <> ": " <> show req]
 
 checkIsInPast :: (SP m, MonadJudge m) => String -> Time -> m ()
 checkIsInPast msg tim = do
@@ -264,7 +270,7 @@ checkAssertions missuer (toList -> assertions) uref@(UserRef issuer _) = do
   forM_ assertions $ \ass -> do
     checkIsInPast "Assertion IssueInstant" (ass ^. assIssueInstant)
     storeAssertion (ass ^. assID) (ass ^. assEndOfLife)
-  judgeConditions `mapM_` catMaybes ((^. assConditions) <$> assertions)
+  checkConditions `mapM_` catMaybes ((^. assConditions) <$> assertions)
 
   unless (maybe True (issuer ==) missuer) $
     deny ["issuers mismatch: " <> show (missuer, issuer)]
@@ -348,8 +354,8 @@ checkSubjectConfirmationData bearer confdat = do
   -- better redundant than sorry?
   checkInResponseTo "assertion" `mapM_` (confdat ^. scdInResponseTo)
 
-judgeConditions :: (HasCallStack, MonadJudge m, SP m) => Conditions -> m ()
-judgeConditions (Conditions lowlimit uplimit onetimeuse maudiences) = do
+checkConditions :: (HasCallStack, MonadJudge m, SP m) => Conditions -> m ()
+checkConditions (Conditions lowlimit uplimit onetimeuse maudiences) = do
   now <- getNow
   when (maybe False (now <) lowlimit) $
     deny ["violation of NotBefore condition: "  <> show now <> " >= " <> show lowlimit]
@@ -358,7 +364,7 @@ judgeConditions (Conditions lowlimit uplimit onetimeuse maudiences) = do
   when onetimeuse $
     deny ["unsupported flag: OneTimeUse"]
 
-  Issuer us <- (^. judgeCtxRequestIssuer) <$> getJudgeCtx
+  Issuer us <- (^. judgeCtxAudience) <$> getJudgeCtx
   case maudiences of
     Just aus | us `notElem` aus
       -> deny ["I am " <> cs (renderURI us) <> ", and I am not in the target audience [" <>

@@ -11,6 +11,7 @@ import Control.Monad.Except
 import Data.Either
 import Data.EitherR
 import Data.List.NonEmpty (NonEmpty((:|)))
+import Data.Maybe (maybeToList)
 import Data.String.Conversions
 import Network.Wai.Test
 import SAML2.Util
@@ -123,23 +124,9 @@ spec = describe "API" $ do
               <> " you must press the Continue button once to proceed."
               <>       "</p>"
               <>     "</noscript>"
-              <>     "<form action=\"https://ServiceProvider.com/SAML/SLO/Browser\""
+              <>     "<form action=\"https://ServiceProvider.com/SAML/SLO/Browser/%25%25\""
               <> " method=\"post\">"
-              -- <> "      <input type=\"hidden\" name=\"RelayState\""
-              -- <> " value=\"0043bfc1bc45110dae17004005b13a2b\"/>"
               <>       "<input type=\"hidden\" name=\"SAMLRequest\""
-              -- the original encoding, differing in irrelevant nit-picks.
-              -- <> " value=\"PHNhbWxwOkxvZ291dFJlcXVlc3QgeG1sbnM6c2FtbHA9InVybjpvYXNpczpuYW1l"
-              -- <> "czp0YzpTQU1MOjIuMDpwcm90b2NvbCIgeG1sbnM9InVybjpvYXNpczpuYW1lczp0"
-              -- <> "YzpTQU1MOjIuMDphc3NlcnRpb24iDQogICAgSUQ9ImQyYjdjMzg4Y2VjMzZmYTdj"
-              -- <> "MzljMjhmZDI5ODY0NGE4IiBJc3N1ZUluc3RhbnQ9IjIwMDQtMDEtMjFUMTk6MDA6"
-              -- <> "NDlaIiBWZXJzaW9uPSIyLjAiPg0KICAgIDxJc3N1ZXI+aHR0cHM6Ly9JZGVudGl0"
-              -- <> "eVByb3ZpZGVyLmNvbS9TQU1MPC9Jc3N1ZXI+DQogICAgPE5hbWVJRCBGb3JtYXQ9"
-              -- <> "InVybjpvYXNpczpuYW1lczp0YzpTQU1MOjIuMDpuYW1laWQtZm9ybWF0OnBlcnNp"
-              -- <> "c3RlbnQiPjAwNWEwNmUwLWFkODItMTEwZC1hNTU2LTAwNDAwNWIxM2EyYjwvTmFt"
-              -- <> "ZUlEPg0KICAgIDxzYW1scDpTZXNzaW9uSW5kZXg+MTwvc2FtbHA6U2Vzc2lvbklu"
-              -- <> "ZGV4Pg0KPC9zYW1scDpMb2dvdXRSZXF1ZXN0Pg==\"/>"
-              -- copied from test failure (this is ok assuming that the base64 tests above have passed)
               <> " value=\"PHNhbWxwOkxvZ291dFJlcXVlc3QgSUQ9ImQyYjdjMzg4Y2VjMzZmYTdjMzljMjhmZDI5ODY0NGE4IiBJc3N1ZUluc3RhbnQ9IjIwMDQtMDEtMjFUMTk6MDA6NDlaIiBWZXJzaW9uPSIyLjAiIHhtbG5zOnNhbWxwPSJ1cm46b2FzaXM6bmFtZXM6dGM6U0FNTDoyLjA6cHJvdG9jb2wiPiAgICA8SXNzdWVyIHhtbG5zPSJ1cm46b2FzaXM6bmFtZXM6dGM6U0FNTDoyLjA6YXNzZXJ0aW9uIj5odHRwczovL0lkZW50aXR5UHJvdmlkZXIuY29tL1NBTUw8L0lzc3Vlcj4gICAgPE5hbWVJRCBGb3JtYXQ9InVybjpvYXNpczpuYW1lczp0YzpTQU1MOjIuMDpuYW1laWQtZm9ybWF0OnBlcnNpc3RlbnQiIHhtbG5zPSJ1cm46b2FzaXM6bmFtZXM6dGM6U0FNTDoyLjA6YXNzZXJ0aW9uIj4wMDVhMDZlMC1hZDgyLTExMGQtYTU1Ni0wMDQwMDViMTNhMmI8L05hbWVJRD4gICAgPHNhbWxwOlNlc3Npb25JbmRleD4xPC9zYW1scDpTZXNzaW9uSW5kZXg+PC9zYW1scDpMb2dvdXRSZXF1ZXN0Pg==\"/>"
               <>       "<noscript>"
               <>           "<input type=\"submit\" value=\"Continue\"/>"
@@ -148,12 +135,13 @@ spec = describe "API" $ do
               <>   "</body>"
               <> "</html>"
           Right (SomeSAMLRequest -> doc) = XML.parseText XML.def have
-          spuri = [uri|https://ServiceProvider.com/SAML/SLO/Browser|]
+          spuri = [uri|https://ServiceProvider.com/SAML/SLO/Browser/%%|]
 
       Right want `shouldBe` (fmapL show . parseText def . cs $ mimeRender (Proxy @HTML) (FormRedirect spuri doc))
 
   describe "simpleVerifyAuthnResponse" $ do
-    let check goodsig knownkey expectOutcome =
+    let check :: Bool -> Maybe Bool -> Bool -> SpecWith ()
+        check goodsig mgoodkey expectOutcome =
           it (show expectOutcome) $ do
             let respfile = if goodsig
                   then "microsoft-authnresponse-2.xml"
@@ -161,33 +149,40 @@ spec = describe "API" $ do
 
             resp :: LBS
               <- cs <$> readSampleIO respfile
-            idpcfg :: IdPConfig_
-              <- either (error . show) pure
-                   =<< (Yaml.decodeEither' . cs <$> readSampleIO "microsoft-idp-config.yaml")
+            midpcfg :: Maybe IdPConfig_
+              <- case mgoodkey of
+                   Nothing -> pure Nothing
+                   Just goodkey -> do
+                     let cfgfile = if goodkey
+                           then "microsoft-idp-config.yaml"
+                           else "microsoft-idp-config-badkey.yaml"
+                     either (error . show) (pure . Just)
+                       =<< (Yaml.decodeEither' . cs <$> readSampleIO cfgfile)
 
             let run :: TestSP a -> IO a
                 run action = do
                   ctx <- mkTestCtxSimple
-                  when knownkey $
-                    modifyMVar_ ctx (pure . (ctxIdPs .~ [idpcfg | knownkey]))
+                  modifyMVar_ ctx (pure . (ctxIdPs .~ maybeToList midpcfg))
                   ioFromTestSP ctx action
 
-                issuer = idpcfg ^. idpMetadata . edIssuer
+                missuer = (^. idpMetadata . edIssuer) <$> midpcfg
 
                 go :: TestSP ()
-                go = simpleVerifyAuthnResponse (Just issuer) resp
+                go = simpleVerifyAuthnResponse missuer resp
 
             if expectOutcome
               then run go `shouldReturn` ()
               else run go `shouldThrow` anyException
 
     context "good signature" $ do
-      context "known key"    $ check True True True
-      context "unknown key"  $ check True False False
+      context "known key"    $ check True (Just True) True
+      context "bad key"      $ check True (Just False) False
+      context "unknown key"  $ check True Nothing False
 
     context "bad signature"  $ do
-      context "known key"    $ check False True False
-      context "unknown key"  $ check False False False
+      context "known key"    $ check False (Just True) False
+      context "bad key"      $ check False (Just False) False
+      context "unknown key"  $ check False Nothing False
 
   describe "cookies" $ do
     let rndtrip

@@ -2,6 +2,7 @@
 
 -- TODO: make sure everything in HS.* that might change the interpreation of the data
 -- we know is either 'Nothing' or we look at it.
+-- FUTUREWORK: consider using http://hackage.haskell.org/package/xml-conduit-parse
 
 module SAML2.WebSSO.XML where
 
