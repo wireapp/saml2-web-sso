@@ -164,10 +164,9 @@ newtype JudgeT m a = JudgeT
   { fromJudgeT :: ExceptT [String] (WriterT [String] (ReaderT JudgeCtx m)) a }
 
 -- | Note on security: we assume that the SP has only one audience, which is defined here.  If you
--- have, say, different groups that each register their own IdP, secure association of groups with
--- IdPs is guaranteed by the uniqueness of the 'Issuer' TODO this is far from clear, and probably
--- stuff we're doing in spar, so it should be documented htere.  If you want to run different
--- services on one SP authenticated by one IdP, you may need to patch this library.
+-- have different sub-services running on your SP, associate a dedicated IdP with each sub-service.
+-- (To be more specific, construct 'AuthnReq's to different IdPs for each sub-service.)  Secure
+-- association with the service can then be guaranteed via the 'Issuer' in the signed 'Assertion'.
 data JudgeCtx = JudgeCtx
   { _judgeCtxAudience    :: Issuer
   , _judgeCtxResponseURI :: URI
