@@ -249,10 +249,6 @@ authresp getSPIssuer getResponseURI handleVerdictAction body = do
   logger Debug $ "authresp: " <> show verdict
   handleVerdictAction resp verdict
 
-
--- TODO: what C library do we use for DSig validation.
-
-
 -- | a variant of 'authresp' with a less general verdict handler.
 authresp'
   :: SPHandler (Error err) m

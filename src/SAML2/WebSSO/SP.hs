@@ -229,9 +229,6 @@ judge resp ctx = runJudgeT ctx (judge' resp)
 -- TODO: crash for any extensions of the xml tree that we don't understand!
 
 judge' :: (HasCallStack, MonadJudge m, SP m, SPStore m) => AuthnResponse -> m AccessVerdict
-  -- TODO: dive into the code from here some more.  we also haven't looked into spar yet at all, but
-  -- perhaps that's less relevant for this audit.
-
 judge' resp = do
   either (deny . (:[])) pure . statusIsSuccess $ resp ^. rspStatus
   uref <- either (giveup . (:[])) pure $ getUserRef resp
