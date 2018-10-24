@@ -11,6 +11,7 @@ import Control.Monad.Except
 import Data.Either
 import Data.EitherR
 import Data.List.NonEmpty (NonEmpty((:|)))
+import Data.Maybe (maybeToList)
 import Data.String.Conversions
 import Network.Wai.Test
 import SAML2.Util
@@ -139,7 +140,8 @@ spec = describe "API" $ do
       Right want `shouldBe` (fmapL show . parseText def . cs $ mimeRender (Proxy @HTML) (FormRedirect spuri doc))
 
   describe "simpleVerifyAuthnResponse" $ do
-    let check goodsig knownkey expectOutcome =
+    let check :: Bool -> Maybe Bool -> Bool -> SpecWith ()
+        check goodsig mgoodkey expectOutcome =
           it (show expectOutcome) $ do
             let respfile = if goodsig
                   then "microsoft-authnresponse-2.xml"
@@ -147,33 +149,40 @@ spec = describe "API" $ do
 
             resp :: LBS
               <- cs <$> readSampleIO respfile
-            idpcfg :: IdPConfig_
-              <- either (error . show) pure
-                   =<< (Yaml.decodeEither' . cs <$> readSampleIO "microsoft-idp-config.yaml")
+            midpcfg :: Maybe IdPConfig_
+              <- case mgoodkey of
+                   Nothing -> pure Nothing
+                   Just goodkey -> do
+                     let cfgfile = if goodkey
+                           then "microsoft-idp-config.yaml"
+                           else "microsoft-idp-config-badkey.yaml"
+                     either (error . show) (pure . Just)
+                       =<< (Yaml.decodeEither' . cs <$> readSampleIO cfgfile)
 
             let run :: TestSP a -> IO a
                 run action = do
                   ctx <- mkTestCtxSimple
-                  when knownkey $
-                    modifyMVar_ ctx (pure . (ctxIdPs .~ [idpcfg | knownkey]))
+                  modifyMVar_ ctx (pure . (ctxIdPs .~ maybeToList midpcfg))
                   ioFromTestSP ctx action
 
-                issuer = idpcfg ^. idpMetadata . edIssuer
+                missuer = (^. idpMetadata . edIssuer) <$> midpcfg
 
                 go :: TestSP ()
-                go = simpleVerifyAuthnResponse (Just issuer) resp
+                go = simpleVerifyAuthnResponse missuer resp
 
             if expectOutcome
               then run go `shouldReturn` ()
               else run go `shouldThrow` anyException
 
     context "good signature" $ do
-      context "known key"    $ check True True True
-      context "unknown key"  $ check True False False
+      context "known key"    $ check True (Just True) True
+      context "bad key"      $ check True (Just False) False
+      context "unknown key"  $ check True Nothing False
 
     context "bad signature"  $ do
-      context "known key"    $ check False True False
-      context "unknown key"  $ check False False False
+      context "known key"    $ check False (Just True) False
+      context "bad key"      $ check False (Just False) False
+      context "unknown key"  $ check False Nothing False
 
   describe "cookies" $ do
     let rndtrip

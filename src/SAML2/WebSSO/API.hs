@@ -109,8 +109,6 @@ parseAuthnResponseBody base64 = do
   simpleVerifyAuthnResponse (resp ^. rspIssuer) xmltxt  -- TODO: take closer look into that?
   pure resp
 
--- TODO: unit tests using invalid signatures, invalid payloads, and valid boths, resp.
-
 authnResponseBodyToMultipart :: AuthnResponse -> MultipartData tag
 authnResponseBodyToMultipart resp = MultipartData [Input "SAMLResponse" (cs $ renderAuthnResponseBody resp)] []
 
