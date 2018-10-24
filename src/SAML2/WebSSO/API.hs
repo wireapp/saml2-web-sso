@@ -118,7 +118,7 @@ parseAuthnResponseBody base64 = do
 
 -- TODO: unit tests using invalid signatures, invalid payloads, and valid boths, resp.
 
--- TODO: rate limiting to request *and* response end-points.  check size first here before sig validation?
+-- TODO: rate limiting to request *and* response end-points.
 
 authnResponseBodyToMultipart :: AuthnResponse -> MultipartData tag
 authnResponseBodyToMultipart resp = MultipartData [Input "SAMLResponse" (cs $ renderAuthnResponseBody resp)] []
