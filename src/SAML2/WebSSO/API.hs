@@ -106,7 +106,7 @@ parseAuthnResponseBody base64 = do
   resp <-
     either (throwError . BadSamlResponse . cs) pure $
     decode (cs xmltxt)
-  simpleVerifyAuthnResponse (resp ^. rspIssuer) xmltxt  -- TODO: take closer look into that?
+  simpleVerifyAuthnResponse (resp ^. rspIssuer) xmltxt
   pure resp
 
 authnResponseBodyToMultipart :: AuthnResponse -> MultipartData tag
@@ -130,30 +130,31 @@ simpleVerifyAuthnResponse Nothing _ = throwError $ BadSamlResponse "missing issu
 simpleVerifyAuthnResponse (Just issuer) raw = do
     creds :: NonEmpty SignCreds <- do
       certs <- (^. idpMetadata . edCertAuthnResponse) <$> getIdPConfigByIssuer issuer
-      forM certs $ \cert -> certToCreds cert &
-        either (throwError . BadServerConfig . ((encodeElem issuer <> ": ") <>) . cs) pure
+      let err = throwError . InvalidCert . ((encodeElem issuer <> ": ") <>) . cs
+      forM certs $ either err pure . certToCreds
 
-    doc :: Cursor <- either (throwError . BadSamlResponse . ("could not parse document: " <>) . cs . show)
-                            (pure . fromDocument)
-                            (parseLBS def raw)
+    doc :: Cursor <- do
+      let err = throwError . BadSamlResponse . ("could not parse document: " <>) . cs . show
+      either err (pure . fromDocument) (parseLBS def raw)
 
-    let elemOnly (NodeElement el) = Just el
-        elemOnly _ = Nothing
+    assertions :: [Element] <- do
+      let elemOnly (NodeElement el) = Just el
+          elemOnly _ = Nothing
+      case catMaybes $ elemOnly . node <$>
+             (doc $/ element "{urn:oasis:names:tc:SAML:2.0:assertion}Assertion") of
+        [] -> throwError . BadSamlResponse $ "no assertions: " <> cs (show raw)
+        some@(_:_) -> pure some
 
-        assertions :: [Element]
-        assertions = catMaybes $ elemOnly . node <$>
-                     (doc $/ element "{urn:oasis:names:tc:SAML:2.0:assertion}Assertion")
-    when (null assertions) $
-      throwError . BadSamlResponse $ "no assertions: " <> cs (show raw)
+    nodeids :: [String] <- do
+      let assertionID :: Element -> m String
+          assertionID el@(Element _ attrs _)
+            = maybe (throwError . BadSamlResponse $ "assertion without ID: " <> cs (show el)) (pure . cs)
+            $ Map.lookup "ID" attrs
+      assertionID `mapM` assertions
 
-    let assertionID :: Element -> m String
-        assertionID el@(Element _ attrs _)
-          = maybe (throwError . BadSamlResponse $ "assertion without ID: " <> cs (show el)) (pure . cs)
-          $ Map.lookup "ID" attrs
-    nodeids :: [String]
-      <- assertionID `mapM` assertions
-
-    either (throwError . BadSamlResponse . cs) pure $ (verify creds raw `mapM_` nodeids)
+    do
+      let err = throwError . BadSamlResponse . cs
+      either err pure $ verify creds raw `mapM_` nodeids
 
 
 ----------------------------------------------------------------------

@@ -13,6 +13,7 @@ data Error err
   | Forbidden LT
   | BadSamlResponse LT
   | BadServerConfig LT
+  | InvalidCert LT
   | UnknownError
   | CustomServant ServantErr
   | CustomError err
@@ -25,6 +26,7 @@ toServantErr :: SimpleError -> ServantErr
 toServantErr (UnknownIdP msg)      = err404 { errBody = cs $ "Unknown IdP: " <> msg }
 toServantErr (Forbidden msg)       = err403 { errBody = cs $ msg }
 toServantErr (BadSamlResponse msg) = err400 { errBody = cs $ msg }
+toServantErr (InvalidCert msg)     = err400 { errBody = cs $ "Invalid certificate: " <> msg }
 toServantErr (BadServerConfig msg) = err400 { errBody = cs $ "Invalid server config: " <> msg }
 toServantErr UnknownError          = err500 { errBody = "Internal server error.  Please consult the logs." }
 toServantErr (CustomServant err)   = err
