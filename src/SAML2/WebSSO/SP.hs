@@ -232,9 +232,6 @@ judge' :: (HasCallStack, MonadJudge m, SP m, SPStore m) => AuthnResponse -> m Ac
   -- TODO: dive into the code from here some more.  we also haven't looked into spar yet at all, but
   -- perhaps that's less relevant for this audit.
 
-  -- review this under the assumption that we only register one friendly idp.  we can disable idp
-  -- registration for now on nginz.
-
 judge' resp = do
   either (deny . (:[])) pure . statusIsSuccess $ resp ^. rspStatus
   uref <- either (giveup . (:[])) pure $ getUserRef resp
@@ -376,6 +373,3 @@ judgeConditions (Conditions lowlimit uplimit onetimeuse maudiences) = do
       -> deny ["I am " <> cs (renderURI us) <> ", and I am not in the target audience [" <>
                intercalate ", " (cs . renderURI <$> toList aus) <> "] of this response."]
     _ -> pure ()
-
-
--- TODO: cert pinning for the initiate-login end-point?  could be implemented on the client side, maybe.
