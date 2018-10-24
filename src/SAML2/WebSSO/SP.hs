@@ -246,12 +246,12 @@ judge' resp = do
   unStoreID inRespTo
   pure verdict
 
--- TODO: order: (1) lookup pubkey (2) validate signature (3) validate inResponseTo (4) store ResponseId
-
+-- | If this fails, we could continue ('deny'), but we stop processing ('giveup') to make DOS
+-- attacks harder.
 checkInResponseTo :: (SPStore m, MonadJudge m) => String -> ID AuthnRequest -> m ()
 checkInResponseTo loc req = do
   ok <- isAliveID req
-  unless ok . deny $ ["invalid InResponseTo field in " <> loc <> ": " <> show req]
+  unless ok . giveup $ ["invalid InResponseTo field in " <> loc <> ": " <> show req]
 
 checkIsInPast :: (SP m, MonadJudge m) => String -> Time -> m ()
 checkIsInPast msg tim = do
