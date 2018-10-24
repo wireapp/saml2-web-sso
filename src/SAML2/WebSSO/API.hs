@@ -65,6 +65,8 @@ type APIMeta'     = "meta" :> APIMeta
 type APIAuthReq'  = "authreq" :> APIAuthReq
 type APIAuthResp' = "authresp" :> APIAuthResp
 
+-- | Consider rate-limiting these end-points to mitigate DOS attacks.  'APIAuthReq' uses database
+-- space, and 'APIAuthResp' uses both database space and CPU.
 type API = APIMeta'
       :<|> APIAuthReq'
       :<|> APIAuthResp'
@@ -117,8 +119,6 @@ parseAuthnResponseBody base64 = do
   pure resp
 
 -- TODO: unit tests using invalid signatures, invalid payloads, and valid boths, resp.
-
--- TODO: rate limiting to request *and* response end-points.
 
 authnResponseBodyToMultipart :: AuthnResponse -> MultipartData tag
 authnResponseBodyToMultipart resp = MultipartData [Input "SAMLResponse" (cs $ renderAuthnResponseBody resp)] []
