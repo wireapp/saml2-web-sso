@@ -273,7 +273,7 @@ checkAssertions missuer (toList -> assertions) uref@(UserRef issuer _) = do
   forM_ assertions $ \ass -> do
     checkIsInPast "Assertion IssueInstant" (ass ^. assIssueInstant)
     storeAssertion (ass ^. assID) (ass ^. assEndOfLife)
-  judgeConditions `mapM_` catMaybes ((^. assConditions) <$> assertions)
+  checkConditions `mapM_` catMaybes ((^. assConditions) <$> assertions)
 
   unless (maybe True (issuer ==) missuer) $
     deny ["issuers mismatch: " <> show (missuer, issuer)]
@@ -357,8 +357,8 @@ checkSubjectConfirmationData bearer confdat = do
   -- better redundant than sorry?
   checkInResponseTo "assertion" `mapM_` (confdat ^. scdInResponseTo)
 
-judgeConditions :: (HasCallStack, MonadJudge m, SP m) => Conditions -> m ()
-judgeConditions (Conditions lowlimit uplimit onetimeuse maudiences) = do
+checkConditions :: (HasCallStack, MonadJudge m, SP m) => Conditions -> m ()
+checkConditions (Conditions lowlimit uplimit onetimeuse maudiences) = do
   now <- getNow
   when (maybe False (now <) lowlimit) $
     deny ["violation of NotBefore condition: "  <> show now <> " >= " <> show lowlimit]
