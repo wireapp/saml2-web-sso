@@ -105,8 +105,19 @@ createID :: SP m => m (ID a)
 createID = ID . ("_" <>) . UUID.toText <$> createUUID
 
 -- | Generate an 'AuthnRequest' value for the initiate-login response.  The 'NameIdPolicy' is
--- 'NameIDFUnspecified'.  Do not use email here unless you are confident that there won't be issues
--- with changing email addresses that you don't know how to resolve.
+-- 'NameIDFUnspecified'.
+--
+-- We do not use XML encryption (which appears to have been dead for years).  We do not sign
+-- 'AuthnRequest' values.  Both encryption and signatures are optional, and rarely found in the
+-- wild.  Security: (1) the 'AuthnReq' 'ID' is stored, and 'Assertion's need to refer to a valid one
+-- in order to get a positive 'AccessVerdict' by 'judge'.  'AuthnResponse's answering requests not
+-- originating from us will be ignored.  (2) the request 'Issuer' is there to help the IdP construct
+-- an 'AuthnResponse' that we will accept.  If it is changed by an attacker (either in the browser
+-- or on the wire, which is weakly procted by TLS) and passed on to the legitimate IdP, there will
+-- either be no access-granting 'AuthnResponse', or it will contain the wrong audience and be
+-- rejected by us.  (3) The nameID policy is expected to be configured on the IdP side to not
+-- support any set of name spaces that overlap (e.g. because user A has an email that is the account
+-- name of user B).
 createAuthnRequest :: (SP m, SPStore m) => NominalDiffTime -> m Issuer -> m AuthnRequest
 createAuthnRequest lifeExpectancySecs getIssuer = do
   _rqID           <- createID
