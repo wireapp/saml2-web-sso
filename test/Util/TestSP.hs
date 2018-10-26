@@ -171,8 +171,17 @@ verbose = ctxConfig . cfgLogLevel .~ Debug
 timeLongAgo     :: Time
 timeLongAgo     = unsafeReadTime "1918-04-14T09:58:58.457Z"
 
+timeInALongTime :: Time
+timeInALongTime = unsafeReadTime "2045-04-14T09:58:58.457Z"
+
 timeNow         :: Time
 timeNow         = unsafeReadTime "2018-03-11T17:13:13Z"
+
+timeIn5seconds  :: Time
+timeIn5seconds  = unsafeReadTime "2018-03-11T17:13:18Z"
+
+timeIn10seconds :: Time
+timeIn10seconds = unsafeReadTime "2018-03-11T17:13:23Z"
 
 timeIn10minutes :: Time
 timeIn10minutes = unsafeReadTime "2018-03-11T17:23:00.01Z"

@@ -4,6 +4,7 @@ module Test.SAML2.WebSSO.XML.RoundtripSpec (spec) where
 
 import SAML2.WebSSO.Test.Arbitrary
 import Hedgehog
+import Hedgehog.Gen as Gen
 import SAML2.WebSSO
 import Test.Hspec
 import Util
@@ -32,7 +33,6 @@ prop_tripSPMetadata = mkprop genSPMetadata
 prop_tripAuthnRequest :: Property
 prop_tripAuthnRequest = mkprop genAuthnRequest
 
--- FUTUREWORK: enable and fix
--- prop_tripAuthnResponse :: Property
--- prop_tripAuthnResponse = mkprop (Gen.prune genAuthnResponse)
+prop_tripAuthnResponse :: Property
+prop_tripAuthnResponse = mkprop (Gen.prune genAuthnResponse)
   -- without the 'prune', this triggers https://github.com/hedgehogqa/haskell-hedgehog/issues/174

@@ -371,7 +371,7 @@ data Conditions
   = Conditions
     { _condNotBefore           :: Maybe Time
     , _condNotOnOrAfter        :: Maybe Time
-    , _condOneTimeUse          :: Bool   -- ^ [1/2.5.1.5]
+    , _condOneTimeUse          :: Bool   -- ^ [1/2.5.1.5] (it's safe to ignore this)
     , _condAudienceRestriction :: Maybe (NonEmpty URI)  -- ^ 'Nothing' means do not restrict.
     }
   deriving (Eq, Show, Generic)
@@ -395,7 +395,7 @@ data Subject = Subject
 -- | Information about the kind of proof of identity the 'Subject' provided to the IdP.  [1/2.4]
 data SubjectConfirmation = SubjectConfirmation
   { _scMethod :: SubjectConfirmationMethod
-  , _scData   :: [SubjectConfirmationData]
+  , _scData   :: Maybe SubjectConfirmationData
   }
   deriving (Eq, Show, Generic)
 
@@ -422,36 +422,18 @@ newtype IP = IP ST
 data Statement
   = AuthnStatement  -- [1/2.7.2]
     { _astAuthnInstant        :: Time
-    , _astSessionIndex        :: Maybe ST
+    , _astSessionIndex        :: Maybe ST  -- safe to ignore
     , _astSessionNotOnOrAfter :: Maybe Time
     , _astSubjectLocality     :: Maybe Locality
-    }
-  | AttributeStatement  -- [1/2.7.3]
-    { _attrstAttrs :: NonEmpty Attribute
     }
   deriving (Eq, Show, Generic)
 
 
 -- | [1/2.7.2.1]
 data Locality = Locality
-  { _localityAddress :: Maybe ST
+  { _localityAddress :: Maybe IP
   , _localityDNSName :: Maybe ST
   }
-  deriving (Eq, Show, Generic)
-
-
--- | [1/2.7.3.1]
-data Attribute =
-    Attribute
-    { _stattrName         :: ST
-    , _stattrNameFormat   :: Maybe URI  -- ^ [1/8.2]
-    , _stattrFriendlyName :: Maybe ST
-    , _stattrValues       :: [AttributeValue]
-    }
-  deriving (Eq, Show, Generic)
-
--- | [1/2.7.3.1.1] could be @ST@, or @Num n => n@, or something else.
-newtype AttributeValue = AttributeValueUntyped ST
   deriving (Eq, Show, Generic)
 
 
@@ -469,8 +451,6 @@ normalizeAssertion = error "normalizeAssertion: not implemented"
 
 makeLenses ''AccessVerdict
 makeLenses ''Assertion
-makeLenses ''Attribute
-makeLenses ''AttributeValue
 makeLenses ''AuthnRequest
 makeLenses ''BaseID
 makeLenses ''Comparison
@@ -555,19 +535,26 @@ assEndOfLife = lens gt st
 -- | [3/4.1.4.2] SubjectConfirmation [...] If the containing message is in response to an
 -- AuthnRequest, then the InResponseTo attribute MUST match the request's ID.
 rspInResponseTo :: MonadError String m => AuthnResponse -> m (ID AuthnRequest)
-rspInResponseTo aresp = case ids of
-  [] -> throwError "not found"
-  [i] -> pure i
-  is@(i:_:_) -> if L.nub is == [i]
-                then pure i
-                else throwError $ "contradictory InResponseTo values: " <> show is
+rspInResponseTo aresp = case (inResp, inSubjectConf) of
+  (_, [])
+    -> throwError "not found"  -- the inSubjectConf is required!
+  (Nothing, js@(_:_)) | L.length (L.nub js) /= 1
+    -> throwError $ "mismatching inResponseTo attributes in subject confirmation data: " <> show js
+  (Just i, js@(_:_)) | L.length (L.nub (i : js)) /= 1
+    -> throwError $ "mismatching inResponseTo attributes in response header, subject confirmation data: " <> show (i, js)
+  (_, (j:_))
+    -> pure j
   where
-    ids :: [ID AuthnRequest]
-    ids = maybeToList
+    inSubjectConf :: [ID AuthnRequest]
+    inSubjectConf
+        = maybeToList
         . (^. scdInResponseTo)
-      =<< (^. scData)
+      =<< maybeToList . (^. scData)
       =<< (^. assContents . sasSubject . subjectConfirmations)
       =<< toList (aresp ^. rspPayload)
+
+    inResp :: Maybe (ID AuthnRequest)
+    inResp = aresp ^. rspInRespTo
 
 getUserRef :: (HasCallStack, MonadError String m) => AuthnResponse -> m UserRef
 getUserRef resp = do

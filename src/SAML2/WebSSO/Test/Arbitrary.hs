@@ -231,7 +231,7 @@ genSubject = Subject
 genSubjectConfirmation :: Gen SubjectConfirmation
 genSubjectConfirmation = SubjectConfirmation
   <$> genSubjectConfirmationMethod
-  <*> Gen.list (Range.linear 1 8) genSubjectConfirmationData
+  <*> Gen.maybe genSubjectConfirmationData
 
 genSubjectConfirmationMethod :: Gen SubjectConfirmationMethod
 genSubjectConfirmationMethod = Gen.enumBounded
@@ -250,31 +250,15 @@ genIP :: Gen IP
 genIP = IP <$> (genNiceText $ Range.linear 1 10)
 
 genStatement :: Gen Statement
-genStatement = Gen.choice
-  [ do
+genStatement = do
       _astAuthnInstant        <- genTime
       _astSessionIndex        <- Gen.maybe genNiceWord
       _astSessionNotOnOrAfter <- Gen.maybe genTime
       _astSubjectLocality     <- Gen.maybe genLocality
       pure AuthnStatement {..}
 
---  , AttributeStatement <$> Gen.list (Range.linear 1 15) genAttribute
-  ]
-
 genLocality :: Gen Locality
-genLocality = Locality <$> Gen.maybe genNiceWord <*> Gen.maybe genNiceWord
-
-genAttribute :: Gen Attribute
-genAttribute = Gen.choice
-  [ Attribute
-    <$> genNiceWord
-    <*> Gen.maybe genURI
-    <*> Gen.maybe genNiceWord
-    <*> Gen.list (Range.linear 0 8) (Gen.small genAttributeValue)
-  ]
-
-genAttributeValue :: Gen AttributeValue
-genAttributeValue = undefined
+genLocality = Locality <$> Gen.maybe genIP <*> Gen.maybe genNiceWord
 
 genXMLDocument :: Gen Document
 genXMLDocument = Document (Prologue [] Nothing []) <$> genXMLElement <*> pure []
@@ -342,12 +326,6 @@ genFormRedirect genBody = FormRedirect <$> genURI <*> genBody
 
 instance Arbitrary Assertion where
   arbitrary = TQH.hedgehog genAssertion
-
-instance Arbitrary Attribute where
-  arbitrary = TQH.hedgehog genAttribute
-
-instance Arbitrary AttributeValue where
-  arbitrary = TQH.hedgehog genAttributeValue
 
 instance Arbitrary AuthnRequest where
   arbitrary = TQH.hedgehog genAuthnRequest

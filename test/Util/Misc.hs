@@ -3,11 +3,13 @@
 module Util.Misc where
 
 import Control.Exception (throwIO, ErrorCall(ErrorCall))
+import Control.Lens
 import Control.Monad
 import Shelly (shelly, run, setStdin, silently)
 import Data.EitherR
 import Data.Generics.Uniplate.Data
 import Data.List
+import Data.List.NonEmpty (NonEmpty((:|)))
 import Servant
 import Data.String.Conversions
 import Data.Typeable
@@ -24,6 +26,25 @@ import Util.Orphans ()
 
 import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Text.Lazy.IO as LT
+
+
+-- some optics that shouldn't go into production (they make assumptions about the shape of the
+-- AuthnResponse that are not valid in general).
+
+_nlhead :: Lens' (NonEmpty a) a
+_nlhead f (a :| as) = (:| as) <$> f a
+
+assertionL :: Lens' AuthnResponse Assertion
+assertionL = rspPayload . _nlhead
+
+conditionsL :: Traversal' AuthnResponse Conditions
+conditionsL = assertionL . assConditions . _Just
+
+scdataL :: Traversal' AuthnResponse SubjectConfirmationData
+scdataL = assertionL . assContents . sasSubject . subjectConfirmations . ix 0 . scData . _Just
+
+statementL :: Lens' AuthnResponse Statement
+statementL = assertionL . assContents . sasStatements . _nlhead
 
 
 -- | pipe the output of `curl https://.../initiate-login/...` into this to take a look.

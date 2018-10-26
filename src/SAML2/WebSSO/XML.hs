@@ -1,7 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
--- TODO: make sure everything in HS.* that might change the interpreation of the data
--- we know is either 'Nothing' or we look at it.
 -- FUTUREWORK: consider using http://hackage.haskell.org/package/xml-conduit-parse
 
 module SAML2.WebSSO.XML where
@@ -12,8 +10,9 @@ import Control.Lens
 import Control.Monad
 import Control.Monad.Except
 import Data.EitherR
+import Data.Foldable (toList)
 import Data.List.NonEmpty as NL (NonEmpty((:|)), nonEmpty)
-import Data.Maybe (fromMaybe, isNothing, maybeToList, catMaybes)
+import Data.Maybe (fromMaybe, maybeToList, catMaybes)
 import Data.Monoid ((<>))
 import Data.String.Conversions
 import Data.Time
@@ -22,12 +21,10 @@ import GHC.Stack
 import Prelude hiding ((.), id)
 import SAML2.Util
 import SAML2.WebSSO.Types
-import Text.Show.Pretty (ppShow)
 import Text.XML hiding (renderText)
 import URI.ByteString
 
 import qualified Data.List as List
-import qualified Data.Tree.NTree.TypeDefs as HS
 import qualified Network.URI as HS
 import qualified SAML2.Core as HS
 import qualified SAML2.Core.Protocols as HS
@@ -35,7 +32,6 @@ import qualified SAML2.Profiles as HS
 import qualified SAML2.XML as HS
 import qualified Text.XML
 import qualified Text.XML.HXT.Arrow.Pickle.Xml as HS
-import qualified Text.XML.HXT.DOM.TypeDefs as HS
 
 
 defNameSpaces :: [(ST, ST)]
@@ -290,8 +286,24 @@ importAuthnResponse rsp = do
   pure Response {..}
 
 exportAuthnResponse :: HasCallStack => AuthnResponse -> HS.Response
-exportAuthnResponse = error . ppShow
-
+exportAuthnResponse rsp = HS.Response
+  { HS.response             = HS.StatusResponseType
+    { HS.statusProtocol     = HS.ProtocolType
+      { HS.protocolID           = exportID (rsp ^. rspID)
+      , HS.protocolVersion      = exportVersion (rsp ^. rspVersion)
+      , HS.protocolIssueInstant = exportTime (rsp ^. rspIssueInstant)
+      , HS.protocolDestination  = exportURI <$> (rsp ^. rspDestination)
+      , HS.protocolConsent      = HS.Identified HS.ConsentUnspecified  -- [1/8.4.1] there are no rules how to process the consent value.
+      , HS.protocolIssuer       = exportIssuer <$> (rsp ^. rspIssuer) :: Maybe HS.Issuer
+      , HS.protocolSignature    = Nothing
+      , HS.protocolExtensions   = []
+      , HS.relayState           = Nothing
+      }
+    , HS.statusInResponseTo = exportID <$> (rsp ^. rspInRespTo)
+    , HS.status             = exportStatus (rsp ^. rspStatus)
+    }
+  , HS.responseAssertions   = toList $ exportAssertion <$> (rsp ^. rspPayload)
+  }
 
 importAssertion :: (HasCallStack, MonadError String m) => HS.PossiblyEncrypted HS.Assertion -> m Assertion
 importAssertion bad@(HS.SoEncrypted _) = die (Proxy @Assertion) bad
@@ -305,7 +317,8 @@ importAssertion (HS.NotEncrypted ass) = do
     subj  <- importSubject $ HS.assertionSubject ass
     when (null $ HS.assertionStatement ass) $
       die (Proxy @Assertion) ("no statements" :: String)
-    importStatement `mapM` HS.assertionStatement ass >>= \case
+    mstmts <- importStatement `mapM` HS.assertionStatement ass
+    case catMaybes mstmts of
       stmt:stmts -> pure $ SubjectAndStatements subj (stmt :| stmts)
       [] -> die (Proxy @Assertion) ("no statements" :: String)
 
@@ -314,6 +327,18 @@ importAssertion (HS.NotEncrypted ass) = do
 
   pure Assertion {..}
 
+exportAssertion :: HasCallStack => Assertion -> HS.PossiblyEncrypted HS.Assertion
+exportAssertion ass = HS.NotEncrypted HS.Assertion
+  { HS.assertionVersion      = exportVersion (ass ^. assVersion)
+  , HS.assertionID           = exportID (ass ^. assID)
+  , HS.assertionIssueInstant = exportTime (ass ^. assIssueInstant)
+  , HS.assertionIssuer       = exportIssuer (ass ^. assIssuer)
+  , HS.assertionSignature    = Nothing  -- signatures are handled before parsing.
+  , HS.assertionSubject      = exportSubject $ ass ^. assContents . sasSubject
+  , HS.assertionConditions   = exportConditions <$> (ass ^. assConditions)
+  , HS.assertionAdvice       = Nothing
+  , HS.assertionStatement    = exportStatement <$> (ass ^. assContents . sasStatements . to toList)
+  }
 
 importSubject :: (HasCallStack, MonadError String m) => HS.Subject -> m Subject
 importSubject (HS.Subject Nothing _) = die (Proxy @Subject) ("need to provide a subject" :: String)
@@ -325,6 +350,16 @@ importSubject (HS.Subject (Just (HS.NotEncrypted sid)) scs) = case sid of
   bad@(HS.IdentifierBase _baseid) -> do
     die (Proxy @Subject) ("unsupported subject identifier: " <> show bad)
 
+exportSubject :: (HasCallStack) => Subject -> HS.Subject
+exportSubject subj = HS.Subject (Just (HS.NotEncrypted sid)) scs
+  where
+    sid :: HS.Identifier
+    sid = HS.IdentifierName $ exportNameID (subj ^. subjectID)
+
+    scs :: [HS.SubjectConfirmation]
+    scs = exportSubjectConfirmation <$> subj ^. subjectConfirmations
+
+
 importSubjectConfirmation :: (HasCallStack, MonadError String m) => NameID -> HS.SubjectConfirmation -> m SubjectConfirmation
 importSubjectConfirmation = go
   where
@@ -335,7 +370,12 @@ importSubjectConfirmation = go
     go _ (HS.SubjectConfirmation _ (Just bad) _)
       = die (Proxy @SubjectConfirmation) ("unsupported identifier: " <> show bad)
     go _ (HS.SubjectConfirmation _ _ confdata)
-      = SubjectConfirmation SubjectConfirmationMethodBearer <$> importSubjectConfirmationData `mapM` maybeToList confdata
+      = SubjectConfirmation SubjectConfirmationMethodBearer <$> importSubjectConfirmationData `mapM` confdata
+
+exportSubjectConfirmation :: (HasCallStack) => SubjectConfirmation -> HS.SubjectConfirmation
+exportSubjectConfirmation (SubjectConfirmation SubjectConfirmationMethodBearer scd) =
+  HS.SubjectConfirmation (HS.Identified HS.ConfirmationMethodBearer) Nothing $ exportSubjectConfirmationData <$> scd
+
 
 importSubjectConfirmationData :: (HasCallStack, MonadError String m) => HS.SubjectConfirmationData -> m SubjectConfirmationData
 importSubjectConfirmationData (HS.SubjectConfirmationData notbefore (Just notonorafter) (Just recipient) inresp confaddr _ _) =
@@ -350,71 +390,91 @@ importSubjectConfirmationData bad@(HS.SubjectConfirmationData _ Nothing _ _ _ _ 
 importSubjectConfirmationData bad@(HS.SubjectConfirmationData _ _ Nothing _ _ _ _) =
   die (Proxy @SubjectConfirmationData) ("missing Recipient: " <> show bad)
 
+exportSubjectConfirmationData :: (HasCallStack) => SubjectConfirmationData -> HS.SubjectConfirmationData
+exportSubjectConfirmationData scd = HS.SubjectConfirmationData
+  { HS.subjectConfirmationNotBefore    = exportTime <$> scd ^. scdNotBefore
+  , HS.subjectConfirmationNotOnOrAfter = Just . exportTime $ scd ^. scdNotOnOrAfter
+  , HS.subjectConfirmationRecipient    = Just . exportURI $ scd ^. scdRecipient
+  , HS.subjectConfirmationInResponseTo = cs . renderID <$> scd ^. scdInResponseTo
+  , HS.subjectConfirmationAddress      = exportIP <$> scd ^. scdAddress
+  , HS.subjectConfirmationKeyInfo      = mempty
+  , HS.subjectConfirmationXML          = mempty
+  }
+
+
 importIP :: (HasCallStack, MonadError String m) => HS.IP -> m IP
 importIP = pure . IP . cs
 
+exportIP :: (HasCallStack) => IP -> HS.IP
+exportIP (IP s) = cs s
 
-importConditions :: (HasCallStack, MonadError String m) => HS.Conditions -> m Conditions
+
+importConditions :: forall m. (HasCallStack, MonadError String m) => HS.Conditions -> m Conditions
 importConditions conds = do
   _condNotBefore <- fmapFlipM importTime $ HS.conditionsNotBefore conds
   _condNotOnOrAfter <- fmapFlipM importTime $ HS.conditionsNotOnOrAfter conds
-  let _condOneTimeUse = HS.OneTimeUse `elem` HS.conditions conds
-  _condAudienceRestriction :: Maybe (NonEmpty URI)
-    <- do
-         let pull (HS.AudienceRestriction us) = Just $ HS.audience <$> us
-             pull _ = Nothing
-             uris :: [NonEmpty HS.URI] = catMaybes $ pull <$> HS.conditions conds
-         case uris of
-           [] -> pure Nothing
-           (x : xs') -> Just <$> importURI `mapM` nelConcat (x :| xs')
+  let _condOneTimeUse = False
+      _condAudienceRestriction = Nothing
 
-  unless (HS.conditions conds `notElem` [[], [HS.OneTimeUse]]) $
-    die (Proxy @Conditions) ("unsupported conditions" :: String, HS.conditions conds)
+      go :: Conditions -> HS.Condition -> m Conditions
+      go conds' HS.OneTimeUse =
+        pure $ conds' & condOneTimeUse .~ True
 
-  pure Conditions {..}
+      go conds' (HS.AudienceRestriction hsrs) = do
+        rs :: NonEmpty URI <- (importURI . HS.audience) `mapM` hsrs
+        let upd Nothing = Just rs
+            upd (Just rs') = Just . nelConcat $ rs' :| [rs]
+        pure $ conds' & condAudienceRestriction %~ upd
+
+      go _ badcond = die (Proxy @Conditions) ("unsupported condition" :: String, badcond)
+
+  foldM go (Conditions {..}) (HS.conditions conds)
+
+exportConditions :: (HasCallStack) => Conditions -> HS.Conditions
+exportConditions conds = HS.Conditions
+  { HS.conditionsNotBefore    = exportTime <$> conds ^. condNotBefore
+  , HS.conditionsNotOnOrAfter = exportTime <$> conds ^. condNotOnOrAfter
+  , HS.conditions             = [ HS.OneTimeUse | conds ^. condOneTimeUse ]
+                             <> [ HS.AudienceRestriction (HS.Audience . exportURI <$> hsrs)
+                                | hsrs <- maybeToList (conds ^. condAudienceRestriction)
+                                ]
+  }
 
 
+-- | Attribute statements are silently ignored.
 importStatement :: (HasCallStack, MonadError String m)
-                => HS.Statement -> m Statement
-importStatement (HS.StatementAttribute st) =
-  AttributeStatement <$> (importAttribute `mapM` HS.attributeStatement st)
-importStatement (HS.StatementAuthn st) = do
+                => HS.Statement -> m (Maybe Statement)
+importStatement (HS.StatementAttribute _) = pure Nothing
+importStatement (HS.StatementAuthn st) = Just <$> do
   _astAuthnInstant <- importTime $ HS.authnStatementInstant st
   let _astSessionIndex = cs <$> HS.authnStatementSessionIndex st
-  -- TODO: not done yet.  in general, we need to check for absence of all fields allowed by the
-  -- specs that we don't want to handle.  at least we need to crash if they are present.
-  let _astSessionNotOnOrAfter = Nothing
-      _astSubjectLocality     = Nothing
+  _astSessionNotOnOrAfter <- fmapFlipM importTime $ HS.authnStatementSessionNotOnOrAfter st
+  _astSubjectLocality     <- fmapFlipM importLocality $ HS.authnStatementSubjectLocality st
+  -- NB: @HS.authnStatementContext st@ is ignored [1/2.7.2.2].
   pure AuthnStatement {..}
+
 importStatement bad = die (Proxy @Statement) bad
 
+exportStatement :: (HasCallStack) => Statement -> HS.Statement
+exportStatement AuthnStatement{..} = HS.StatementAuthn HS.AuthnStatement
+  { HS.authnStatementInstant             = exportTime _astAuthnInstant
+  , HS.authnStatementSessionIndex        = cs <$> _astSessionIndex
+  , HS.authnStatementSessionNotOnOrAfter = exportTime <$> _astSessionNotOnOrAfter
+  , HS.authnStatementSubjectLocality     = exportLocality <$> _astSubjectLocality
+  , HS.authnStatementContext             = HS.AuthnContext Nothing Nothing []
+  }
 
-importAttribute :: (HasCallStack, MonadError String m)
-                => HS.PossiblyEncrypted HS.Attribute -> m Attribute
-importAttribute bad@(HS.SoEncrypted _) = die (Proxy @Attribute) bad
-importAttribute (HS.NotEncrypted ass) = do
-  unless (HS.attributeNameFormat ass == HS.Identified HS.AttributeNameFormatUnspecified) $
-    die (Proxy @Attribute) ("unsupported format" :: String, ass)
 
-  unless (isNothing $ HS.attributeFriendlyName ass) $
-    die (Proxy @Attribute) ("friendly names are not supported" :: String, ass)
+importLocality :: (HasCallStack, MonadError String m) => HS.SubjectLocality -> m Locality
+importLocality loc = Locality
+  <$> (fmapFlipM importIP $ HS.subjectLocalityAddress loc)
+  <*> pure (cs <$> HS.subjectLocalityDNSName loc)
 
-  unless (null $ HS.attributeAttrs ass) $
-    die (Proxy @Attribute) ("attributes are not supported" :: String, ass)
-
-  let nm = cs $ HS.attributeName ass
-  vals <- importAttributeValue `mapM` HS.attributeValues ass
-
-  pure $ Attribute nm Nothing Nothing vals
-
-importAttributeValue :: (HasCallStack, MonadError String m) => HS.Nodes -> m AttributeValue
-importAttributeValue [HS.NTree (HS.XText txt) []] = pure . AttributeValueUntyped $ cs txt
-importAttributeValue [ HS.NTree (HS.XAttr qn) [HS.NTree (HS.XText thistype) []]
-                     , HS.NTree (HS.XText txt) []
-                     ] | qn == HS.newQName (HS.newXName "type") (HS.newXName "xsi") (HS.newXName "http://www.w3.org/2001/XMLSchema-instance")
-                         && thistype `elem` ["xs:anyType", "xs:string"]
-                       = pure . AttributeValueUntyped $ cs txt
-importAttributeValue bad = die (Proxy @AttributeValue) bad
+exportLocality :: HasCallStack => Locality -> HS.SubjectLocality
+exportLocality loc = HS.SubjectLocality
+  { HS.subjectLocalityAddress = exportIP <$> loc ^. localityAddress
+  , HS.subjectLocalityDNSName = cs <$> loc ^. localityDNSName
+  }
 
 
 importID :: (HasCallStack, MonadError String m) => HS.ID -> m (ID a)

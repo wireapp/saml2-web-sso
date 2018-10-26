@@ -234,10 +234,16 @@ instance (Monad m, SPStoreID i m) => SPStoreID i (JudgeT m) where
 
 -- | [3/4.1.4.2], [3/4.1.4.3]; specific to active-directory:
 -- <https://docs.microsoft.com/en-us/azure/active-directory/develop/active-directory-single-sign-on-protocol-reference>
+--
+-- 'judge' does not consider the following parts of the 'AuthnResponse'.
+--  * 'subjectID'
+--  * 'scdAddress' ("If any bearer <SubjectConfirmationData> includes an Address attribute, the
+--    service provider MAY check the user agent's client address against it."  [3/4.1.4.3])
+--  * 'astSessionIndex'
+--  * 'astSubjectLocality' ("This element is entirely advisory, since both of these fields are
+--    quite easily “spoofed,” but may be useful information in some applications." [1/2.7.2.1])
 judge :: (SP m, SPStore m) => AuthnResponse -> JudgeCtx -> m AccessVerdict
 judge resp ctx = runJudgeT ctx (judge' resp)
-
--- TODO: crash for any extensions of the xml tree that we don't understand!
 
 judge' :: (HasCallStack, MonadJudge m, SP m, SPStore m) => AuthnResponse -> m AccessVerdict
 judge' resp = do
@@ -301,13 +307,12 @@ checkAssertions missuer (toList -> assertions) uref@(UserRef issuer _) = do
   pure $ AccessGranted uref
 
 checkStatement :: (SP m, MonadJudge m) => Statement -> m ()
-checkStatement = \case
-  (AuthnStatement issued _ mtimeout _) -> do
+checkStatement (AuthnStatement issued _ mtimeout _) =
+  do
     checkIsInPast "AuthnStatement IssueInstance" issued
     forM_ mtimeout $ \timeout -> do
       now <- getNow
       when (timeout <= now) $ deny ["AuthnStatement expired at " <> show timeout]
-  (AttributeStatement{}) -> pure ()
 
 -- | Check all 'SubjectConfirmation's and 'Subject's in all 'Assertion'.  Deny if not at least one
 -- confirmation has method "bearer".
@@ -345,24 +350,22 @@ checkSubjectConfirmation ass conf = do
       deny ["bearer-confirmed assertions must be audience-restricted."]
       -- (the actual validation of the field, given it is Just, happens in 'judgeConditions'.)
 
-  checkSubjectConfirmationData bearer `mapM_` (conf ^. scData)
+  checkSubjectConfirmationData `mapM_` (conf ^. scData)
 
   pure bearer
 
 checkSubjectConfirmationData :: (HasConfig m, SP m, SPStore m, MonadJudge m)
-  => HasBearerConfirmation -> SubjectConfirmationData -> m ()
-checkSubjectConfirmationData bearer confdat = do
-  when (bearer == HasBearerConfirmation) $ do
-    unless (isNothing $ confdat ^. scdNotBefore) $
-      deny ["bearer confirmation must not have attribute."]
-
+  => SubjectConfirmationData -> m ()
+checkSubjectConfirmationData confdat = do
   checkDestination "confirmation recipient" $ confdat ^. scdRecipient
 
-  getNow >>= \now -> when (now >= confdat ^. scdNotOnOrAfter) $
-    deny ["SubjectConfirmation with invalid NotOnOrAfter: " <> show (confdat ^. scdNotOnOrAfter)]
+  now <- getNow
+  when (now >= confdat ^. scdNotOnOrAfter) $
+    deny ["SubjectConfirmation with invalid NotOnOrAfter: " <> show (confdat ^. scdNotOnOrAfter, now)]
+  when (maybe False (now <) $ confdat ^. scdNotBefore) $
+    deny ["SubjectConfirmation with invalid NotBefore: " <> show (confdat ^. scdNotBefore, now)]
 
-  -- the following line is redundant with the call to 'rspInResponseTo' in 'judge'' above, but...
-  -- better redundant than sorry?
+  -- double-check the result of the call to 'rspInResponseTo' in 'judge'' above.
   checkInResponseTo "assertion" `mapM_` (confdat ^. scdInResponseTo)
 
 checkConditions :: (HasCallStack, MonadJudge m, SP m) => Conditions -> m ()

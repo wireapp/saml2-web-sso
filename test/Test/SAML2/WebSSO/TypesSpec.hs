@@ -10,7 +10,8 @@ spec :: Spec
 spec = do
   describe "rspInResponseTo" $ do
     it "works" $ do
-      Right (aresp :: AuthnResponse) <- decode <$> readSampleIO "microsoft-authnresponse-2.xml"
+      aresp :: AuthnResponse <- either (error . show) pure =<<
+        decode <$> readSampleIO "microsoft-authnresponse-2.xml"
       rspInResponseTo aresp `shouldBe` Right (ID {renderID = "idcf2299ac551b42f1aa9b88804ed308c2"})
 
   describe "roundtrip" $ do
