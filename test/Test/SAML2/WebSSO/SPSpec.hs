@@ -112,10 +112,10 @@ specJudgeT = do
         _nlhead f (a :| as) = (:| as) <$> f a
 
         isGranted :: HasCallStack => AccessVerdict -> Expectation
-        isGranted = (`shouldSatisfy` (\case AccessGranted{} -> True; _ -> False))
+        isGranted = (`shouldSatisfy` has _AccessGranted)
 
         isDenied :: HasCallStack => AccessVerdict -> Expectation
-        isDenied = (`shouldSatisfy` (\case AccessDenied{} -> True; _ -> False))
+        isDenied = (`shouldSatisfy` has _AccessDenied)
 
         jctx = JudgeCtx (Issuer [uri|http://anythingreally.com/|]) [uri|http://anythingreally.com/|]
                                                            -- TODO: this only "works" out because we

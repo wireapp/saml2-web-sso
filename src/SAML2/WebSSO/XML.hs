@@ -340,7 +340,7 @@ importSubjectConfirmation = go
 importSubjectConfirmationData :: (HasCallStack, MonadError String m) => HS.SubjectConfirmationData -> m SubjectConfirmationData
 importSubjectConfirmationData (HS.SubjectConfirmationData notbefore (Just notonorafter) (Just recipient) inresp confaddr _ _) =
   SubjectConfirmationData
-  <$> (importTime `fmapFlipM` notbefore)
+  <$> importTime `fmapFlipM` notbefore
   <*> importTime notonorafter
   <*> importURI recipient
   <*> importID `fmapFlipM` inresp

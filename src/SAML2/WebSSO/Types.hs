@@ -497,6 +497,7 @@ makeLenses ''UnqualifiedNameID
 makeLenses ''UserRef
 makeLenses ''Version
 
+makePrisms ''AccessVerdict
 makePrisms ''Statement
 makePrisms ''UnqualifiedNameID
 
@@ -533,7 +534,7 @@ instance ToJSON Version where
 
 
 ----------------------------------------------------------------------
--- hand-crafted lenses
+-- hand-crafted lenses, accessors
 
 -- | To counter replay attacks we need to store 'Assertions' until they invalidate.  If
 -- 'condNotOnOrAfter' is not specified, assume 'assIssueInstant' plus 30 days.
