@@ -26,8 +26,7 @@ spec = describe "Config" $ do
   describe "sample config" $ do
     let have :: Config
         have = Config
-          { _cfgVersion  = Version_2_0
-          , _cfgLogLevel = Debug
+          { _cfgLogLevel = Debug
           , _cfgSPHost   = "me.wire.com"
           , _cfgSPPort   = 443
           , _cfgSPAppURI = [uri|https://me.wire.com/sp|]

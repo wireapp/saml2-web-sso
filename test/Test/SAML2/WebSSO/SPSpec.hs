@@ -145,7 +145,6 @@ specJudgeT = do
         authnresp = Response
           { _rspID           = respid
           , _rspInRespTo     = Just reqid
-          , _rspVersion      = Version_2_0
           , _rspIssueInstant = timeIn5seconds
           , _rspDestination  = Just [uri|https://sp.net/sso/authnresp|]
           , _rspIssuer       = Just $ assertion ^. assIssuer
@@ -161,8 +160,7 @@ specJudgeT = do
 
         assertion :: Assertion
         assertion = Assertion
-          { _assVersion      = Version_2_0
-          , _assID           = ID "00c224c0-db5b-11e8-ba50-5b03ff78040f"
+          { _assID           = ID "00c224c0-db5b-11e8-ba50-5b03ff78040f"
           , _assIssueInstant = authnresp ^. rspIssueInstant
           , _assIssuer       = Issuer [uri|https://idp.net/sso/login/480748de-db5a-11e8-b20f-031d2337a741|]
           , _assConditions   = Just Conditions

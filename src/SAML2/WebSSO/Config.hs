@@ -26,8 +26,7 @@ import qualified Data.Yaml as Yaml
 -- data types
 
 data Config = Config
-  { _cfgVersion           :: Version
-  , _cfgLogLevel          :: Level
+  { _cfgLogLevel          :: Level
   , _cfgSPHost            :: String
   , _cfgSPPort            :: Int
   , _cfgSPAppURI          :: URI
@@ -48,8 +47,7 @@ makeLenses ''Config
 
 instance ToJSON Config where
   toJSON Config {..} = object $
-    [ "version"    .= _cfgVersion
-    , "logLevel"   .= _cfgLogLevel
+    [ "logLevel"   .= _cfgLogLevel
     , "spHost"     .= _cfgSPHost
     , "spPort"     .= _cfgSPPort
     , "spAppUri"   .= _cfgSPAppURI
@@ -59,7 +57,6 @@ instance ToJSON Config where
 
 instance FromJSON Config where
   parseJSON = withObject "Config" $ \obj -> do
-    _cfgVersion           <- obj .: "version"
     _cfgLogLevel          <- obj .: "logLevel"
     _cfgSPHost            <- obj .: "spHost"
     _cfgSPPort            <- obj .: "spPort"
@@ -74,8 +71,7 @@ instance FromJSON Config where
 
 fallbackConfig :: Config
 fallbackConfig = Config
-  { _cfgVersion           = Version_2_0
-  , _cfgLogLevel          = Debug
+  { _cfgLogLevel          = Debug
   , _cfgSPHost            = "localhost"
   , _cfgSPPort            = 8081
   , _cfgSPAppURI          = [uri|https://example-sp.com/landing|]

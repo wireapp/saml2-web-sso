@@ -131,7 +131,6 @@ data IdPConfig extra = IdPConfig
 data AuthnRequest = AuthnRequest
   { -- abstract xml type
     _rqID               :: ID AuthnRequest
-  , _rqVersion          :: Version
   , _rqIssueInstant     :: Time
   , _rqIssuer           :: Issuer
 
@@ -179,7 +178,6 @@ type AuthnResponse = Response (NonEmpty Assertion)
 data Response payload = Response
   { _rspID           :: ID (Response payload)
   , _rspInRespTo     :: Maybe (ID AuthnRequest)
-  , _rspVersion      :: Version
   , _rspIssueInstant :: Time
   , _rspDestination  :: Maybe URI
   , _rspIssuer       :: Maybe Issuer
@@ -332,9 +330,6 @@ shortShowNameID (NameID uqn Nothing Nothing Nothing) = case uqn of
 shortShowNameID _ = Nothing
 
 
-data Version = Version_2_0
-  deriving (Eq, Show, Bounded, Enum, Generic)
-
 -- | [1/3.2.2.1;3.2.2.2]
 type Status = HS.Status
 
@@ -357,8 +352,7 @@ statusFailure = HS.Status (HS.StatusCode HS.StatusRequester []) Nothing Nothing
 -- 'Subject' and a set of 'Statement's on that 'Subject'.  [1/2.3.3]
 data Assertion
   = Assertion
-    { _assVersion       :: Version
-    , _assID            :: ID Assertion
+    { _assID            :: ID Assertion
     , _assIssueInstant  :: Time
     , _assIssuer        :: Issuer
     , _assConditions    :: Maybe Conditions
@@ -475,7 +469,6 @@ makeLenses ''SubjectConfirmationData
 makeLenses ''Time
 makeLenses ''UnqualifiedNameID
 makeLenses ''UserRef
-makeLenses ''Version
 
 makePrisms ''AccessVerdict
 makePrisms ''Statement
@@ -504,13 +497,6 @@ instance Servant.ToHttpApiData IdPId where
 
 deriveJSON deriveJSONOptions ''ContactPerson
 deriveJSON deriveJSONOptions ''ContactType
-
-instance FromJSON Version where
-  parseJSON (String "SAML2.0") = pure Version_2_0
-  parseJSON bad = fail $ "could not parse config: bad version string: " <> show bad
-
-instance ToJSON Version where
-  toJSON Version_2_0 = String "SAML2.0"
 
 
 ----------------------------------------------------------------------

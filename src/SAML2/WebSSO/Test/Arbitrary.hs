@@ -29,9 +29,6 @@ import qualified Test.QuickCheck.Hedgehog as TQH
 import qualified Text.XML.DSig as DSig
 
 
-genVersion :: Gen Version
-genVersion = Gen.enumBounded
-
 genURI :: Gen URI
 genURI = genURI' Nothing
 
@@ -70,7 +67,6 @@ genNiceWord = genNiceText (Range.singleton 1)
 
 genConfig :: Gen Config
 genConfig = do
-  _cfgVersion    <- genVersion
   _cfgLogLevel   <- Gen.enumBounded
   _cfgSPHost     <- cs <$> genNiceWord
   _cfgSPPort     <- Gen.int (Range.linear 1 9999)
@@ -130,7 +126,7 @@ genEmail = do
   pure . unsafeParseURI $ "email:" <> loc <> "@example.com"
 
 genAuthnRequest :: Gen AuthnRequest
-genAuthnRequest = AuthnRequest <$> genID <*> genVersion <*> genTime <*> genIssuer <*> Gen.maybe genNameIDPolicy
+genAuthnRequest = AuthnRequest <$> genID <*> genTime <*> genIssuer <*> Gen.maybe genNameIDPolicy
 
 genTime :: Gen Time
 genTime = pure $ unsafeReadTime "2013-03-18T07:33:56Z"
@@ -193,7 +189,6 @@ genResponse :: forall payload. Gen payload -> Gen (Response payload)
 genResponse genPayload = do
   _rspID           <- genID
   _rspInRespTo     <- Gen.maybe genID
-  _rspVersion      <- genVersion
   _rspIssueInstant <- genTime
   _rspDestination  <- Gen.maybe genURI
   _rspIssuer       <- Gen.maybe genIssuer
@@ -204,7 +199,6 @@ genResponse genPayload = do
 
 genAssertion :: Gen Assertion
 genAssertion = do
-  _assVersion      <- genVersion
   _assID           <- genID
   _assIssueInstant <- genTime
   _assIssuer       <- genIssuer
@@ -365,9 +359,6 @@ instance Arbitrary UnqualifiedNameID where
 
 instance Arbitrary URI where
   arbitrary = TQH.hedgehog genURI
-
-instance Arbitrary Version where
-  arbitrary = TQH.hedgehog genVersion
 
 instance Arbitrary IdPId where
   arbitrary = TQH.hedgehog genIdPId

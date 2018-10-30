@@ -121,7 +121,6 @@ createID = ID . ("_" <>) . UUID.toText <$> createUUID
 createAuthnRequest :: (SP m, SPStore m) => NominalDiffTime -> m Issuer -> m AuthnRequest
 createAuthnRequest lifeExpectancySecs getIssuer = do
   _rqID           <- createID
-  _rqVersion      <- (^. cfgVersion) <$> getConfig
   _rqIssueInstant <- getNow
   _rqIssuer       <- getIssuer
   let _rqNameIDPolicy = Just $ NameIdPolicy NameIDFUnspecified Nothing True

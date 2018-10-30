@@ -1,4 +1,3 @@
-version:    SAML2.0
 logLevel:   Debug
 
 spHost:    me.wire.com

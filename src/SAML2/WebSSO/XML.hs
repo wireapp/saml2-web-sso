@@ -178,8 +178,8 @@ userRefToST (UserRef (Issuer tenant) subject) = "{" <> renderURI tenant <> "}" <
 importAuthnRequest :: MonadError String m => HS.AuthnRequest -> m AuthnRequest
 importAuthnRequest req = do
   let proto = HS.requestProtocol $ HS.authnRequest req
+  () <- importVersion $ HS.protocolVersion proto
   _rqID           <- importID $ HS.protocolID proto
-  _rqVersion      <- importVersion $ HS.protocolVersion proto
   _rqIssueInstant <- importTime $ HS.protocolIssueInstant proto
   _rqIssuer       <- importRequiredIssuer $ HS.protocolIssuer proto
   _rqNameIDPolicy <- fmapFlipM importNameIDPolicy $ HS.authnRequestNameIDPolicy req
@@ -196,7 +196,7 @@ exportAuthnRequest req = (defAuthnRequest proto)
   }
   where
     proto = (defProtocolType (exportID $ req ^. rqID) (exportTime $ req ^. rqIssueInstant))
-      { HS.protocolVersion = exportVersion $ req ^. rqVersion
+      { HS.protocolVersion = exportVersion
       , HS.protocolIssuer = exportRequiredIssuer $ req ^. rqIssuer
       , HS.protocolDestination = Nothing
       }
@@ -274,9 +274,9 @@ importAuthnResponse rsp = do
   let rsptyp :: HS.StatusResponseType = HS.response rsp
       proto  :: HS.ProtocolType       = HS.statusProtocol rsptyp
 
+  () <- importVersion $ HS.protocolVersion proto
   _rspID           <- importID $ HS.protocolID proto
   _rspInRespTo     <- (importID . cs) `fmapFlipM` HS.statusInResponseTo rsptyp
-  _rspVersion      <- importVersion $ HS.protocolVersion proto
   _rspIssueInstant <- importTime $ HS.protocolIssueInstant proto
   _rspDestination  <- fmapFlipM importURI $ HS.protocolDestination proto
   _rspIssuer       <- importOptionalIssuer $ HS.protocolIssuer proto
@@ -290,7 +290,7 @@ exportAuthnResponse rsp = HS.Response
   { HS.response             = HS.StatusResponseType
     { HS.statusProtocol     = HS.ProtocolType
       { HS.protocolID           = exportID (rsp ^. rspID)
-      , HS.protocolVersion      = exportVersion (rsp ^. rspVersion)
+      , HS.protocolVersion      = exportVersion
       , HS.protocolIssueInstant = exportTime (rsp ^. rspIssueInstant)
       , HS.protocolDestination  = exportURI <$> (rsp ^. rspDestination)
       , HS.protocolConsent      = HS.Identified HS.ConsentUnspecified  -- [1/8.4.1] there are no rules how to process the consent value.
@@ -308,7 +308,7 @@ exportAuthnResponse rsp = HS.Response
 importAssertion :: (HasCallStack, MonadError String m) => HS.PossiblyEncrypted HS.Assertion -> m Assertion
 importAssertion bad@(HS.SoEncrypted _) = die (Proxy @Assertion) bad
 importAssertion (HS.NotEncrypted ass) = do
-  _assVersion      <- importVersion $ HS.assertionVersion ass
+  () <- importVersion $ HS.assertionVersion ass
   _assID           <- importID $ HS.assertionID ass
   _assIssueInstant <- importTime $ HS.assertionIssueInstant ass
   _assIssuer       <- importIssuer $ HS.assertionIssuer ass
@@ -329,7 +329,7 @@ importAssertion (HS.NotEncrypted ass) = do
 
 exportAssertion :: HasCallStack => Assertion -> HS.PossiblyEncrypted HS.Assertion
 exportAssertion ass = HS.NotEncrypted HS.Assertion
-  { HS.assertionVersion      = exportVersion (ass ^. assVersion)
+  { HS.assertionVersion      = exportVersion
   , HS.assertionID           = exportID (ass ^. assID)
   , HS.assertionIssueInstant = exportTime (ass ^. assIssueInstant)
   , HS.assertionIssuer       = exportIssuer (ass ^. assIssuer)
@@ -527,12 +527,12 @@ exportNameID name = HS.NameID
     unform (UNameIDPersistent  n) = (HS.Identified HS.NameIDFormatPersistent, n)
     unform (UNameIDTransient   n) = (HS.Identified HS.NameIDFormatTransient, n)
 
-importVersion :: (HasCallStack, MonadError String m) => HS.SAMLVersion -> m Version
-importVersion HS.SAML20 = pure Version_2_0
-importVersion bad = die (Proxy @Version) bad
+importVersion :: (HasCallStack, MonadError String m) => HS.SAMLVersion -> m ()
+importVersion HS.SAML20 = pure ()
+importVersion bad = die (Proxy @HS.SAMLVersion) bad
 
-exportVersion :: HasCallStack => Version -> HS.SAMLVersion
-exportVersion Version_2_0 = HS.SAML20
+exportVersion :: HasCallStack => HS.SAMLVersion
+exportVersion = HS.SAML20
 
 importTime :: (HasCallStack, MonadError String m) => HS.DateTime -> m Time
 importTime = pure . Time
