@@ -34,5 +34,5 @@ prop_tripAuthnRequest :: Property
 prop_tripAuthnRequest = mkprop genAuthnRequest
 
 prop_tripAuthnResponse :: Property
-prop_tripAuthnResponse = mkprop (Gen.prune genAuthnResponse)
+prop_tripAuthnResponse = mkprop . scaleGen (`div` 2) . Gen.prune $ genAuthnResponse
   -- without the 'prune', this triggers https://github.com/hedgehogqa/haskell-hedgehog/issues/174
