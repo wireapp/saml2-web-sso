@@ -12,7 +12,7 @@ import Control.Monad.Except
 import Data.EitherR
 import Data.Foldable (toList)
 import Data.List.NonEmpty as NL (NonEmpty((:|)), nonEmpty)
-import Data.Maybe (fromMaybe, maybeToList, catMaybes)
+import Data.Maybe (fromMaybe, catMaybes)
 import Data.Monoid ((<>))
 import Data.String.Conversions
 import Data.Time
@@ -283,6 +283,9 @@ importAuthnResponse rsp = do
   _rspStatus       <- importStatus $ HS.status rsptyp
   _rspPayload      <- maybe (throwError "no assertions") pure . NL.nonEmpty =<< (importAssertion `mapM` HS.responseAssertions rsp)
 
+  -- ignore: @HS.protocolSignature proto :: Maybe SAML2.XML.Signature.Types.Signature@
+  -- ignore: @HS.relayState proto :: Maybe SAML2.Bindings.General.RelayState@
+
   pure Response {..}
 
 exportAuthnResponse :: HasCallStack => AuthnResponse -> HS.Response
@@ -385,6 +388,11 @@ importSubjectConfirmationData (HS.SubjectConfirmationData notbefore (Just notono
   <*> importURI recipient
   <*> importID `fmapFlipM` inresp
   <*> importIP `fmapFlipM` confaddr
+
+  -- ignore: 'HS.subjectConfirmationKeyInfo' (this is only required for holder of key subjects
+  -- [3/3.1], [1/2.4.1.2], [1/2.4.1.4])
+  -- ignore: 'HS.subjectConfirmationXML' (there is nothing we can assume about it's semantics)
+
 importSubjectConfirmationData bad@(HS.SubjectConfirmationData _ Nothing _ _ _ _ _) =
   die (Proxy @SubjectConfirmationData) ("missing NotOnOrAfter: " <> show bad)
 importSubjectConfirmationData bad@(HS.SubjectConfirmationData _ _ Nothing _ _ _ _) =
@@ -414,7 +422,7 @@ importConditions conds = do
   _condNotBefore <- fmapFlipM importTime $ HS.conditionsNotBefore conds
   _condNotOnOrAfter <- fmapFlipM importTime $ HS.conditionsNotOnOrAfter conds
   let _condOneTimeUse = False
-      _condAudienceRestriction = Nothing
+      _condAudienceRestriction = []
 
       go :: Conditions -> HS.Condition -> m Conditions
       go conds' HS.OneTimeUse =
@@ -422,9 +430,7 @@ importConditions conds = do
 
       go conds' (HS.AudienceRestriction hsrs) = do
         rs :: NonEmpty URI <- (importURI . HS.audience) `mapM` hsrs
-        let upd Nothing = Just rs
-            upd (Just rs') = Just . nelConcat $ rs' :| [rs]
-        pure $ conds' & condAudienceRestriction %~ upd
+        pure $ conds' & condAudienceRestriction %~ (rs:)
 
       go _ badcond = die (Proxy @Conditions) ("unsupported condition" :: String, badcond)
 
@@ -436,7 +442,7 @@ exportConditions conds = HS.Conditions
   , HS.conditionsNotOnOrAfter = exportTime <$> conds ^. condNotOnOrAfter
   , HS.conditions             = [ HS.OneTimeUse | conds ^. condOneTimeUse ]
                              <> [ HS.AudienceRestriction (HS.Audience . exportURI <$> hsrs)
-                                | hsrs <- maybeToList (conds ^. condAudienceRestriction)
+                                | hsrs <- conds ^. condAudienceRestriction
                                 ]
   }
 

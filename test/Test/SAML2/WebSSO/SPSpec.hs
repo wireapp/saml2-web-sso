@@ -167,7 +167,7 @@ specJudgeT = do
             { _condNotBefore           = Just $ authnresp ^. rspIssueInstant
             , _condNotOnOrAfter        = Just timeIn20minutes
             , _condOneTimeUse          = False
-            , _condAudienceRestriction = Just $ [uri|https://sp.net/sso/authnresp|] :| []
+            , _condAudienceRestriction = [[uri|https://sp.net/sso/authnresp|] :| []]
             }
           , _assContents     = SubjectAndStatements subject (statement :| [])
           }
@@ -231,16 +231,30 @@ specJudgeT = do
       let good :: [AuthnResponse -> AuthnResponse]
           good =
             [ rspDestination .~ Nothing
+            , conditionsL . condAudienceRestriction .~  -- (inner "or" succeeding)
+                [ [uri|https://other.io/sso|] :| [[uri|https://sp.net/sso/authnresp|]]
+                ]
+            , conditionsL . condAudienceRestriction .~  -- (outer "and" succeeding)
+                [ [uri|https://other.io/sso|] :| [[uri|https://sp.net/sso/authnresp|]]
+                , [uri|https://sp.net/sso/authnresp|] :| []
+                ]
             ]
 
           bad ::  [AuthnResponse -> AuthnResponse]
           bad =
             [ rspDestination .~ Just [uri|https://other.io/sso|]
-            , conditionsL . condAudienceRestriction .~ Just ([uri|https://other.io/sso|] :| [])
+            , conditionsL . condAudienceRestriction .~ [[uri|https://other.io/sso|] :| []]
             , scdataL . scdRecipient .~ [uri|https://other.io/sso|]
-            , conditionsL . condAudienceRestriction .~ Nothing
+            , conditionsL . condAudienceRestriction .~ []
               -- "The resulting assertion(s) MUST contain a <saml:AudienceRestriction> element
               -- referencing the requester as an acceptable relying party." [1/3.4.1.4]
+            , conditionsL . condAudienceRestriction .~  -- (inner "or" failing)
+                [ [uri|https://other.io/sso|] :| [[uri|https://yetanother.net/stillwrong|]]
+                ]
+            , conditionsL . condAudienceRestriction .~  -- (outer "and" failing)
+                [ [uri|https://other.io/sso|] :| [[uri|https://sp.net/sso/authnresp|]]
+                , [uri|https://yetanother.net/stillwrong|] :| []
+                ]
             ]
 
       grants id `mapM_` (($ authnresp) <$> good)

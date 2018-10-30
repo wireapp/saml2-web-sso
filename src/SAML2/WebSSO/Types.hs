@@ -361,7 +361,8 @@ data Conditions
     { _condNotBefore           :: Maybe Time
     , _condNotOnOrAfter        :: Maybe Time
     , _condOneTimeUse          :: Bool   -- ^ [1/2.5.1.5] (it's safe to ignore this)
-    , _condAudienceRestriction :: Maybe (NonEmpty URI)  -- ^ 'Nothing' means do not restrict.
+    , _condAudienceRestriction :: [NonEmpty URI]  -- ^ [1/2.5.1.4] this is an and of ors ('[]' means
+                                                  -- do not restrict).
     }
   deriving (Eq, Show, Generic)
 

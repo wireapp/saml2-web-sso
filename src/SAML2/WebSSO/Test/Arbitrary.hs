@@ -212,7 +212,7 @@ genConditions = Conditions
   <$> Gen.maybe genTime
   <*> Gen.maybe genTime
   <*> Gen.bool
-  <*> Gen.maybe (genNonEmpty (Range.linear 0 2) genURI)
+  <*> Gen.list (Range.linear 0 2) (genNonEmpty (Range.linear 0 2) genURI)
 
 genSubjectAndStatements :: Gen SubjectAndStatements
 genSubjectAndStatements = SubjectAndStatements <$> genSubject <*> genNonEmpty (Range.linear 0 15) genStatement

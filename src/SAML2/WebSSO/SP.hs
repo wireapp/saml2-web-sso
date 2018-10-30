@@ -241,6 +241,11 @@ instance (Monad m, SPStoreID i m) => SPStoreID i (JudgeT m) where
 --  * 'astSessionIndex'
 --  * 'astSubjectLocality' ("This element is entirely advisory, since both of these fields are
 --    quite easily “spoofed,” but may be useful information in some applications." [1/2.7.2.1])
+--
+-- 'judge' does check the 'rspStatus' field, even though that makes no sense: most IdPs encrypt the
+-- 'Assertion's, but not the entire response, and we make taht an assumption when validating
+-- signatures.  So the status info is not signed, and could easily be changed by an attacker
+-- attempting to authenticate.
 judge :: (SP m, SPStore m) => AuthnResponse -> JudgeCtx -> m AccessVerdict
 judge resp ctx = runJudgeT ctx (judge' resp)
 
@@ -345,9 +350,9 @@ checkSubjectConfirmation ass conf = do
         else NoBearerConfirmation
 
   when (bearer == HasBearerConfirmation) $ do
-    unless (any (isJust . (^. condAudienceRestriction)) (ass ^. assConditions)) $
+    unless (any (not . null . (^. condAudienceRestriction)) (ass ^. assConditions)) $
       deny ["bearer-confirmed assertions must be audience-restricted."]
-      -- (the actual validation of the field, given it is Just, happens in 'judgeConditions'.)
+      -- (the actual validation of the audience restrictions happens in 'checkConditions'.)
 
   checkSubjectConfirmationData `mapM_` (conf ^. scData)
 
@@ -367,8 +372,8 @@ checkSubjectConfirmationData confdat = do
   -- double-check the result of the call to 'rspInResponseTo' in 'judge'' above.
   checkInResponseTo "assertion" `mapM_` (confdat ^. scdInResponseTo)
 
-checkConditions :: (HasCallStack, MonadJudge m, SP m) => Conditions -> m ()
-checkConditions (Conditions lowlimit uplimit onetimeuse maudiences) = do
+checkConditions :: forall m. (HasCallStack, MonadJudge m, SP m) => Conditions -> m ()
+checkConditions (Conditions lowlimit uplimit onetimeuse audiences) = do
   now <- getNow
   when (maybe False (now <) lowlimit) $
     deny ["violation of NotBefore condition: "  <> show now <> " >= " <> show lowlimit]
@@ -378,8 +383,10 @@ checkConditions (Conditions lowlimit uplimit onetimeuse maudiences) = do
     deny ["unsupported flag: OneTimeUse"]
 
   Issuer us <- (^. judgeCtxAudience) <$> getJudgeCtx
-  case maudiences of
-    Just aus | us `notElem` aus
-      -> deny ["I am " <> cs (renderURI us) <> ", and I am not in the target audience [" <>
-               intercalate ", " (cs . renderURI <$> toList aus) <> "] of this response."]
-    _ -> pure ()
+
+  let checkAudience :: NonEmpty URI -> m ()
+      checkAudience aus = when (us `notElem` aus) $ do
+        deny [ "I am " <> cs (renderURI us) <> ", and I am not in the target audience [" <>
+               intercalate ", " (cs . renderURI <$> toList aus) <> "] of this response."
+             ]
+  checkAudience `mapM_` audiences
