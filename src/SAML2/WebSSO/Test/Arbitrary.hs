@@ -178,8 +178,8 @@ genNonEmpty rng gen = (:|) <$> gen <*> Gen.list rng gen
 
 genStatus :: Gen Status
 genStatus = Gen.choice
-  [ pure statusSuccess
-  , pure statusFailure
+  [ pure StatusSuccess
+  , pure StatusFailure
   ]
 
 genAuthnResponse :: Gen AuthnResponse

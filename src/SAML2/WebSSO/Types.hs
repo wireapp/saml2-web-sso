@@ -24,7 +24,6 @@ import URI.ByteString  -- FUTUREWORK: should saml2-web-sso also use the URI from
 
 import qualified Data.List as L
 import qualified Data.Text as ST
-import qualified SAML2.Core as HS
 import qualified Data.X509 as X509
 import qualified Servant
 
@@ -330,19 +329,15 @@ shortShowNameID (NameID uqn Nothing Nothing Nothing) = case uqn of
 shortShowNameID _ = Nothing
 
 
--- | [1/3.2.2.1;3.2.2.2]
-type Status = HS.Status
+-- | [1/3.2.2.1;3.2.2.2] This is a simple custom boolean type.  We really don't need any more
+-- information than that.
+data Status = StatusSuccess | StatusFailure
+  deriving (Eq, Show, Bounded, Enum)
 
 statusIsSuccess :: MonadError String m => Status -> m ()
 statusIsSuccess = \case
-  HS.Status (HS.StatusCode HS.StatusSuccess _) _ _ -> pure ()
-  bad -> throwError $ "status: " <> show bad
-
-statusSuccess :: Status
-statusSuccess = HS.Status (HS.StatusCode HS.StatusSuccess []) Nothing Nothing
-
-statusFailure :: Status
-statusFailure = HS.Status (HS.StatusCode HS.StatusRequester []) Nothing Nothing
+  StatusSuccess -> pure ()
+  bad@StatusFailure -> throwError $ "status: " <> show bad
 
 
 ----------------------------------------------------------------------

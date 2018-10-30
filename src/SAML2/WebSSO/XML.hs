@@ -547,11 +547,16 @@ exportURI :: HasCallStack => URI -> HS.URI
 exportURI uri = fromMaybe err . HS.parseURIReference . cs . renderURI $ uri
   where err = error $ "internal error: " <> show uri
 
-importStatus :: (HasCallStack, MonadError String m) => HS.Status -> m Status
-importStatus = pure
+-- | [1/3.2.2.1;3.2.2.2]
+importStatus :: (HasCallStack, Monad m) => HS.Status -> m Status
+importStatus = pure . \case
+  HS.Status (HS.StatusCode HS.StatusSuccess _) _ _ -> StatusSuccess
+  _ -> StatusFailure
 
 exportStatus :: HasCallStack => Status -> HS.Status
-exportStatus = id
+exportStatus = \case
+  StatusSuccess -> HS.Status (HS.StatusCode HS.StatusSuccess []) Nothing Nothing
+  StatusFailure -> HS.Status (HS.StatusCode HS.StatusRequester []) Nothing Nothing
 
 instance HasXML Status where
   parse = wrapParse importStatus

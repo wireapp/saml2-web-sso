@@ -148,7 +148,7 @@ specJudgeT = do
           , _rspIssueInstant = timeIn5seconds
           , _rspDestination  = Just [uri|https://sp.net/sso/authnresp|]
           , _rspIssuer       = Just $ assertion ^. assIssuer
-          , _rspStatus       = statusSuccess
+          , _rspStatus       = StatusSuccess
           , _rspPayload      = assertion :| []
           }
 
@@ -247,7 +247,7 @@ specJudgeT = do
       denies id `mapM_` (($ authnresp) <$> bad)
 
     context "status failure" $ do
-      denies id (authnresp & rspStatus .~ statusFailure)
+      denies id (authnresp & rspStatus .~ StatusFailure)
 
     context "time constraint violation" $ do
       let violations :: [AuthnResponse -> AuthnResponse]
