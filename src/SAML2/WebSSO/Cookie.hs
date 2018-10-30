@@ -49,7 +49,8 @@ headerValueToCookie :: forall name. KnownSymbol name => ST -> Either ST (SimpleS
 headerValueToCookie txt = do
   let cookie = parseSetCookie $ cs txt
   case ["missing cookie name"  | setCookieName cookie == ""] <>
-       ["wrong cookie name"    | setCookieName cookie /= cookieName (Proxy @name)] <>
+       [cs $ "wrong cookie name: got " <> setCookieName cookie <> ", expected " <> cookieName (Proxy @name)
+                               | setCookieName cookie /= cookieName (Proxy @name)] <>
        ["missing cookie value" | setCookieValue cookie == ""]
     of errs@(_:_) -> throwError $ ST.intercalate ", " errs
        []         -> pure (SimpleSetCookie cookie)
