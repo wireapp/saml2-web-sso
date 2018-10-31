@@ -125,7 +125,7 @@ runtest' :: WaiSession a -> ((CtxV, Application) -> IO a)
 runtest' action = runtest (\_ctx -> action)
 
 
-mkTestCtxSimple :: MonadIO m => m CtxV  -- TODO: move this block up to newtype TestSP to the bottom of the module.  or split up the module.
+mkTestCtxSimple :: MonadIO m => m CtxV
 mkTestCtxSimple = liftIO $ do
   let _ctxNow            = timeNow  -- constant time value, see below
       _ctxConfig         = fallbackConfig & cfgLogLevel .~ Fatal
