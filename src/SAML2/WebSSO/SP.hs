@@ -373,14 +373,12 @@ checkSubjectConfirmationData confdat = do
   checkInResponseTo "assertion" `mapM_` (confdat ^. scdInResponseTo)
 
 checkConditions :: forall m. (HasCallStack, MonadJudge m, SP m) => Conditions -> m ()
-checkConditions (Conditions lowlimit uplimit onetimeuse audiences) = do
+checkConditions (Conditions lowlimit uplimit _onetimeuse audiences) = do
   now <- getNow
   when (maybe False (now <) lowlimit) $
     deny ["violation of NotBefore condition: "  <> show now <> " >= " <> show lowlimit]
   when (maybe False (now >=) uplimit) $
     deny ["violation of NotOnOrAfter condition" <> show now <> " < "  <> show uplimit]
-  when onetimeuse $
-    deny ["unsupported flag: OneTimeUse"]
 
   Issuer us <- (^. judgeCtxAudience) <$> getJudgeCtx
 
