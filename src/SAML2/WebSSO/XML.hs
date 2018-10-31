@@ -17,6 +17,7 @@ module SAML2.WebSSO.XML
   , renderTime
   , nameIDToST
   , userRefToST
+  , explainDeniedReason
   ) where
 
 import Control.Category (Category(..))
@@ -40,6 +41,7 @@ import Text.XML hiding (renderText)
 import URI.ByteString
 
 import qualified Data.List as List
+import qualified Data.Text as ST
 import qualified Network.URI as HS
 import qualified SAML2.Core as HS
 import qualified SAML2.Core.Protocols as HS
@@ -174,6 +176,32 @@ defProtocolType pid iinst = HS.ProtocolType
   , HS.protocolExtensions = []
   , HS.relayState = Nothing
   }
+
+explainDeniedReason :: DeniedReason -> ST
+explainDeniedReason = \case
+  DeniedStatusFailure -> "status: failure"
+  DeniedBadUserRefs msg -> "bad user refs: " <> cs msg
+  DeniedBadInResponseTos msg -> "bad InResponseTo attribute(s): " <> cs msg
+  DeniedIssueInstantNotInPast ts now -> "IssueInstant in Header must be in the past: "
+                                        <> cs (show (renderTime ts, renderTime now))
+  DeniedAssertionIssueInstantNotInPast ts now -> "IssueInstant in Assertion must be in the past: "
+                                                 <> cs (show (renderTime ts, renderTime now))
+  DeniedAuthnStatementIssueInstantNotInPast ts now -> "IssueInstant in AuthnStatement must be in the past: "
+                                                      <> cs (show (renderTime ts, renderTime now))
+  DeniedBadDestination weare theywant -> cs $ "bad Destination: we are " <> show weare <> ", they expected " <> show theywant
+  DeniedBadRecipient weare theywant -> cs $ "bad Recipient: we are " <> show weare <> ", they expected " <> show theywant
+  DeniedIssuerMismatch inh inass -> cs $ "mismatching Issuers: in header: " <> show inh <> ", in Assertion: " <> show inass
+  DeniedNoStatements -> "no statements"
+  DeniedNoAuthnStatement -> "no AuthnStatement"
+  DeniedAuthnStatmentExpiredAt eol -> "AuthnStatement expired at " <> renderTime eol
+  DeniedNoBearerConfSubj -> "No Bearer SubjectConfirmation"
+  DeniedBearerConfAssertionsWithoutAudienceRestriction -> "AudienceRestriction required"
+  DeniedNotOnOrAfterSubjectConfirmation eol -> "SubjectConfirmation expired at " <> renderTime eol
+  DeniedNotBeforeSubjectConfirmation bol -> "SubjectConfirmation only valid starting " <> renderTime bol
+  DeniedNotOnOrAfterCondition eol -> "Condition expired at " <> renderTime eol
+  DeniedNotBeforeCondition bol -> "Condition only valid starting " <> renderTime bol
+  DeniedAudienceMismatch we they -> "Audience mismatch: we are " <> renderURI we
+                                    <> ", they expect one of " <> (ST.intercalate ", " $ renderURI <$> toList they)
 
 
 ----------------------------------------------------------------------

@@ -98,24 +98,24 @@ specJudgeT = do
 
     it "1 msg" $ do
       verdict <- runJudgeT undefined $ do
-        deny ["wef"]
+        deny DeniedStatusFailure
         pure $ AccessGranted emptyUserID
-      verdict `shouldBe` AccessDenied ["wef"]
+      verdict `shouldBe` AccessDenied [DeniedStatusFailure]
 
     it "2 msg" $ do
       verdict <- runJudgeT undefined $ do
-        deny ["wef"]
-        deny ["phoo", "gna"]
+        deny DeniedStatusFailure
+        deny DeniedNoAuthnStatement
         pure $ AccessGranted emptyUserID
-      verdict `shouldBe` AccessDenied ["wef", "phoo", "gna"]
+      verdict `shouldBe` AccessDenied [DeniedStatusFailure, DeniedNoAuthnStatement]
 
     it "1 msg, then giveup, then send another message" $ do
       verdict <- runJudgeT undefined $ do
-        deny ["wef"]
-        () <- giveup ["eeek"]
-        deny ["phoo"]
+        deny DeniedStatusFailure
+        () <- giveup DeniedNoStatements
+        deny DeniedNoAuthnStatement
         pure $ AccessGranted emptyUserID
-      verdict `shouldBe` AccessDenied ["wef", "eeek"]
+      verdict `shouldBe` AccessDenied [DeniedNoStatements, DeniedStatusFailure]
 
   describe "judge" $ do
     let -- request issued at timeNow; response issued at timeIn5seconds; judge executed at timeIn10seconds

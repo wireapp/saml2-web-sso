@@ -33,11 +33,33 @@ import qualified Servant
 
 data AccessVerdict =
     AccessDenied
-    { _avReasons :: [ST]
+    { _avReasons :: [DeniedReason]  -- ^ (this is morally a set, but lists are often easier to handle)
     }
   | AccessGranted
     { _avUserId :: UserRef
     }
+  deriving (Eq, Show, Generic)
+
+data DeniedReason
+  = DeniedStatusFailure
+  | DeniedBadUserRefs { deniedDetails :: String }
+  | DeniedBadInResponseTos { deniedDetails :: String }
+  | DeniedIssueInstantNotInPast { deniedTimestamp :: Time, deniedNow :: Time }
+  | DeniedAssertionIssueInstantNotInPast { deniedTimestamp :: Time, deniedNow :: Time }
+  | DeniedAuthnStatementIssueInstantNotInPast { deniedTimestamp :: Time, deniedNow :: Time }
+  | DeniedBadDestination { deniedWeExpected :: String, deniedTheyExpected :: String }
+  | DeniedBadRecipient { deniedWeExpected :: String, deniedTheyExpected :: String }
+  | DeniedIssuerMismatch { deniedInHeader :: Maybe Issuer, deniedInAssertion :: Issuer }
+  | DeniedNoStatements
+  | DeniedNoAuthnStatement
+  | DeniedAuthnStatmentExpiredAt { deniedEndOfLife :: Time }
+  | DeniedNoBearerConfSubj
+  | DeniedBearerConfAssertionsWithoutAudienceRestriction
+  | DeniedNotOnOrAfterSubjectConfirmation { deniedNotOnOrAfter :: Time }
+  | DeniedNotBeforeSubjectConfirmation { deniedNotBefore :: Time }
+  | DeniedNotOnOrAfterCondition { deniedNotOnOrAfter :: Time }
+  | DeniedNotBeforeCondition { deniedNotBefore :: Time }
+  | DeniedAudienceMismatch { deniedWeExpectedAudience :: URI, deniedTheyExpectedAudience :: NonEmpty URI }
   deriving (Eq, Show, Generic)
 
 data UserRef = UserRef { _uidTenant :: Issuer, _uidSubject :: NameID }
@@ -333,11 +355,6 @@ shortShowNameID _ = Nothing
 -- information than that.
 data Status = StatusSuccess | StatusFailure
   deriving (Eq, Show, Bounded, Enum)
-
-statusIsSuccess :: MonadError String m => Status -> m ()
-statusIsSuccess = \case
-  StatusSuccess -> pure ()
-  bad@StatusFailure -> throwError $ "status: " <> show bad
 
 
 ----------------------------------------------------------------------

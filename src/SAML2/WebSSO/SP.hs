@@ -8,7 +8,6 @@ import Control.Monad.Extra (ifM)
 import Control.Monad.Reader
 import Control.Monad.Writer
 import Data.Foldable (toList)
-import Data.List
 import Data.List.NonEmpty (NonEmpty)
 import Data.Maybe
 import Data.String.Conversions
@@ -171,7 +170,7 @@ getSsoURI' proxyAPI proxyAPIAuthResp idpid = extpath . (^. cfgSPSsoURI) <$> getC
 -- NOTE: @-XGeneralizedNewtypeDeriving@ does not help with the boilerplate instances below, since
 -- this is a transformer stack and not a concrete 'Monad'.
 newtype JudgeT m a = JudgeT
-  { fromJudgeT :: ExceptT [String] (WriterT [String] (ReaderT JudgeCtx m)) a }
+  { fromJudgeT :: ExceptT DeniedReason (WriterT [DeniedReason] (ReaderT JudgeCtx m)) a }
 
 -- | Note on security: we assume that the SP has only one audience, which is defined here.  If you
 -- have different sub-services running on your SP, associate a dedicated IdP with each sub-service.
@@ -187,20 +186,20 @@ makeLenses ''JudgeCtx
 runJudgeT :: forall m. (Monad m, SP m) => JudgeCtx -> JudgeT m AccessVerdict -> m AccessVerdict
 runJudgeT ctx (JudgeT em) = fmap collectErrors . (`runReaderT` ctx) . runWriterT $ runExceptT em
   where
-    collectErrors :: (Either [String] AccessVerdict, [String]) -> AccessVerdict
-    collectErrors (Left errs, errs')    = AccessDenied . fmap cs $ errs' <> errs
-    collectErrors (Right _, errs@(_:_)) = AccessDenied . fmap cs $ errs
+    collectErrors :: (Either DeniedReason AccessVerdict, [DeniedReason]) -> AccessVerdict
+    collectErrors (Left err, errs')     = AccessDenied $ err : errs'
+    collectErrors (Right _, errs@(_:_)) = AccessDenied errs
     collectErrors (Right v, [])         = v
 
 -- the parts of the MonadError, MonadWriter interfaces we want here.
 class (Functor m, Applicative m, Monad m) => MonadJudge m where
   getJudgeCtx :: m JudgeCtx
-  deny :: [String] -> m ()
-  giveup :: [String] -> m a
+  deny        :: DeniedReason -> m ()
+  giveup      :: DeniedReason -> m a
 
 instance (Functor m, Applicative m, Monad m) => MonadJudge (JudgeT m) where
   getJudgeCtx = JudgeT . lift . lift $ ask
-  deny = JudgeT . tell
+  deny = JudgeT . tell . (:[])
   giveup = JudgeT . throwError
 
 instance (Functor m, Applicative m, Monad m) => Functor (JudgeT m) where
@@ -251,12 +250,14 @@ judge resp ctx = runJudgeT ctx (judge' resp)
 
 judge' :: (HasCallStack, MonadJudge m, SP m, SPStore m) => AuthnResponse -> m AccessVerdict
 judge' resp = do
-  either (deny . (:[])) pure . statusIsSuccess $ resp ^. rspStatus
-  uref <- either (giveup . (:[])) pure $ getUserRef resp
-  inRespTo <- either (giveup . (:[])) pure $ rspInResponseTo resp
+  case resp ^. rspStatus of
+    StatusSuccess -> pure ()
+    StatusFailure -> deny DeniedStatusFailure
+  uref <- either (giveup . DeniedBadUserRefs) pure $ getUserRef resp
+  inRespTo <- either (giveup . DeniedBadInResponseTos) pure $ rspInResponseTo resp
   checkInResponseTo "response" inRespTo
-  checkIsInPast "Issuer instant" $ resp ^. rspIssueInstant
-  maybe (pure ()) (checkDestination "response destination") (resp ^. rspDestination)
+  checkIsInPast DeniedIssueInstantNotInPast $ resp ^. rspIssueInstant
+  maybe (pure ()) (checkDestination DeniedBadDestination) (resp ^. rspDestination)
   verdict <- checkAssertions (resp ^. rspIssuer) (resp ^. rspPayload) uref
   unStoreID inRespTo
   pure verdict
@@ -266,46 +267,38 @@ judge' resp = do
 checkInResponseTo :: (SPStore m, MonadJudge m) => String -> ID AuthnRequest -> m ()
 checkInResponseTo loc req = do
   ok <- isAliveID req
-  unless ok . giveup $ ["invalid InResponseTo field in " <> loc <> ": " <> show req]
+  unless ok . giveup . DeniedBadInResponseTos $ loc <> ": " <> show req
 
-checkIsInPast :: (SP m, MonadJudge m) => String -> Time -> m ()
-checkIsInPast msg tim = do
+checkIsInPast :: (SP m, MonadJudge m) => (Time -> Time -> DeniedReason) -> Time -> m ()
+checkIsInPast err tim = do
   now <- getNow
-  unless (tim < now) $
-    deny [msg <> " not in the past: " <> show tim <> " >= " <> show now]
+  unless (tim < now) . deny $ err tim now
 
 -- | Check that the response is intended for us (based on config's finalize-login uri stored in
 -- 'JudgeCtx').
-checkDestination :: (HasConfig m, MonadJudge m) => String -> URI -> m ()
-checkDestination msg (renderURI -> expectedByIdp) = do
+checkDestination :: (HasConfig m, MonadJudge m) => (String -> String -> DeniedReason) -> URI -> m ()
+checkDestination err (renderURI -> expectedByIdp) = do
   (renderURI -> expectedByUs) <- (^. judgeCtxResponseURI) <$> getJudgeCtx
-  unless (expectedByUs == expectedByIdp) $ do
-    deny [mconcat [ "bad ",  msg, ": "
-                  , "expected by us: ", show expectedByUs, "; "
-                  , "expected by IdP: any of " <> show expectedByIdp
-                  ]
-         ]
+  unless (expectedByUs == expectedByIdp) . deny $ err (cs expectedByUs) (cs expectedByIdp)
 
 checkAssertions :: (SP m, SPStore m, MonadJudge m) => Maybe Issuer -> NonEmpty Assertion -> UserRef -> m AccessVerdict
 checkAssertions missuer (toList -> assertions) uref@(UserRef issuer _) = do
   forM_ assertions $ \ass -> do
-    checkIsInPast "Assertion IssueInstant" (ass ^. assIssueInstant)
+    checkIsInPast DeniedAssertionIssueInstantNotInPast (ass ^. assIssueInstant)
     storeAssertion (ass ^. assID) (ass ^. assEndOfLife)
   checkConditions `mapM_` catMaybes ((^. assConditions) <$> assertions)
 
-  unless (maybe True (issuer ==) missuer) $
-    deny ["issuers mismatch: " <> show (missuer, issuer)]
+  unless (maybe True (issuer ==) missuer) . deny $ DeniedIssuerMismatch missuer issuer
 
   checkSubjectConfirmations assertions
 
   let statements :: [Statement]
       statements = mconcat $ (^. assContents . sasStatements . to toList) <$> assertions
-
   when (null statements) $
-    deny ["no statements in assertions"]
+    deny DeniedNoStatements  -- (not sure this is even possible?)
 
   when (null . catMaybes $ (^? _AuthnStatement) <$> statements) $
-    deny ["no AuthnStatement in assertions"]
+    deny DeniedNoAuthnStatement
 
   checkStatement `mapM_` statements
   pure $ AccessGranted uref
@@ -313,10 +306,10 @@ checkAssertions missuer (toList -> assertions) uref@(UserRef issuer _) = do
 checkStatement :: (SP m, MonadJudge m) => Statement -> m ()
 checkStatement (AuthnStatement issued _ mtimeout _) =
   do
-    checkIsInPast "AuthnStatement IssueInstance" issued
-    forM_ mtimeout $ \timeout -> do
+    checkIsInPast DeniedAuthnStatementIssueInstantNotInPast issued
+    forM_ mtimeout $ \endoflife -> do
       now <- getNow
-      when (timeout <= now) $ deny ["AuthnStatement expired at " <> show timeout]
+      when (endoflife <= now) . deny $ DeniedAuthnStatmentExpiredAt endoflife
 
 -- | Check all 'SubjectConfirmation's and 'Subject's in all 'Assertion'.  Deny if not at least one
 -- confirmation has method "bearer".
@@ -325,11 +318,8 @@ checkSubjectConfirmations assertions = do
   bearerFlags :: [[HasBearerConfirmation]] <- forM assertions $
     \assertion -> case assertion ^. assContents . sasSubject of
       Subject _ confs -> checkSubjectConfirmation assertion `mapM` confs
-
   unless (mconcat (mconcat bearerFlags) == HasBearerConfirmation) $
-    deny ["no bearer-confirmed subject"]
-
-  pure ()
+    deny DeniedNoBearerConfSubj
 
 data HasBearerConfirmation = HasBearerConfirmation | NoBearerConfirmation
   deriving (Eq, Ord, Bounded, Enum)
@@ -351,23 +341,23 @@ checkSubjectConfirmation ass conf = do
 
   when (bearer == HasBearerConfirmation) $ do
     unless (any (not . null . (^. condAudienceRestriction)) (ass ^. assConditions)) $
-      deny ["bearer-confirmed assertions must be audience-restricted."]
+      deny DeniedBearerConfAssertionsWithoutAudienceRestriction
       -- (the actual validation of the audience restrictions happens in 'checkConditions'.)
 
   checkSubjectConfirmationData `mapM_` (conf ^. scData)
-
   pure bearer
 
 checkSubjectConfirmationData :: (HasConfig m, SP m, SPStore m, MonadJudge m)
   => SubjectConfirmationData -> m ()
 checkSubjectConfirmationData confdat = do
-  checkDestination "confirmation recipient" $ confdat ^. scdRecipient
+  checkDestination DeniedBadRecipient $ confdat ^. scdRecipient
 
   now <- getNow
-  when (now >= confdat ^. scdNotOnOrAfter) $
-    deny ["SubjectConfirmation with invalid NotOnOrAfter: " <> show (confdat ^. scdNotOnOrAfter, now)]
-  when (maybe False (now <) $ confdat ^. scdNotBefore) $
-    deny ["SubjectConfirmation with invalid NotBefore: " <> show (confdat ^. scdNotBefore, now)]
+  when (now >= confdat ^. scdNotOnOrAfter) . deny $
+    DeniedNotOnOrAfterSubjectConfirmation (confdat ^. scdNotOnOrAfter)
+  case confdat ^. scdNotBefore of
+    Just notbef | now < notbef -> deny $ DeniedNotBeforeSubjectConfirmation notbef
+    _ -> pure ()
 
   -- double-check the result of the call to 'rspInResponseTo' in 'judge'' above.
   checkInResponseTo "assertion" `mapM_` (confdat ^. scdInResponseTo)
@@ -375,16 +365,17 @@ checkSubjectConfirmationData confdat = do
 checkConditions :: forall m. (HasCallStack, MonadJudge m, SP m) => Conditions -> m ()
 checkConditions (Conditions lowlimit uplimit _onetimeuse audiences) = do
   now <- getNow
-  when (maybe False (now <) lowlimit) $
-    deny ["violation of NotBefore condition: "  <> show now <> " >= " <> show lowlimit]
-  when (maybe False (now >=) uplimit) $
-    deny ["violation of NotOnOrAfter condition" <> show now <> " < "  <> show uplimit]
+  case lowlimit of
+    Just lim | now < lim -> deny $ DeniedNotBeforeCondition lim
+    _ -> pure ()
+
+  case uplimit of
+    Just lim | now >= lim -> deny $ DeniedNotOnOrAfterCondition lim
+    _ -> pure ()
 
   Issuer us <- (^. judgeCtxAudience) <$> getJudgeCtx
 
   let checkAudience :: NonEmpty URI -> m ()
-      checkAudience aus = when (us `notElem` aus) $ do
-        deny [ "I am " <> cs (renderURI us) <> ", and I am not in the target audience [" <>
-               intercalate ", " (cs . renderURI <$> toList aus) <> "] of this response."
-             ]
+      checkAudience aus = when (us `notElem` aus) . deny $
+        DeniedAudienceMismatch us aus
   checkAudience `mapM_` audiences

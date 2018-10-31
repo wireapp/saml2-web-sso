@@ -251,7 +251,7 @@ spec = describe "API" $ do
     context "known idp, bad timestamp" . testAuthRespApp mkTestCtxWithIdP $ do
       it "responds with 402" . runtest $ \ctx -> do
         postTestAuthnResp ctx True `shouldRespondWith`
-          403 { matchBody = bodyContains "violation of NotBefore condition" }
+          403 { matchBody = bodyContains "IssueInstant" }
 
     context "known idp, good timestamp" . testAuthRespApp mkTestCtxWithIdP $ do
       it "responds with 303" . runtest $ \ctx -> do
