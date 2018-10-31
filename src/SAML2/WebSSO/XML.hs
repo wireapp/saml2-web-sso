@@ -151,29 +151,6 @@ wrapRenderRoot exprt = parseElement . HS.samlToXML . exprt
       Right (Document _ el _) -> el
       Left msg  -> error $ show (Proxy @us, msg)
 
-instance HasXML     AuthnRequest     where parse      = wrapParse importAuthnRequest
-instance HasXMLRoot AuthnRequest     where renderRoot = wrapRenderRoot exportAuthnRequest
-instance HasXML     AuthnResponse    where parse      = wrapParse importAuthnResponse
-instance HasXMLRoot AuthnResponse    where renderRoot = wrapRenderRoot exportAuthnResponse
-
-instance HasXML NameID where
-  parse = wrapParse importNameID
-  render = wrapRender exportNameID
-
-instance HasXML Issuer where
-  parse = wrapParse importIssuer
-  render = wrapRender exportIssuer
-
-nameIDToST :: NameID -> ST
-nameIDToST (NameID (UNameIDUnspecified txt) Nothing Nothing Nothing) = txt
-nameIDToST (NameID (UNameIDEmail txt) Nothing Nothing Nothing) = txt
-nameIDToST (NameID (UNameIDEntity uri) Nothing Nothing Nothing) = renderURI uri
-nameIDToST other = cs $ encodeElem other  -- (some of the others may also have obvious
-                                          -- serializations, but we don't need them for now.)
-
-userRefToST :: UserRef -> ST
-userRefToST (UserRef (Issuer tenant) subject) = "{" <> renderURI tenant <> "}" <> nameIDToST subject
-
 
 importAuthnRequest :: MonadError String m => HS.AuthnRequest -> m AuthnRequest
 importAuthnRequest req = do
@@ -200,6 +177,9 @@ exportAuthnRequest req = (defAuthnRequest proto)
       , HS.protocolIssuer = exportRequiredIssuer $ req ^. rqIssuer
       , HS.protocolDestination = Nothing
       }
+
+instance HasXML     AuthnRequest     where parse      = wrapParse importAuthnRequest
+instance HasXMLRoot AuthnRequest     where renderRoot = wrapRenderRoot exportAuthnRequest
 
 defAuthnRequest :: HS.ProtocolType -> HS.AuthnRequest
 defAuthnRequest proto = HS.AuthnRequest
@@ -308,6 +288,9 @@ exportAuthnResponse rsp = HS.Response
   , HS.responseAssertions   = toList $ exportAssertion <$> (rsp ^. rspPayload)
   }
 
+instance HasXML     AuthnResponse    where parse      = wrapParse importAuthnResponse
+instance HasXMLRoot AuthnResponse    where renderRoot = wrapRenderRoot exportAuthnResponse
+
 importAssertion :: (HasCallStack, MonadError String m) => HS.PossiblyEncrypted HS.Assertion -> m Assertion
 importAssertion bad@(HS.SoEncrypted _) = die (Proxy @Assertion) bad
 importAssertion (HS.NotEncrypted ass) = do
@@ -409,13 +392,15 @@ exportSubjectConfirmationData scd = HS.SubjectConfirmationData
   , HS.subjectConfirmationXML          = mempty
   }
 
+instance HasXML SubjectConfirmationData where
+  parse = wrapParse importSubjectConfirmationData
+  render = wrapRender exportSubjectConfirmationData
 
 importIP :: (HasCallStack, MonadError String m) => HS.IP -> m IP
 importIP = pure . IP . cs
 
 exportIP :: (HasCallStack) => IP -> HS.IP
 exportIP (IP s) = cs s
-
 
 importConditions :: forall m. (HasCallStack, MonadError String m) => HS.Conditions -> m Conditions
 importConditions conds = do
@@ -446,6 +431,9 @@ exportConditions conds = HS.Conditions
                                 ]
   }
 
+instance HasXML Conditions where
+  parse = wrapParse importConditions
+  render = wrapRender exportConditions
 
 -- | Attribute statements are silently ignored.
 importStatement :: (HasCallStack, MonadError String m)
@@ -533,6 +521,20 @@ exportNameID name = HS.NameID
     unform (UNameIDPersistent  n) = (HS.Identified HS.NameIDFormatPersistent, n)
     unform (UNameIDTransient   n) = (HS.Identified HS.NameIDFormatTransient, n)
 
+nameIDToST :: NameID -> ST
+nameIDToST (NameID (UNameIDUnspecified txt) Nothing Nothing Nothing) = txt
+nameIDToST (NameID (UNameIDEmail txt) Nothing Nothing Nothing) = txt
+nameIDToST (NameID (UNameIDEntity uri) Nothing Nothing Nothing) = renderURI uri
+nameIDToST other = cs $ encodeElem other  -- (some of the others may also have obvious
+                                          -- serializations, but we don't need them for now.)
+
+instance HasXML NameID where
+  parse = wrapParse importNameID
+  render = wrapRender exportNameID
+
+userRefToST :: UserRef -> ST
+userRefToST (UserRef (Issuer tenant) subject) = "{" <> renderURI tenant <> "}" <> nameIDToST subject
+
 importVersion :: (HasCallStack, MonadError String m) => HS.SAMLVersion -> m ()
 importVersion HS.SAML20 = pure ()
 importVersion bad = die (Proxy @HS.SAMLVersion) bad
@@ -576,6 +578,10 @@ importIssuer = fmap Issuer . (nameIDToURI <=< importNameID) . HS.issuer
 
 exportIssuer :: HasCallStack => Issuer -> HS.Issuer
 exportIssuer = HS.Issuer . exportNameID . entityNameID . _fromIssuer
+
+instance HasXML Issuer where
+  parse = wrapParse importIssuer
+  render = wrapRender exportIssuer
 
 importOptionalIssuer :: (HasCallStack, MonadError String m) => Maybe HS.Issuer -> m (Maybe Issuer)
 importOptionalIssuer = fmapFlipM importIssuer
