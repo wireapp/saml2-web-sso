@@ -96,7 +96,7 @@ importSPMetadata (NL.head . HS.descriptors . HS.entityDescriptors -> desc) = do
        in maybe (throwError ("malformed descriptorID: " <> show raw)) (pure . ID . cs) raw
   _spValidUntil
     <- let raw = HS.roleDescriptorValidUntil . HS.descriptorRole $ desc
-       in maybe (throwError $ "bad validUntil: " <> show raw) (fmap fromTime . importTime) raw
+       in maybe (throwError $ "bad validUntil: " <> show raw) (fmap fromTime . importXml) raw
   _spCacheDuration
     <- let raw = HS.roleDescriptorCacheDuration . HS.descriptorRole $ desc
        in maybe (throwError $ "bad cacheDuration: " <> show raw) pure raw

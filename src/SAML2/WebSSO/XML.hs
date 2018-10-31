@@ -2,7 +2,22 @@
 
 -- FUTUREWORK: consider using http://hackage.haskell.org/package/xml-conduit-parse
 
-module SAML2.WebSSO.XML where
+module SAML2.WebSSO.XML
+  ( HasXML(..), HasXMLRoot(..)
+  , HasXMLImport(..)
+  , defNameSpaces
+  , encode
+  , decode
+  , encodeElem
+  , decodeElem
+  , renderToDocument
+  , parseFromDocument
+  , unsafeReadTime
+  , decodeTime
+  , renderTime
+  , nameIDToST
+  , userRefToST
+  ) where
 
 import Control.Category (Category(..))
 import Control.Exception (SomeException)
@@ -122,64 +137,15 @@ renderTime (Time utctime) =
           (_, "") -> t <> u
           (v, _)  -> t <> v <> "Z"
 
+nameIDToST :: NameID -> ST
+nameIDToST (NameID (UNameIDUnspecified txt) Nothing Nothing Nothing) = txt
+nameIDToST (NameID (UNameIDEmail txt) Nothing Nothing Nothing) = txt
+nameIDToST (NameID (UNameIDEntity uri) Nothing Nothing Nothing) = renderURI uri
+nameIDToST other = cs $ encodeElem other  -- (some of the others may also have obvious
+                                          -- serializations, but we don't need them for now.)
 
-----------------------------------------------------------------------
--- hack: use hsaml2 parsers and convert from SAMLProtocol instances
-
-wrapParse :: forall (m :: * -> *) them us.
-             (HasCallStack, MonadError String m, HS.XmlPickler them, HasXML us, Typeable us)
-          => (them -> m us) -> [Node] -> m us
-wrapParse imprt [NodeElement xml] = either (die (Proxy @us) . (, xml)) imprt $
-                                    HS.xmlToSAML (renderLBS def $ Document defPrologue xml defMiscellaneous)
-wrapParse _ badxml = error $ "internal error: " <> show badxml
-
-wrapRender :: forall them us.
-              (HasCallStack, HS.XmlPickler them, HasXML us)
-           => (us -> them) -> us -> [Node]
-wrapRender exprt = parseElement . HS.samlToXML . exprt
-  where
-    parseElement lbs = case parseLBS def lbs of
-      Right (Document _ el _) -> [NodeElement el]
-      Left msg  -> error $ show (Proxy @us, msg)
-
-wrapRenderRoot :: forall them us.
-              (HasCallStack, HS.SAMLProtocol them, HasXMLRoot us)
-           => (us -> them) -> us -> Element
-wrapRenderRoot exprt = parseElement . HS.samlToXML . exprt
-  where
-    parseElement lbs = case parseLBS def lbs of
-      Right (Document _ el _) -> el
-      Left msg  -> error $ show (Proxy @us, msg)
-
-
-importAuthnRequest :: MonadError String m => HS.AuthnRequest -> m AuthnRequest
-importAuthnRequest req = do
-  let proto = HS.requestProtocol $ HS.authnRequest req
-  () <- importVersion $ HS.protocolVersion proto
-  _rqID           <- importID $ HS.protocolID proto
-  _rqIssueInstant <- importTime $ HS.protocolIssueInstant proto
-  _rqIssuer       <- importRequiredIssuer $ HS.protocolIssuer proto
-  _rqNameIDPolicy <- fmapFlipM importNameIDPolicy $ HS.authnRequestNameIDPolicy req
-
-  fmapFlipM importURI (HS.protocolDestination proto) >>= \case
-    Nothing -> pure ()
-    Just dest -> die (Proxy @AuthnRequest) ("protocol destination not allowed: " <> show dest)
-
-  pure AuthnRequest {..}
-
-exportAuthnRequest :: AuthnRequest -> HS.AuthnRequest
-exportAuthnRequest req = (defAuthnRequest proto)
-  { HS.authnRequestNameIDPolicy = exportNameIDPolicy <$> req ^. rqNameIDPolicy
-  }
-  where
-    proto = (defProtocolType (exportID $ req ^. rqID) (exportTime $ req ^. rqIssueInstant))
-      { HS.protocolVersion = exportVersion
-      , HS.protocolIssuer = exportRequiredIssuer $ req ^. rqIssuer
-      , HS.protocolDestination = Nothing
-      }
-
-instance HasXML     AuthnRequest     where parse      = wrapParse importAuthnRequest
-instance HasXMLRoot AuthnRequest     where renderRoot = wrapRenderRoot exportAuthnRequest
+userRefToST :: UserRef -> ST
+userRefToST (UserRef (Issuer tenant) subject) = "{" <> renderURI tenant <> "}" <> nameIDToST subject
 
 defAuthnRequest :: HS.ProtocolType -> HS.AuthnRequest
 defAuthnRequest proto = HS.AuthnRequest
@@ -209,6 +175,69 @@ defProtocolType pid iinst = HS.ProtocolType
   , HS.relayState = Nothing
   }
 
+
+----------------------------------------------------------------------
+-- hack: use hsaml2 parsers and convert from SAMLProtocol instances
+
+class HasXMLImport us them where
+  importXml :: MonadError String m => them -> m us
+  exportXml :: us -> them
+
+
+wrapParse :: forall (m :: * -> *) them us.
+             (HasCallStack, MonadError String m, HS.XmlPickler them, HasXML us, Typeable us)
+          => (them -> m us) -> [Node] -> m us
+wrapParse imprt [NodeElement xml] = either (die (Proxy @us) . (, xml)) imprt $
+                                    HS.xmlToSAML (renderLBS def $ Document defPrologue xml defMiscellaneous)
+wrapParse _ badxml = error $ "internal error: " <> show badxml
+
+wrapRender :: forall them us.
+              (HasCallStack, HS.XmlPickler them, HasXML us)
+           => (us -> them) -> us -> [Node]
+wrapRender exprt = parseElement . HS.samlToXML . exprt
+  where
+    parseElement lbs = case parseLBS def lbs of
+      Right (Document _ el _) -> [NodeElement el]
+      Left msg  -> error $ show (Proxy @us, msg)
+
+wrapRenderRoot :: forall them us.
+              (HasCallStack, HS.SAMLProtocol them, HasXMLRoot us)
+           => (us -> them) -> us -> Element
+wrapRenderRoot exprt = parseElement . HS.samlToXML . exprt
+  where
+    parseElement lbs = case parseLBS def lbs of
+      Right (Document _ el _) -> el
+      Left msg  -> error $ show (Proxy @us, msg)
+
+
+----------------------------------------------------------------------
+-- map individual types from hsaml2 to saml2-web-sso
+
+importAuthnRequest :: MonadError String m => HS.AuthnRequest -> m AuthnRequest
+importAuthnRequest req = do
+  let proto = HS.requestProtocol $ HS.authnRequest req
+  () <- importVersion $ HS.protocolVersion proto
+  _rqID           <- importID $ HS.protocolID proto
+  _rqIssueInstant <- importTime $ HS.protocolIssueInstant proto
+  _rqIssuer       <- importRequiredIssuer $ HS.protocolIssuer proto
+  _rqNameIDPolicy <- fmapFlipM importNameIDPolicy $ HS.authnRequestNameIDPolicy req
+
+  fmapFlipM importURI (HS.protocolDestination proto) >>= \case
+    Nothing -> pure ()
+    Just dest -> die (Proxy @AuthnRequest) ("protocol destination not allowed: " <> show dest)
+
+  pure AuthnRequest {..}
+
+exportAuthnRequest :: AuthnRequest -> HS.AuthnRequest
+exportAuthnRequest req = (defAuthnRequest proto)
+  { HS.authnRequestNameIDPolicy = exportNameIDPolicy <$> req ^. rqNameIDPolicy
+  }
+  where
+    proto = (defProtocolType (exportID $ req ^. rqID) (exportTime $ req ^. rqIssueInstant))
+      { HS.protocolVersion = exportVersion
+      , HS.protocolIssuer = exportRequiredIssuer $ req ^. rqIssuer
+      , HS.protocolDestination = Nothing
+      }
 
 importNameIDPolicy :: (HasCallStack, MonadError String m) => HS.NameIDPolicy -> m NameIdPolicy
 importNameIDPolicy nip = do
@@ -259,7 +288,7 @@ importAuthnResponse rsp = do
   _rspInRespTo     <- (importID . cs) `fmapFlipM` HS.statusInResponseTo rsptyp
   _rspIssueInstant <- importTime $ HS.protocolIssueInstant proto
   _rspDestination  <- fmapFlipM importURI $ HS.protocolDestination proto
-  _rspIssuer       <- importOptionalIssuer $ HS.protocolIssuer proto
+  _rspIssuer       <- fmapFlipM importIssuer $ HS.protocolIssuer proto
   _rspStatus       <- importStatus $ HS.status rsptyp
   _rspPayload      <- maybe (throwError "no assertions") pure . NL.nonEmpty =<< (importAssertion `mapM` HS.responseAssertions rsp)
 
@@ -287,9 +316,6 @@ exportAuthnResponse rsp = HS.Response
     }
   , HS.responseAssertions   = toList $ exportAssertion <$> (rsp ^. rspPayload)
   }
-
-instance HasXML     AuthnResponse    where parse      = wrapParse importAuthnResponse
-instance HasXMLRoot AuthnResponse    where renderRoot = wrapRenderRoot exportAuthnResponse
 
 importAssertion :: (HasCallStack, MonadError String m) => HS.PossiblyEncrypted HS.Assertion -> m Assertion
 importAssertion bad@(HS.SoEncrypted _) = die (Proxy @Assertion) bad
@@ -392,10 +418,6 @@ exportSubjectConfirmationData scd = HS.SubjectConfirmationData
   , HS.subjectConfirmationXML          = mempty
   }
 
-instance HasXML SubjectConfirmationData where
-  parse = wrapParse importSubjectConfirmationData
-  render = wrapRender exportSubjectConfirmationData
-
 importIP :: (HasCallStack, MonadError String m) => HS.IP -> m IP
 importIP = pure . IP . cs
 
@@ -430,10 +452,6 @@ exportConditions conds = HS.Conditions
                                 | hsrs <- conds ^. condAudienceRestriction
                                 ]
   }
-
-instance HasXML Conditions where
-  parse = wrapParse importConditions
-  render = wrapRender exportConditions
 
 -- | Attribute statements are silently ignored.
 importStatement :: (HasCallStack, MonadError String m)
@@ -477,13 +495,6 @@ importID = pure . ID . cs
 exportID :: HasCallStack => ID a -> HS.ID
 exportID (ID t) = cs t
 
-importBaseID :: (HasCallStack, ConvertibleStrings s ST) => HS.BaseID s -> BaseID
-importBaseID (HS.BaseID bidq bidspq bid) = BaseID (cs bid) (cs <$> bidq) (cs <$> bidspq)
-
-importBaseIDasNameID :: (HasCallStack, ConvertibleStrings s ST) => HS.BaseID s -> NameID
-importBaseIDasNameID (importBaseID -> BaseID bid bidq bidspq) =
-  NameID (UNameIDUnspecified bid) bidq bidspq Nothing
-
 importNameID :: (HasCallStack, MonadError String m) => HS.NameID -> m NameID
 importNameID bad@(HS.NameID (HS.BaseID _ _ _) (HS.Unidentified _) _)
   = die (Proxy @NameID) (show bad)
@@ -521,20 +532,6 @@ exportNameID name = HS.NameID
     unform (UNameIDPersistent  n) = (HS.Identified HS.NameIDFormatPersistent, n)
     unform (UNameIDTransient   n) = (HS.Identified HS.NameIDFormatTransient, n)
 
-nameIDToST :: NameID -> ST
-nameIDToST (NameID (UNameIDUnspecified txt) Nothing Nothing Nothing) = txt
-nameIDToST (NameID (UNameIDEmail txt) Nothing Nothing Nothing) = txt
-nameIDToST (NameID (UNameIDEntity uri) Nothing Nothing Nothing) = renderURI uri
-nameIDToST other = cs $ encodeElem other  -- (some of the others may also have obvious
-                                          -- serializations, but we don't need them for now.)
-
-instance HasXML NameID where
-  parse = wrapParse importNameID
-  render = wrapRender exportNameID
-
-userRefToST :: UserRef -> ST
-userRefToST (UserRef (Issuer tenant) subject) = "{" <> renderURI tenant <> "}" <> nameIDToST subject
-
 importVersion :: (HasCallStack, MonadError String m) => HS.SAMLVersion -> m ()
 importVersion HS.SAML20 = pure ()
 importVersion bad = die (Proxy @HS.SAMLVersion) bad
@@ -566,10 +563,6 @@ exportStatus = \case
   StatusSuccess -> HS.Status (HS.StatusCode HS.StatusSuccess []) Nothing Nothing
   StatusFailure -> HS.Status (HS.StatusCode HS.StatusRequester []) Nothing Nothing
 
-instance HasXML Status where
-  parse = wrapParse importStatus
-  render = wrapRender exportStatus
-
 importIssuer :: (HasCallStack, MonadError String m) => HS.Issuer -> m Issuer
 importIssuer = fmap Issuer . (nameIDToURI <=< importNameID) . HS.issuer
   where
@@ -579,18 +572,104 @@ importIssuer = fmap Issuer . (nameIDToURI <=< importNameID) . HS.issuer
 exportIssuer :: HasCallStack => Issuer -> HS.Issuer
 exportIssuer = HS.Issuer . exportNameID . entityNameID . _fromIssuer
 
-instance HasXML Issuer where
-  parse = wrapParse importIssuer
-  render = wrapRender exportIssuer
-
-importOptionalIssuer :: (HasCallStack, MonadError String m) => Maybe HS.Issuer -> m (Maybe Issuer)
-importOptionalIssuer = fmapFlipM importIssuer
-
-exportOptionalIssuer :: HasCallStack => Maybe Issuer -> Maybe HS.Issuer
-exportOptionalIssuer = fmap exportIssuer
-
 importRequiredIssuer :: (HasCallStack, MonadError String m) => Maybe HS.Issuer -> m Issuer
 importRequiredIssuer = maybe (die (Proxy @AuthnRequest) ("no issuer id" :: String)) importIssuer
 
 exportRequiredIssuer :: HasCallStack => Issuer -> Maybe HS.Issuer
 exportRequiredIssuer = Just . exportIssuer
+
+
+----------------------------------------------------------------------
+-- instances
+
+instance HasXMLImport AuthnRequest HS.AuthnRequest where
+  importXml = importAuthnRequest
+  exportXml = exportAuthnRequest
+
+instance HasXML AuthnRequest where
+  parse = wrapParse importAuthnRequest
+
+instance HasXMLRoot AuthnRequest where
+  renderRoot = wrapRenderRoot exportAuthnRequest
+
+instance HasXMLImport NameIdPolicy HS.NameIDPolicy where
+  importXml = importNameIDPolicy
+  exportXml = exportNameIDPolicy
+
+instance HasXMLImport AuthnResponse HS.Response where
+  importXml = importAuthnResponse
+  exportXml = exportAuthnResponse
+
+instance HasXML AuthnResponse where
+  parse = wrapParse importAuthnResponse
+
+instance HasXMLRoot AuthnResponse where
+  renderRoot = wrapRenderRoot exportAuthnResponse
+
+instance HasXMLImport Assertion (HS.PossiblyEncrypted HS.Assertion) where
+  importXml = importAssertion
+  exportXml = exportAssertion
+
+instance HasXMLImport Subject HS.Subject where
+  importXml = importSubject
+  exportXml = exportSubject
+
+instance HasXMLImport SubjectConfirmationData HS.SubjectConfirmationData where
+  importXml = importSubjectConfirmationData
+  exportXml = exportSubjectConfirmationData
+
+instance HasXMLImport IP HS.IP where
+  importXml = importIP
+  exportXml = exportIP
+
+instance HasXMLImport Conditions HS.Conditions where
+  importXml = importConditions
+  exportXml = exportConditions
+
+instance HasXML Conditions where
+  parse = wrapParse importConditions
+  render = wrapRender exportConditions
+
+instance HasXMLImport (Maybe Statement) HS.Statement where
+  importXml = importStatement
+  exportXml = exportStatement . (undefined :: Maybe Statement -> Statement)
+
+instance HasXMLImport Locality HS.SubjectLocality where
+  importXml = importLocality
+  exportXml = exportLocality
+
+instance HasXMLImport (ID a) HS.ID  where
+  importXml = importID
+  exportXml = exportID
+
+instance HasXMLImport NameID HS.NameID where
+  importXml = importNameID
+  exportXml = exportNameID
+
+instance HasXML NameID where
+  parse = wrapParse importNameID
+  render = wrapRender exportNameID
+
+instance HasXMLImport () HS.SAMLVersion where
+  importXml = importVersion
+  exportXml = \() -> exportVersion
+
+instance HasXMLImport Time HS.DateTime where
+  importXml = importTime
+  exportXml = exportTime
+
+instance HasXMLImport URI HS.URI where
+  importXml = importURI
+  exportXml = exportURI
+
+instance HasXMLImport Status HS.Status where
+  importXml = importStatus
+  exportXml = exportStatus
+
+instance HasXMLImport Issuer HS.Issuer where
+  importXml = importIssuer
+  exportXml = exportIssuer
+
+instance HasXML Issuer where
+  parse = wrapParse importIssuer
+  render = wrapRender exportIssuer
