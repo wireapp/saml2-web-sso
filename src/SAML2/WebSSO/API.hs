@@ -285,7 +285,7 @@ type ResponseVerdict = ServantErr
 simpleHandleVerdict :: (SP m, SPHandler (Error err) m) => OnSuccessRedirect m -> AccessVerdict -> m (WithCookieAndLocation ST)
 simpleHandleVerdict onsuccess = \case
     AccessDenied reasons
-      -> logger Info (show reasons) >> (throwError . Forbidden . cs $ ST.intercalate ", " reasons)
+      -> logger Debug (show reasons) >> (throwError . Forbidden . cs $ ST.intercalate ", " reasons)
     AccessGranted uid
       -> onsuccess uid <&> \(setcookie, uri)
                              -> addHeader setcookie $ addHeader uri ("SSO successful, redirecting to " <> renderURI uri)
