@@ -43,12 +43,11 @@ default-extensions:
   - ViewPatterns
 
 dependencies:
-  - base
-
   - aeson
   - asn1-encoding
   - asn1-parse
   - asn1-types
+  - base
   - base64-bytestring
   - binary
   - bytestring
@@ -64,6 +63,7 @@ dependencies:
   - hourglass
   - http-media
   - http-types
+  - lens
   - lens-datetime
   - memory
   - mtl
@@ -91,14 +91,13 @@ dependencies:
   # for SAML2.WebSSO.Test.*; we should have a cabal flag that allows users to disable these deps.
   - hedgehog
   - hedgehog-quickcheck
-  - quickcheck-instances
+  - pretty-show
   - QuickCheck
+  - quickcheck-instances
 
-  # temporary, for debugging & dev
+  # it would be nice if these could go away in the future.
   - hsaml2
   - hxt
-  - lens
-  - pretty-show
 
 library:
   source-dirs:
@@ -111,8 +110,6 @@ tests:
       - test
     ghc-options: -threaded -rtsopts -with-rtsopts=-N
     dependencies:
-      - saml2-web-sso
-
       - hedgehog
       - hspec
       - hspec-core
@@ -120,6 +117,7 @@ tests:
       - hspec-wai
       - pretty-show
       - process
+      - saml2-web-sso
       - shelly
       - temporary
       - wai-extra
