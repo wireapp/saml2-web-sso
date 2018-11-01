@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wno-unused-binds #-}
 
-module Test.SAML2.WebSSO.XML.RoundtripSpec (spec) where
+module Test.SAML2.WebSSO.RoundtripSpec (spec) where
 
 import Control.Lens
 import Data.List
