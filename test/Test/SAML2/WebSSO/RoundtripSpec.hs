@@ -9,6 +9,7 @@ import Hedgehog
 import Hedgehog.Gen as Gen
 import SAML2.WebSSO
 import SAML2.WebSSO.Test.Arbitrary
+import Servant (mimeRender, mimeUnrender)
 import Test.Hspec
 import Util
 
@@ -74,3 +75,10 @@ prop_tripAuthnResponse = mkpropHasXML' canonicalizeAuthnResponse . Gen.prune $ g
 
 canonicalizeAuthnResponse :: AuthnResponse -> AuthnResponse
 canonicalizeAuthnResponse = rspPayload %~ fmap (assConditions . _Just %~ canonicalizeConditions)
+
+
+prop_tripFormRedirect :: Property
+prop_tripFormRedirect = Hedgehog.property $
+  Hedgehog.forAll (genFormRedirect genAuthnRequest) >>=
+  \formRedirect ->
+    Hedgehog.tripping formRedirect (mimeRender (Proxy @HTML)) (mimeUnrender (Proxy @HTML))

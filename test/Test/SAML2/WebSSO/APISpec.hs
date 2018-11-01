@@ -16,7 +16,6 @@ import Data.String.Conversions
 import Network.Wai.Test
 import SAML2.Util
 import SAML2.WebSSO
-import SAML2.WebSSO.Test.Arbitrary (genFormRedirect, genAuthnRequest)
 import SAML2.WebSSO.Test.Credentials
 import SAML2.WebSSO.Test.MockResponse
 import Servant
@@ -31,16 +30,6 @@ import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
 import qualified Data.X509 as X509
 import qualified Data.Yaml as Yaml
-import qualified Hedgehog
-
-
-hedgehogTests :: Hedgehog.Group
-hedgehogTests = Hedgehog.Group "hedgehog tests" $
-  [ ( "roundtrip: MimeRender HTML FormRedirect"
-    , Hedgehog.property $ Hedgehog.forAll (genFormRedirect genAuthnRequest) >>=
-        \formRedirect -> Hedgehog.tripping formRedirect (mimeRender (Proxy @HTML)) (mimeUnrender (Proxy @HTML))
-    )
-  ]
 
 
 burnIdP :: FilePath -> FilePath -> ST -> ST -> Spec
@@ -86,8 +75,6 @@ burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
 
 spec :: Spec
 spec = describe "API" $ do
-  hedgehog $ Hedgehog.checkParallel hedgehogTests
-
   describe "base64 encoding" $ do
     describe "compatible with /usr/bin/base64" $ do
       let check :: LBS -> Spec
