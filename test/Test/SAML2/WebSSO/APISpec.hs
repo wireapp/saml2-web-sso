@@ -32,47 +32,6 @@ import qualified Data.X509 as X509
 import qualified Data.Yaml as Yaml
 
 
-burnIdP :: FilePath -> FilePath -> ST -> ST -> Spec
-burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
-  let mkctx :: IO CtxV
-      mkctx = do
-        testCtx1 <- mkTestCtxSimple
-        let reqstore = Map.fromList
-              -- it would be probably better to also take this ID (and timeout?) as an argument(s).
-              [ (ID "idcf2299ac551b42f1aa9b88804ed308c2", unsafeReadTime "2019-04-14T10:53:57Z")
-              , (ID "idafecfcff5cc64345b6ddde7ee47b4838", unsafeReadTime "2019-04-14T10:53:57Z")
-              ]
-        idp <- getIdP
-        modifyMVar_ testCtx1 $ pure .
-          ( (ctxIdPs .~ [idp])
-          . (ctxNow .~ unsafeReadTime currentTime)
-          . (ctxConfig . cfgSPAppURI .~ unsafeParseURI audienceURI)
-          . (ctxRequestStore .~ reqstore)
-          )
-        pure testCtx1
-
-      getIdP :: IO IdPConfig_
-      getIdP = Yaml.decodeThrow . cs =<< readSampleIO cfgPath
-
-  describe ("smoke tests: " <> show cfgPath) $ do
-    describe "authreq" . withapp (Proxy @APIAuthReq') (authreq' defSPIssuer) mkctx $ do
-      it "responds with 200" . runtest' $ do
-        idp <- liftIO getIdP
-        get ("/authreq/" <> cs (idPIdToST (idp ^. idpId)))
-          `shouldRespondWith` 200 { matchBody = bodyContains "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" }
-
-    describe "authresp" . testAuthRespApp mkctx $ do
-      it "responds with 303" . runtest' $ do
-        sample <- liftIO $ cs <$> readSampleIO respXmlPath
-        let postresp = postHtmlForm "/authresp" body
-            body = [("SAMLResponse", sample)]
-        postresp
-          `shouldRespondWith` 303
-
-
-----------------------------------------------------------------------
--- test cases
-
 spec :: Spec
 spec = describe "API" $ do
   describe "base64 encoding" $ do
@@ -244,13 +203,6 @@ spec = describe "API" $ do
       it "responds with 303" . runtest $ \ctx -> do
         postTestAuthnResp ctx False `shouldRespondWith`
           303 { matchBody = bodyContains "<body><p>SSO successful, redirecting to" }
-
-
-  xdescribe "idp smoke tests" $ do
-    burnIdP "okta-config.yaml" "okta-resp-1.base64" "2018-05-25T10:57:16.135Z" "https://zb2.zerobuzz.net:60443/"
-    burnIdP "microsoft-idp-config.yaml" "microsoft-authnresponse-2.base64" "2018-04-14T10:53:57Z" "https://zb2.zerobuzz.net:60443/authresp"
-    -- TODO: centrify
-    -- TODO: onelogin
 
 
   describe "mkAuthnResponse (this is testing the test helpers)" $ do
