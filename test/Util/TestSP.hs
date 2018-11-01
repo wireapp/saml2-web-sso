@@ -107,10 +107,6 @@ ioFromTestSP :: CtxV -> TestSP a -> IO a
 ioFromTestSP ctx m = either (throwIO . ErrorCall . show) pure =<< (runExceptT . runHandler' $ handlerFromTestSP ctx m)
 
 
-testAuthRespApp :: IO CtxV -> SpecWith (CtxV, Application) -> Spec
-testAuthRespApp = withapp (Proxy @APIAuthResp')
-  (authresp' defSPIssuer defResponseURI (HandleVerdictRedirect simpleOnSuccess))
-
 withapp
   :: forall (api :: *). (HasServer api '[])
   => Proxy api -> ServerT api TestSP -> IO CtxV -> SpecWith (CtxV, Application) -> Spec

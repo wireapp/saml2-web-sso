@@ -5,6 +5,7 @@ module Util.Misc where
 import Control.Exception (throwIO, ErrorCall(ErrorCall))
 import Control.Lens
 import Control.Monad
+import Control.Monad.IO.Class
 import Shelly (shelly, run, setStdin, silently)
 import Data.EitherR
 import Data.Generics.Uniplate.Data
@@ -102,8 +103,8 @@ haskellCodeFromXML Proxy ifilepath_ = do
   Prelude.appendFile ofilepath $ g typ
 
 
-readSampleIO :: FilePath -> IO LT
-readSampleIO fpath = do
+readSampleIO :: MonadIO m => FilePath -> m LT
+readSampleIO fpath = liftIO $ do
   root <- getEnv "SAML2_WEB_SSO_ROOT"
   LT.readFile $ root </> "test/samples" </> fpath
 
