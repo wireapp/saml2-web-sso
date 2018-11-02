@@ -182,15 +182,17 @@ explainDeniedReason = \case
   DeniedStatusFailure -> "status: failure"
   DeniedBadUserRefs msg -> "bad user refs: " <> cs msg
   DeniedBadInResponseTos msg -> "bad InResponseTo attribute(s): " <> cs msg
-  DeniedIssueInstantNotInPast ts now -> "IssueInstant in Header must be in the past: "
-                                        <> cs (show (renderTime ts, renderTime now))
-  DeniedAssertionIssueInstantNotInPast ts now -> "IssueInstant in Assertion must be in the past: "
-                                                 <> cs (show (renderTime ts, renderTime now))
-  DeniedAuthnStatementIssueInstantNotInPast ts now -> "IssueInstant in AuthnStatement must be in the past: "
-                                                      <> cs (show (renderTime ts, renderTime now))
-  DeniedBadDestination weare theywant -> cs $ "bad Destination: we are " <> show weare <> ", they expected " <> show theywant
-  DeniedBadRecipient weare theywant -> cs $ "bad Recipient: we are " <> show weare <> ", they expected " <> show theywant
-  DeniedIssuerMismatch inh inass -> cs $ "mismatching Issuers: in header: " <> show inh <> ", in Assertion: " <> show inass
+  DeniedIssueInstantNotInPast ts now -> cs $ "IssueInstant in Header must be older than " <> renderTime now
+                                        <> ", but is " <> renderTime ts
+  DeniedAssertionIssueInstantNotInPast ts now -> "IssueInstant in Assertion must be older than " <> renderTime now
+                                                 <> ", but is " <> renderTime ts
+  DeniedAuthnStatementIssueInstantNotInPast ts now -> "IssueInstant in AuthnStatement must be older than " <> renderTime now
+                                                      <> ", but is " <> renderTime ts
+  DeniedBadDestination weare theywant -> cs $ "bad Destination: we are " <> weare <> ", they expected " <> theywant
+  DeniedBadRecipient weare theywant -> cs $ "bad Recipient: we are " <> weare <> ", they expected " <> theywant
+  DeniedIssuerMismatch inh inass -> cs $ "mismatching Issuers: in header: "
+                                    <> maybe "Nothing" encodeElem inh
+                                    <> ", in Assertion: " <> encodeElem inass
   DeniedNoStatements -> "no statements"
   DeniedNoAuthnStatement -> "no AuthnStatement"
   DeniedAuthnStatmentExpiredAt eol -> "AuthnStatement expired at " <> renderTime eol
@@ -201,7 +203,7 @@ explainDeniedReason = \case
   DeniedNotOnOrAfterCondition eol -> "Condition expired at " <> renderTime eol
   DeniedNotBeforeCondition bol -> "Condition only valid starting " <> renderTime bol
   DeniedAudienceMismatch we they -> "Audience mismatch: we are " <> renderURI we
-                                    <> ", they expect one of " <> (ST.intercalate ", " $ renderURI <$> toList they)
+                                    <> ", they expect one of [" <> (ST.intercalate ", " $ renderURI <$> toList they) <> "]"
 
 
 ----------------------------------------------------------------------

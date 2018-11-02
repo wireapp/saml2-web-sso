@@ -77,9 +77,9 @@ api appName handleVerdict =
   :<|> authreq' defSPIssuer
   :<|> authresp' defSPIssuer defResponseURI handleVerdict
 
--- | The 'Issuer' is an identifier of a SAML participant.  In this time, it's the SP, ie., ourselves.
+-- | The 'Issuer' is an identifier of a SAML participant.  In this case, it's the SP, ie., ourselves.
 defSPIssuer :: HasConfig m => m Issuer
-defSPIssuer = Issuer <$> getSsoURI (Proxy @API) (Proxy @APIAuthResp')
+defSPIssuer = Issuer <$> defResponseURI
 
 -- | The URI that 'AuthnResponse' values are delivered to ('APIAuthResp').
 defResponseURI :: HasConfig m => m URI
@@ -285,7 +285,7 @@ type ResponseVerdict = ServantErr
 simpleHandleVerdict :: (SP m, SPHandler (Error err) m) => OnSuccessRedirect m -> AccessVerdict -> m (WithCookieAndLocation ST)
 simpleHandleVerdict onsuccess = \case
     AccessDenied reasons
-      -> logger Debug (show reasons) >> (throwError . Forbidden . cs $ ST.intercalate ", " (explainDeniedReason <$> reasons))
+      -> logger Debug (show reasons) >> (throwError . Forbidden . cs $ ST.intercalate "; " (explainDeniedReason <$> reasons))
     AccessGranted uid
       -> onsuccess uid <&> \(setcookie, uri)
                              -> addHeader setcookie $ addHeader uri ("SSO successful, redirecting to " <> renderURI uri)
