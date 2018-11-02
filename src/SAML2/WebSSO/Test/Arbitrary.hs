@@ -6,15 +6,19 @@ module SAML2.WebSSO.Test.Arbitrary where
 
 import Control.Lens
 import Data.List.NonEmpty as NL
+import Data.Proxy
 import Data.String.Conversions
 import Data.Time
+import Data.Time.Lens as TL
 import GHC.Stack
+import GHC.TypeLits
 import Hedgehog
 import SAML2.WebSSO
 import Test.QuickCheck (Arbitrary(arbitrary, shrink))
 import Test.QuickCheck.Instances ()
 import Text.XML
 import URI.ByteString
+import Web.Cookie
 
 import qualified Data.Map as Map
 import qualified Data.Text as ST
@@ -324,6 +328,35 @@ genIdPConfig genExtra = do
 genFormRedirect :: Gen a -> Gen (FormRedirect a)
 genFormRedirect genBody = FormRedirect <$> genHttps <*> genBody
 
+genSimpleSetCookie :: forall (name :: Symbol). KnownSymbol name => Gen (SimpleSetCookie name)
+genSimpleSetCookie = do
+  val <- cs <$> genNiceWord
+  path <- Gen.choice [ Just . cs . ST.intercalate "/" <$> Gen.list (Range.linear 0 3) genNiceWord
+                     , pure $ Just "/"
+                     , pure Nothing
+                     ]
+  expires <- Gen.maybe (THQ.quickcheck arbitrary <&> TL.seconds %~ (* 10e12) . (/ 10e12))  -- only full seconds
+  maxage <- Gen.maybe $ fromIntegral <$> Gen.int (Range.linear 0 1000)  -- only non-negative, full seconds
+  domain <- Gen.maybe (cs . ST.intercalate "." <$> Gen.list (Range.linear 2 3) genNiceWord)
+  httponly <- Gen.bool
+  secure <- Gen.bool
+  samesite <- Gen.maybe $ Gen.element [sameSiteLax, sameSiteStrict]
+  pure . SimpleSetCookie $ def
+    { setCookieName = cookieName (Proxy @name)
+    , setCookieValue = val
+    , setCookiePath = path
+    , setCookieExpires = expires
+    , setCookieMaxAge = maxage
+    , setCookieDomain = domain
+    , setCookieHttpOnly = httponly
+    , setCookieSecure = secure
+    , setCookieSameSite = samesite
+    }
+
+genAuthnResponseBody :: Gen AuthnResponseBody
+genAuthnResponseBody = do
+  aresp <- genAuthnResponse
+  pure (AuthnResponseBody (pure aresp))
 
 -- FUTUREWORK: the following could be TH-generated entirely (take all declarations matching '^gen' and
 -- turn the resp. types into Arbitrary instances).

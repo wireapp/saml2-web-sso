@@ -1,15 +1,17 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-unused-binds #-}
 
 module Test.SAML2.WebSSO.RoundtripSpec (spec) where
 
 import Control.Lens
+import Data.Aeson as Aeson
 import Data.List
 import Data.Proxy
 import Hedgehog
 import Hedgehog.Gen as Gen
 import SAML2.WebSSO
 import SAML2.WebSSO.Test.Arbitrary
-import Servant (mimeRender, mimeUnrender)
+import Servant
 import Test.Hspec
 import Util
 
@@ -18,10 +20,83 @@ import qualified SAML2.Core as HS
 
 
 spec :: Spec
-spec = hedgehog $ checkParallel $$(discover)
+spec = hedgehog . checkParallel $ Group "hedgehog roundtrips" tests
 
 numTests :: TestLimit
 numTests = 120
+
+scaledprop :: PropertyT IO () -> Property
+scaledprop = withTests numTests . property
+
+
+tests :: [(PropertyName, Property)]
+tests =
+  [ ( "instance HasXML Document"
+    , mkpropHasXML' normalizeDoc genXMLDocument
+    )
+  , ( "instance HasXML NameID"
+    , mkpropHasXML genNameID
+    )
+  , ( "instance HasXML IdPMetadata"
+    , mkpropHasXML genIdPMetadata
+    )
+  , ( "instance HasXML SPMetadata"
+    , mkpropHasXML genSPMetadata
+    )
+  , ( "instance HasXML AuthnRequest"
+    , mkpropHasXML genAuthnRequest
+    )
+  , ( "instance HasXML Conditions"
+    , mkpropHasXML' canonicalizeConditions . Gen.prune $ genConditions
+    )
+  , ( "instance HasXMLImport Conditions"
+    , mkpropHasXMLImport' canonicalizeConditions (Proxy @HS.Conditions) . Gen.prune $ genConditions
+    )
+  , ( "instance HasXML AuthnResponse"
+    , mkpropHasXML' canonicalizeAuthnResponse . Gen.prune $ genAuthnResponse
+      -- without the 'prune', this triggers https://github.com/hedgehogqa/haskell-hedgehog/issues/174
+    )
+
+  , ( "instance {From,To}JSON Config"
+    , mkpropJSON genConfig
+    )
+  , ( "instance {From,To}JSON IdPId"
+    , mkpropJSON genIdPId
+    )
+  , ( "instance {From,To}JSON Issuer"
+    , mkpropJSON genIssuer
+    )
+  , ( "instance {From,To}JSON URI"
+    , mkpropJSON genHttps
+    )
+  , ( "instance {From,To}JSON SignedCertificate"
+    , mkpropJSON genSignedCertificate
+    )
+
+  , ( "instance FromHttpApiData IdPId"
+    , mkpropHttpApiData genIdPId
+    )
+  , ( "instance FromHttpApiData (SimpleSetCookie (name :: Symbol))"
+    , mkpropHttpApiData (genSimpleSetCookie @"gnfz")
+    )
+
+  , ( "instance Mime{Render,Unrender} HTML (FormRedirect AuthnRequest)"
+    , mkpropMimeRender (Proxy @HTML) (genFormRedirect genAuthnRequest)
+    )
+
+  -- this one *almost* type-checks, and i'm not sure it's worth it...
+  -- , ( "instance FromMultipart Mem AuthnResponseBody <=> authnResponseBodyToMultipart"
+  --   , scaledprop $ Hedgehog.forAll genAuthnResponseBody >>=
+  --       \a -> Hedgehog.tripping a authnResponseBodyToMultipart fromMultipart
+  --   )
+  ]
+
+canonicalizeConditions :: Conditions -> Conditions
+canonicalizeConditions = condAudienceRestriction %~ sort . fmap NL.sort
+
+canonicalizeAuthnResponse :: AuthnResponse -> AuthnResponse
+canonicalizeAuthnResponse = rspPayload %~ fmap (assConditions . _Just %~ canonicalizeConditions)
+
 
 mkpropHasXML
   :: forall a. (Eq a, Show a, HasXML a)
@@ -31,7 +106,7 @@ mkpropHasXML = mkpropHasXML' id
 mkpropHasXML'
   :: forall a. (Eq a, Show a, HasXML a)
   => (a -> a) -> Gen a -> Property
-mkpropHasXML' canon gen = withTests numTests . property $ do
+mkpropHasXML' canon gen = scaledprop $ do
   v <- forAll (canon <$> gen)
   tripping v encodeElem (fmap canon . decodeElem @a @(Either String))
 
@@ -43,42 +118,24 @@ mkpropHasXMLImport = mkpropHasXMLImport' id
 mkpropHasXMLImport'
   :: forall them us. (Eq us, Show us, Show them, HasXMLImport us them)
   => (us -> us) -> Proxy them -> Gen us -> Property
-mkpropHasXMLImport' canon _ gen = withTests numTests . property $ do
+mkpropHasXMLImport' canon _ gen = scaledprop $ do
   v <- forAll (canon <$> gen)
   tripping v exportXml (fmap canon . importXml @us @them @(Either String))
 
+mkpropMimeRender
+  :: forall t a. (Eq a, Show a, MimeRender t a, MimeUnrender t a)
+  => Proxy t -> Gen a -> Property
+mkpropMimeRender proxy gen = scaledprop $
+  Hedgehog.forAll gen >>= \a -> Hedgehog.tripping a (mimeRender proxy) (mimeUnrender proxy)
 
-prop_tripNameID :: Property
-prop_tripNameID = mkpropHasXML genNameID
+mkpropJSON
+  :: forall a. (Eq a, Show a, FromJSON a, ToJSON a)
+  => Gen a -> Property
+mkpropJSON gen = scaledprop $
+  Hedgehog.forAll gen >>= \a -> Hedgehog.tripping a Aeson.encode Aeson.decode
 
-prop_tripIdPMetadata :: Property
-prop_tripIdPMetadata = mkpropHasXML genIdPMetadata
-
-prop_tripSPMetadata :: Property
-prop_tripSPMetadata = mkpropHasXML genSPMetadata
-
-prop_tripAuthnRequest :: Property
-prop_tripAuthnRequest = mkpropHasXML genAuthnRequest
-
-prop_tripConditions :: Property
-prop_tripConditions = mkpropHasXML' canonicalizeConditions . Gen.prune $ genConditions
-
-prop_tripConditions' :: Property
-prop_tripConditions' = mkpropHasXMLImport' canonicalizeConditions (Proxy @HS.Conditions) . Gen.prune $ genConditions
-
-canonicalizeConditions :: Conditions -> Conditions
-canonicalizeConditions = condAudienceRestriction %~ sort . fmap NL.sort
-
-prop_tripAuthnResponse :: Property
-prop_tripAuthnResponse = mkpropHasXML' canonicalizeAuthnResponse . Gen.prune $ genAuthnResponse
-  -- without the 'prune', this triggers https://github.com/hedgehogqa/haskell-hedgehog/issues/174
-
-canonicalizeAuthnResponse :: AuthnResponse -> AuthnResponse
-canonicalizeAuthnResponse = rspPayload %~ fmap (assConditions . _Just %~ canonicalizeConditions)
-
-
-prop_tripFormRedirect :: Property
-prop_tripFormRedirect = Hedgehog.property $
-  Hedgehog.forAll (genFormRedirect genAuthnRequest) >>=
-  \formRedirect ->
-    Hedgehog.tripping formRedirect (mimeRender (Proxy @HTML)) (mimeUnrender (Proxy @HTML))
+mkpropHttpApiData
+  :: forall a. (Eq a, Show a, FromHttpApiData a, ToHttpApiData a)
+  => Gen a -> Property
+mkpropHttpApiData gen = scaledprop $
+  Hedgehog.forAll gen >>= \a -> Hedgehog.tripping a toUrlPiece parseUrlPiece

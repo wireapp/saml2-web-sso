@@ -4,6 +4,7 @@
 -- and verifies cookie name from the type, handles randomness generation, and cookie deletion.
 module SAML2.WebSSO.Cookie
   ( SimpleSetCookie(..)
+  , cookieName
   , cookieToHeader
   , toggleCookie
   , setSimpleCookieValue
