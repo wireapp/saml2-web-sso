@@ -1,7 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{-# OPTIONS_GHC -Wno-orphans #-}
-
 -- | This is a partial implementation of Web SSO using the HTTP Post Binding [2/3.5].
 --
 -- The default API offers 3 end-points: one for retrieving the 'AuthnRequest' in a redirect to the

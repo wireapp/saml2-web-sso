@@ -6,6 +6,7 @@ import Data.Aeson
 import Data.String.Conversions
 import Data.X509 as X509
 import SAML2.Util (parseURI', renderURI, normURI)
+import Servant hiding (URI)
 import Text.XML.DSig
 import URI.ByteString
 
@@ -16,6 +17,9 @@ instance FromJSON URI where
 
 instance ToJSON URI where
   toJSON = toJSON . renderURI
+
+instance ToHttpApiData URI where
+  toUrlPiece = renderURI
 
 instance FromJSON X509.SignedCertificate where
   parseJSON = withText "KeyInfo element" $ either fail pure . parseKeyInfo . cs
