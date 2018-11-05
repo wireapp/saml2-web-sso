@@ -18,6 +18,8 @@ module SAML2.WebSSO.XML
   , nameIDToST
   , userRefToST
   , explainDeniedReason
+
+  , importURI, exportURI
   ) where
 
 import Control.Category (Category(..))

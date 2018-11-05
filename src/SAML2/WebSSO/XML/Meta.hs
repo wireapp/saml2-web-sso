@@ -33,7 +33,6 @@ import URI.ByteString
 
 import qualified Data.Map as Map
 import qualified Data.X509 as X509
-import qualified Network.URI as OldURI
 import qualified SAML2.Bindings.Identifiers as HS
 import qualified SAML2.Core.Identifiers as HS
 import qualified SAML2.Core.Namespaces as HS
@@ -112,9 +111,9 @@ importSPMetadata (NL.head . HS.descriptors . HS.entityDescriptors -> desc) = do
        in maybe (throwError $ "bad orgDisplayName: " <> show raw) (pure . cs) raw
   _spOrgURL <- let raw = fmap HS.organizationURL . HS.roleDescriptorOrganization . HS.descriptorRole $ desc
                in case raw of
-                    Just (HS.Localized "EN" u :| []) -> pure $ importURL u
+                    Just (HS.Localized "EN" u :| []) -> importURI u
                     bad -> throwError $ "bad or no organizationURL" <> show bad
-  let _spResponseURL = importURL . HS.endpointLocation . HS.indexedEndpoint . NL.head
+  _spResponseURL <- importURI . HS.endpointLocation . HS.indexedEndpoint . NL.head
                        . HS.descriptorAssertionConsumerService $ desc
   _spContacts <- fmap NL.fromList . mapM importContactPerson . HS.roleDescriptorContactPerson . HS.descriptorRole $ desc
   pure SPMetadata {..}
@@ -122,7 +121,7 @@ importSPMetadata (NL.head . HS.descriptors . HS.entityDescriptors -> desc) = do
 
 exportSPMetadata :: HasCallStack => SPMetadata -> HS.Metadata
 exportSPMetadata spdesc = HS.EntityDescriptor
-    { HS.entityID                        = exportURL (spdesc ^. spOrgURL) :: HS.EntityID
+    { HS.entityID                        = exportURI (spdesc ^. spOrgURL) :: HS.EntityID
     , HS.metadataID                      = Nothing :: Maybe HX.ID
     , HS.metadataValidUntil              = Nothing :: Maybe HX.DateTime
     , HS.metadataCacheDuration           = Nothing :: Maybe HX.Duration
@@ -153,7 +152,7 @@ exportSPMetadata' spdesc = HS.SPSSODescriptor
         , HS.organizationExtensions = HS.Extensions []
         , HS.organizationName = HS.Localized "EN" (cs $ spdesc ^. spOrgName) :| []
         , HS.organizationDisplayName = HS.Localized "EN" (cs $ spdesc ^. spOrgDisplayName) :| []
-        , HS.organizationURL = HS.Localized "EN" (exportURL $ spdesc ^. spOrgURL) :| [] :: HX.List1 HS.LocalizedURI
+        , HS.organizationURL = HS.Localized "EN" (exportURI $ spdesc ^. spOrgURL) :| [] :: HX.List1 HS.LocalizedURI
         }
       , HS.roleDescriptorContactPerson = exportContactPerson <$> toList (spdesc ^. spContacts)
       }
@@ -168,7 +167,7 @@ exportSPMetadata' spdesc = HS.SPSSODescriptor
     , HS.descriptorAssertionConsumerService = HS.IndexedEndpoint
       { HS.indexedEndpoint = HS.Endpoint
         { HS.endpointBinding = HX.Identified HS.BindingHTTPPOST :: HX.IdentifiedURI HS.Binding
-        , HS.endpointLocation = exportURL $ spdesc ^. spResponseURL :: HX.AnyURI
+        , HS.endpointLocation = exportURI $ spdesc ^. spResponseURL :: HX.AnyURI
         , HS.endpointResponseLocation = Nothing :: Maybe HX.AnyURI
         , HS.endpointAttrs = [] :: HX.Nodes
         , HS.endpointXML = [] :: HX.Nodes
@@ -182,13 +181,6 @@ exportSPMetadata' spdesc = HS.SPSSODescriptor
     }
 
 
-exportURL :: URI -> HX.URI
-exportURL = fromJust . OldURI.parseURI . cs . renderURI
-
-importURL :: HX.URI -> URI
-importURL = unsafeParseURI . cs . show
-
-
 exportContactPerson :: ContactPerson -> HS.Contact
 exportContactPerson contact = HS.ContactPerson
   { HS.contactType = exportContactType $ contact ^. cntType
@@ -197,7 +189,7 @@ exportContactPerson contact = HS.ContactPerson
   , HS.contactCompany = cs <$> contact ^. cntCompany
   , HS.contactGivenName = cs <$> contact ^. cntGivenName
   , HS.contactSurName = cs <$> contact ^. cntSurname
-  , HS.contactEmailAddress = maybeToList $ exportURL <$> contact ^. cntEmail :: [HX.AnyURI]
+  , HS.contactEmailAddress = maybeToList $ exportURI <$> contact ^. cntEmail :: [HX.AnyURI]
   , HS.contactTelephoneNumber = maybeToList $ cs <$> contact ^. cntPhone
   }
 
@@ -207,8 +199,8 @@ importContactPerson contact = do
       _cntCompany   = cs <$> HS.contactCompany contact
       _cntGivenName = cs <$> HS.contactGivenName contact
       _cntSurname   = cs <$> HS.contactSurName contact
-      _cntEmail     = listToMaybe $ importURL <$> HS.contactEmailAddress contact
       _cntPhone     = listToMaybe $ cs <$> HS.contactTelephoneNumber contact
+  _cntEmail        <- fmapFlipM importURI $ listToMaybe (HS.contactEmailAddress contact)
   pure ContactPerson {..}
 
 
