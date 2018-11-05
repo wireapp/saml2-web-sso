@@ -5,13 +5,13 @@ module SAML2.WebSSO.Types where
 
 import Control.Lens
 import Control.Monad.Except
-import Data.Aeson
+import Data.Aeson as Aeson
 import Data.Aeson.TH
 import Data.List.NonEmpty
 import Data.Maybe
 import Data.Monoid ((<>))
 import Data.String.Conversions (ST, cs)
-import Data.Time (UTCTime(..), NominalDiffTime, formatTime, defaultTimeLocale, addUTCTime)
+import Data.Time (UTCTime(..), NominalDiffTime, formatTime, parseTimeM, defaultTimeLocale, addUTCTime)
 import Data.UUID as UUID
 import GHC.Generics (Generic)
 import GHC.Stack
@@ -354,7 +354,7 @@ shortShowNameID _ = Nothing
 -- | [1/3.2.2.1;3.2.2.2] This is a simple custom boolean type.  We really don't need any more
 -- information than that.
 data Status = StatusSuccess | StatusFailure
-  deriving (Eq, Show, Bounded, Enum)
+  deriving (Eq, Show, Bounded, Enum, Generic)
 
 
 ----------------------------------------------------------------------
@@ -454,7 +454,7 @@ normalizeAssertion = error "normalizeAssertion: not implemented"
 
 
 ----------------------------------------------------------------------
--- record field lenses
+-- misc instances
 
 makeLenses ''AccessVerdict
 makeLenses ''Assertion
@@ -510,6 +510,71 @@ instance Servant.ToHttpApiData IdPId where
 
 deriveJSON deriveJSONOptions ''ContactPerson
 deriveJSON deriveJSONOptions ''ContactType
+
+instance Servant.FromHttpApiData (ID a) where
+  parseUrlPiece = fmap ID . Servant.parseUrlPiece
+
+instance Servant.ToHttpApiData (ID a) where
+  toUrlPiece = Servant.toUrlPiece . renderID
+
+instance Servant.FromHttpApiData Time where
+  parseUrlPiece st =
+    fmap Time . parseTimeM True defaultTimeLocale timeFormat =<< Servant.parseUrlPiece @String st
+
+instance Servant.ToHttpApiData Time where
+  toUrlPiece =
+    Servant.toUrlPiece . formatTime defaultTimeLocale timeFormat . fromTime
+
+instance FromJSON Status
+instance ToJSON Status
+
+instance FromJSON DeniedReason
+instance ToJSON DeniedReason
+
+instance FromJSON AuthnResponse
+instance ToJSON AuthnResponse
+
+instance FromJSON Assertion
+instance ToJSON Assertion
+
+instance FromJSON SubjectAndStatements
+instance ToJSON SubjectAndStatements
+
+instance FromJSON Subject
+instance ToJSON Subject
+
+instance FromJSON SubjectConfirmation
+instance ToJSON SubjectConfirmation
+
+instance FromJSON SubjectConfirmationMethod
+instance ToJSON SubjectConfirmationMethod
+
+instance FromJSON SubjectConfirmationData
+instance ToJSON SubjectConfirmationData
+
+instance FromJSON IP
+instance ToJSON IP
+
+instance FromJSON Statement
+instance ToJSON Statement
+
+instance FromJSON Locality
+instance ToJSON Locality
+
+instance FromJSON (ID a)
+instance ToJSON (ID a)
+
+instance FromJSON NameID
+instance ToJSON NameID
+
+instance FromJSON UnqualifiedNameID
+instance ToJSON UnqualifiedNameID
+
+instance FromJSON Time
+instance ToJSON Time
+
+instance FromJSON Conditions
+instance ToJSON Conditions
 
 
 ----------------------------------------------------------------------

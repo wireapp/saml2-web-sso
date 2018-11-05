@@ -2,6 +2,7 @@
 
 module SAML2.WebSSO.Orphans where
 
+import Control.Monad ((<=<))
 import Data.Aeson
 import Data.String.Conversions
 import Data.X509 as X509
@@ -20,6 +21,9 @@ instance ToJSON URI where
 
 instance ToHttpApiData URI where
   toUrlPiece = renderURI
+
+instance FromHttpApiData URI where
+  parseUrlPiece = either (fail . show) pure . parseURI' <=< parseUrlPiece
 
 instance FromJSON X509.SignedCertificate where
   parseJSON = withText "KeyInfo element" $ either fail pure . parseKeyInfo . cs
