@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Util.Misc where
 
@@ -11,6 +12,8 @@ import Data.EitherR
 import Data.Generics.Uniplate.Data
 import Data.List
 import Data.List.NonEmpty (NonEmpty((:|)))
+import Data.String
+import Data.UUID as UUID
 import Servant
 import Data.String.Conversions
 import Data.Typeable
@@ -23,7 +26,6 @@ import System.Process (system)
 import Test.Hspec
 import Text.Show.Pretty
 import Text.XML as XML
-import Util.Orphans ()
 
 import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Text.Lazy.IO as LT
@@ -162,7 +164,6 @@ isSignature (NodeElement (Element name _ _)) = name == "{http://www.w3.org/2000/
 isSignature _ = False
 
 
-
 ----------------------------------------------------------------------
 -- helpers
 
@@ -186,3 +187,10 @@ instance HasXMLRoot SomeSAMLRequest where
 base64ours, base64theirs :: HasCallStack => SBS -> IO SBS
 base64ours = pure . cs . EL.encode . cs
 base64theirs sbs = shelly . silently $ cs <$> (setStdin (cs sbs) >> run "/usr/bin/base64" ["--wrap", "0"])
+
+
+----------------------------------------------------------------------
+-- orphans
+
+instance IsString IdPId where
+    fromString piece = maybe (error $ "no valid UUID" <> piece) (IdPId) . UUID.fromString $ piece
