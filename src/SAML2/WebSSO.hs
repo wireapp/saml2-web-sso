@@ -22,5 +22,4 @@ import SAML2.WebSSO.Error as X
 import SAML2.WebSSO.SP as X
 import SAML2.WebSSO.Types as X
 import SAML2.WebSSO.XML as X
-import SAML2.WebSSO.XML.Meta as X
 import SAML2.WebSSO.Cookie as X

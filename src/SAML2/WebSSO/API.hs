@@ -49,7 +49,6 @@ import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
 import qualified Data.Text as ST
 import qualified SAML2.WebSSO.Cookie as Cky
-import qualified SAML2.WebSSO.XML.Meta as Meta
 
 
 ----------------------------------------------------------------------
@@ -205,7 +204,7 @@ meta appName getRequestIssuer getResponseURI = do
   Issuer org <- getRequestIssuer
   resp       <- getResponseURI
   contacts   <- (^. cfgContacts) <$> getConfig
-  Meta.mkSPMetadata appName org resp contacts
+  mkSPMetadata appName org resp contacts
 
 -- | Create authnreq, store it for comparison against assertions later, and return it in an HTTP
 -- redirect together with the IdP's URI.
