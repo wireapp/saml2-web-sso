@@ -203,7 +203,7 @@ spec = describe "API" $ do
           404
 
     context "known idp, bad timestamp" . testAuthRespApp mkTestCtxWithIdP $ do
-      it "responds with 402" . runtest $ \ctx -> do
+      it "responds with 403" . runtest $ \ctx -> do
         postTestAuthnResp ctx True `shouldRespondWith`
           403 { matchBody = bodyContains "IssueInstant" }
 
