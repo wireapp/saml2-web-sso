@@ -889,6 +889,10 @@ instance HasXMLImport Assertion (HS.PossiblyEncrypted HS.Assertion) where
   importXml = importAssertion
   exportXml = exportAssertion
 
+instance HasXML Subject where
+  parse = wrapParse importSubject
+  render = wrapRender exportSubject
+
 instance HasXMLImport Subject HS.Subject where
   importXml = importSubject
   exportXml = exportSubject

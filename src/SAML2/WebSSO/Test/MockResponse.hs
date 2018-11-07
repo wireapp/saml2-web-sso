@@ -28,14 +28,17 @@ mkAuthnResponse creds idp spmeta areq grant = do
   mkAuthnResponseWithSubj subj creds idp spmeta areq grant
 
 mkAuthnResponseWithSubj
-  :: (HasCallStack, HasMonadSign m, HasCreateUUID m, HasNow m)
+  :: forall extra m. (HasCallStack, HasMonadSign m, HasCreateUUID m, HasNow m)
   => NameID
   -> SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> m SignedAuthnResponse
 mkAuthnResponseWithSubj subj = mkAuthnResponseWithModif modif id
   where
     modif = transformBis
       [ [ transformer $ \case
-            (Element nm@"Subject" attrs nodes) -> Element nm attrs (render subj <> nodes)
+            el@(Element "{urn:oasis:names:tc:SAML:2.0:assertion}Subject" _ _)
+              -> case parse [NodeElement el] of
+                   Right (Subject _ sc) -> nodesToElem . render $ Subject subj sc
+                   Left bad -> error $ show bad
             other -> other
         ]
       ]
