@@ -43,8 +43,8 @@ cookieToHeader =
   ("set-cookie",) . cs . toLazyByteString .
   renderSetCookie . fromSimpleSetCookie
 
-cookieName :: forall (name :: Symbol). KnownSymbol name => Proxy name -> SBS
-cookieName Proxy = cs $ symbolVal (Proxy @name)
+cookieName :: forall (proxy :: Symbol -> *) (name :: Symbol). KnownSymbol name => proxy name -> SBS
+cookieName _ = cs $ symbolVal (Proxy @name)
 
 headerValueToCookie :: forall name. KnownSymbol name => ST -> Either ST (SimpleSetCookie name)
 headerValueToCookie txt = do
