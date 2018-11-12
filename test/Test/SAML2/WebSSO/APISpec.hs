@@ -11,83 +11,33 @@ import Control.Monad.Except
 import Data.Either
 import Data.EitherR
 import Data.List.NonEmpty (NonEmpty((:|)))
-import Data.Maybe (maybeToList)
+import Data.Maybe (maybeToList, fromJust)
 import Data.String.Conversions
+import Network.HTTP.Types.Status (statusCode)
 import Network.Wai.Test
 import SAML2.Util
 import SAML2.WebSSO
-import SAML2.WebSSO.Test.Arbitrary (genFormRedirect, genAuthnRequest)
 import SAML2.WebSSO.Test.Credentials
 import SAML2.WebSSO.Test.MockResponse
 import Servant
 import Test.Hspec hiding (pending)
 import Test.Hspec.Wai
 import Test.Hspec.Wai.Matcher
+import Text.Show.Pretty (ppShow)
 import Text.XML as XML
+import URI.ByteString as URI
 import URI.ByteString.QQ
 import Util
 
 import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
+import qualified Data.UUID as UUID
 import qualified Data.X509 as X509
 import qualified Data.Yaml as Yaml
-import qualified Hedgehog
 
-
-hedgehogTests :: Hedgehog.Group
-hedgehogTests = Hedgehog.Group "hedgehog tests" $
-  [ ( "roundtrip: MimeRender HTML FormRedirect"
-    , Hedgehog.property $ Hedgehog.forAll (genFormRedirect genAuthnRequest) >>=
-        \formRedirect -> Hedgehog.tripping formRedirect (mimeRender (Proxy @HTML)) (mimeUnrender (Proxy @HTML))
-    )
-  ]
-
-
-burnIdP :: FilePath -> FilePath -> ST -> ST -> Spec
-burnIdP cfgPath respXmlPath (cs -> currentTime) audienceURI = do
-  let mkctx :: IO CtxV
-      mkctx = do
-        testCtx1 <- mkTestCtxSimple
-        let reqstore = Map.fromList
-              -- it would be probably better to also take this ID (and timeout?) as an argument(s).
-              [ (ID "idcf2299ac551b42f1aa9b88804ed308c2", unsafeReadTime "2019-04-14T10:53:57Z")
-              , (ID "idafecfcff5cc64345b6ddde7ee47b4838", unsafeReadTime "2019-04-14T10:53:57Z")
-              ]
-        idp <- getIdP
-        modifyMVar_ testCtx1 $ pure .
-          ( (ctxIdPs .~ [idp])
-          . (ctxNow .~ unsafeReadTime currentTime)
-          . (ctxConfig . cfgSPAppURI .~ unsafeParseURI audienceURI)
-          . (ctxRequestStore .~ reqstore)
-          )
-        pure testCtx1
-
-      getIdP :: IO IdPConfig_
-      getIdP = Yaml.decodeThrow . cs =<< readSampleIO cfgPath
-
-  describe ("smoke tests: " <> show cfgPath) $ do
-    describe "authreq" . withapp (Proxy @APIAuthReq') (authreq' defSPIssuer) mkctx $ do
-      it "responds with 200" . runtest' $ do
-        idp <- liftIO getIdP
-        get ("/authreq/" <> cs (idPIdToST (idp ^. idpId)))
-          `shouldRespondWith` 200 { matchBody = bodyContains "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" }
-
-    describe "authresp" . testAuthRespApp mkctx $ do
-      it "responds with 303" . runtest' $ do
-        sample <- liftIO $ cs <$> readSampleIO respXmlPath
-        let postresp = postHtmlForm "/authresp" body
-            body = [("SAMLResponse", sample)]
-        postresp
-          `shouldRespondWith` 303
-
-
-----------------------------------------------------------------------
--- test cases
 
 spec :: Spec
 spec = describe "API" $ do
-  hedgehog $ Hedgehog.checkParallel hedgehogTests
-
   describe "base64 encoding" $ do
     describe "compatible with /usr/bin/base64" $ do
       let check :: LBS -> Spec
@@ -140,7 +90,7 @@ spec = describe "API" $ do
       Right want `shouldBe` (fmapL show . parseText def . cs $ mimeRender (Proxy @HTML) (FormRedirect spuri doc))
 
   describe "simpleVerifyAuthnResponse" $ do
-    let check :: Bool -> Maybe Bool -> Bool -> SpecWith ()
+    let check :: Bool -> Maybe Bool -> Bool -> Spec
         check goodsig mgoodkey expectOutcome =
           it (show expectOutcome) $ do
             let respfile = if goodsig
@@ -242,6 +192,10 @@ spec = describe "API" $ do
             pure aresp_
           postHtmlForm "/authresp" [("SAMLResponse", cs . EL.encode . renderLBS def $ aresp)]
 
+        testAuthRespApp :: IO CtxV -> SpecWith (CtxV, Application) -> Spec
+        testAuthRespApp = withapp (Proxy @APIAuthResp')
+          (authresp' defSPIssuer defResponseURI (HandleVerdictRedirect simpleOnSuccess))
+
     context "unknown idp" . testAuthRespApp mkTestCtxSimple $ do
       let errmsg = "Unknown IdP: Issuer"
       it "responds with 404" . runtest $ \ctx -> do
@@ -249,21 +203,14 @@ spec = describe "API" $ do
           404
 
     context "known idp, bad timestamp" . testAuthRespApp mkTestCtxWithIdP $ do
-      it "responds with 402" . runtest $ \ctx -> do
+      it "responds with 403" . runtest $ \ctx -> do
         postTestAuthnResp ctx True `shouldRespondWith`
-          403 { matchBody = bodyContains "violation of NotBefore condition" }
+          403 { matchBody = bodyContains "IssueInstant" }
 
     context "known idp, good timestamp" . testAuthRespApp mkTestCtxWithIdP $ do
       it "responds with 303" . runtest $ \ctx -> do
         postTestAuthnResp ctx False `shouldRespondWith`
           303 { matchBody = bodyContains "<body><p>SSO successful, redirecting to" }
-
-
-  xdescribe "idp smoke tests" $ do
-    burnIdP "okta-config.yaml" "okta-resp-1.base64" "2018-05-25T10:57:16.135Z" "https://zb2.zerobuzz.net:60443/"
-    burnIdP "microsoft-idp-config.yaml" "microsoft-authnresponse-2.base64" "2018-04-14T10:53:57Z" "https://zb2.zerobuzz.net:60443/authresp"
-    -- TODO: centrify
-    -- TODO: onelogin
 
 
   describe "mkAuthnResponse (this is testing the test helpers)" $ do
@@ -297,3 +244,68 @@ spec = describe "API" $ do
 
     it "Produces output that is rejected by 'simpleVerifyAuthnResponse' if the signature is wrong" $ do
       check sampleIdPCert2 isLeft
+
+
+  describe "vendor compatibility tests" $ do
+    let testAuthRespApp :: HasCallStack => URI.URI -> SpecWith (CtxV, Application) -> Spec
+        testAuthRespApp ssoURI = withapp (Proxy @("sso" :> APIAuthResp'))
+            (authresp' spissuer respuri (HandleVerdictRedirect simpleOnSuccess))
+            mkTestCtxSimple
+          where
+            spissuer = Issuer <$> respuri
+            respuri = pure ssoURI
+
+        vendorCompatibility :: HasCallStack => FilePath -> URI.URI -> Spec
+        vendorCompatibility filePath ssoURI = testAuthRespApp ssoURI $ do
+          it filePath . runtest $ \ctx -> do
+            authnrespRaw :: LT            <- readSampleIO ("vendors/" <> filePath <> "-authnresp.xml")
+            authnresp    :: AuthnResponse <- either (error . show) pure $ decode authnrespRaw
+            idpmeta      :: IdPMetadata   <- readSampleIO ("vendors/" <> filePath <> "-metadata.xml") >>=
+                                             either (error . show) pure . decode
+
+            let idpcfg = IdPConfig {..}
+                  where
+                    _idpId = IdPId UUID.nil
+                    _idpMetadata = idpmeta
+                    _idpExtraInfo = ()
+
+                -- NB: the following two bits of info are taken from the unsigned AuthnResponse
+                -- header.  the test still makes perfect sense given the information is available in
+                -- the header.  if it is not, this is legitimate.  in that case, just dig into the
+                -- assertions and take the information from there.
+
+                -- authnresp inResponseTo, with comfortable end of life.
+                reqstore :: Map.Map (ID AuthnRequest) Time
+                reqstore = Map.singleton (fromJust $ authnresp ^. rspInRespTo) timeInALongTime
+
+                -- 1 second after authnresp IssueInstant
+                now :: Time
+                now = addTime 1 $ authnresp ^. rspIssueInstant
+
+            liftIO . modifyMVar_ ctx $ \ctx' -> pure $ ctx'
+              & ctxIdPs .~ [idpcfg]
+              -- & ctxConfig . cfgSPAppURI .~ _
+              -- (the SPAppURI default is a incorrect, but that should not invalidate the test)
+              & ctxConfig . cfgSPSsoURI .~ ssoURI
+              & ctxRequestStore .~ reqstore
+              & ctxNow .~ now
+
+            -- it is essential to not use @encode authnresp@ here, as that has no signature!
+            verdict :: SResponse <- postHtmlForm "/sso/authresp"
+              [("SAMLResponse", cs . EL.encode . cs $ authnrespRaw)]
+
+            when (statusCode (simpleStatus verdict) /= 303) . liftIO $ do
+              putStrLn . ppShow . (verdict,) =<< readMVar ctx
+            liftIO $ statusCode (simpleStatus verdict) `shouldBe` 303
+
+
+    vendorCompatibility "okta.com" [uri|https://staging-nginz-https.zinfra.io/sso/finalize-login|]
+    -- https://developer.okta.com/signup/
+
+    vendorCompatibility "azure.microsoft.com" [uri|https://zb2.zerobuzz.net:60443/authresp|]
+    -- https://azure.microsoft.com/en-us/
+
+    -- TODO:
+    --  * centrify
+    --  * onelogin
+    --  * jives [https://community.jivesoftware.com/docs/DOC-240217#jive_content_id_IdP_Metadata]

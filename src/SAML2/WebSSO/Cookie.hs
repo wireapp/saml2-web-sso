@@ -4,6 +4,7 @@
 -- and verifies cookie name from the type, handles randomness generation, and cookie deletion.
 module SAML2.WebSSO.Cookie
   ( SimpleSetCookie(..)
+  , cookieName
   , cookieToHeader
   , toggleCookie
   , setSimpleCookieValue
@@ -42,14 +43,15 @@ cookieToHeader =
   ("set-cookie",) . cs . toLazyByteString .
   renderSetCookie . fromSimpleSetCookie
 
-cookieName :: forall (name :: Symbol). KnownSymbol name => Proxy name -> SBS
-cookieName Proxy = cs $ symbolVal (Proxy @name)
+cookieName :: forall (proxy :: Symbol -> *) (name :: Symbol). KnownSymbol name => proxy name -> SBS
+cookieName _ = cs $ symbolVal (Proxy @name)
 
 headerValueToCookie :: forall name. KnownSymbol name => ST -> Either ST (SimpleSetCookie name)
 headerValueToCookie txt = do
   let cookie = parseSetCookie $ cs txt
   case ["missing cookie name"  | setCookieName cookie == ""] <>
-       ["wrong cookie name"    | setCookieName cookie /= cookieName (Proxy @name)] <>
+       [cs $ "wrong cookie name: got " <> setCookieName cookie <> ", expected " <> cookieName (Proxy @name)
+                               | setCookieName cookie /= cookieName (Proxy @name)] <>
        ["missing cookie value" | setCookieValue cookie == ""]
     of errs@(_:_) -> throwError $ ST.intercalate ", " errs
        []         -> pure (SimpleSetCookie cookie)

@@ -5,13 +5,13 @@ module SAML2.WebSSO.Types where
 
 import Control.Lens
 import Control.Monad.Except
-import Data.Aeson
+import Data.Aeson as Aeson
 import Data.Aeson.TH
 import Data.List.NonEmpty
 import Data.Maybe
 import Data.Monoid ((<>))
 import Data.String.Conversions (ST, cs)
-import Data.Time (UTCTime(..), NominalDiffTime, formatTime, defaultTimeLocale, addUTCTime)
+import Data.Time (UTCTime(..), NominalDiffTime, formatTime, parseTimeM, defaultTimeLocale, addUTCTime)
 import Data.UUID as UUID
 import GHC.Generics (Generic)
 import GHC.Stack
@@ -24,7 +24,6 @@ import URI.ByteString  -- FUTUREWORK: should saml2-web-sso also use the URI from
 
 import qualified Data.List as L
 import qualified Data.Text as ST
-import qualified SAML2.Core as HS
 import qualified Data.X509 as X509
 import qualified Servant
 
@@ -34,11 +33,33 @@ import qualified Servant
 
 data AccessVerdict =
     AccessDenied
-    { _avReasons :: [ST]
+    { _avReasons :: [DeniedReason]  -- ^ (this is morally a set, but lists are often easier to handle)
     }
   | AccessGranted
     { _avUserId :: UserRef
     }
+  deriving (Eq, Show, Generic)
+
+data DeniedReason
+  = DeniedStatusFailure
+  | DeniedBadUserRefs { deniedDetails :: String }
+  | DeniedBadInResponseTos { deniedDetails :: String }
+  | DeniedIssueInstantNotInPast { deniedTimestamp :: Time, deniedNow :: Time }
+  | DeniedAssertionIssueInstantNotInPast { deniedTimestamp :: Time, deniedNow :: Time }
+  | DeniedAuthnStatementIssueInstantNotInPast { deniedTimestamp :: Time, deniedNow :: Time }
+  | DeniedBadDestination { deniedWeExpected :: String, deniedTheyExpected :: String }
+  | DeniedBadRecipient { deniedWeExpected :: String, deniedTheyExpected :: String }
+  | DeniedIssuerMismatch { deniedInHeader :: Maybe Issuer, deniedInAssertion :: Issuer }
+  | DeniedNoStatements
+  | DeniedNoAuthnStatement
+  | DeniedAuthnStatmentExpiredAt { deniedEndOfLife :: Time }
+  | DeniedNoBearerConfSubj
+  | DeniedBearerConfAssertionsWithoutAudienceRestriction
+  | DeniedNotOnOrAfterSubjectConfirmation { deniedNotOnOrAfter :: Time }
+  | DeniedNotBeforeSubjectConfirmation { deniedNotBefore :: Time }
+  | DeniedNotOnOrAfterCondition { deniedNotOnOrAfter :: Time }
+  | DeniedNotBeforeCondition { deniedNotBefore :: Time }
+  | DeniedAudienceMismatch { deniedWeExpectedAudience :: URI, deniedTheyExpectedAudience :: NonEmpty URI }
   deriving (Eq, Show, Generic)
 
 data UserRef = UserRef { _uidTenant :: Issuer, _uidSubject :: NameID }
@@ -131,7 +152,6 @@ data IdPConfig extra = IdPConfig
 data AuthnRequest = AuthnRequest
   { -- abstract xml type
     _rqID               :: ID AuthnRequest
-  , _rqVersion          :: Version
   , _rqIssueInstant     :: Time
   , _rqIssuer           :: Issuer
 
@@ -179,7 +199,6 @@ type AuthnResponse = Response (NonEmpty Assertion)
 data Response payload = Response
   { _rspID           :: ID (Response payload)
   , _rspInRespTo     :: Maybe (ID AuthnRequest)
-  , _rspVersion      :: Version
   , _rspIssueInstant :: Time
   , _rspDestination  :: Maybe URI
   , _rspIssuer       :: Maybe Issuer
@@ -332,22 +351,10 @@ shortShowNameID (NameID uqn Nothing Nothing Nothing) = case uqn of
 shortShowNameID _ = Nothing
 
 
-data Version = Version_2_0
+-- | [1/3.2.2.1;3.2.2.2] This is a simple custom boolean type.  We really don't need any more
+-- information than that.
+data Status = StatusSuccess | StatusFailure
   deriving (Eq, Show, Bounded, Enum, Generic)
-
--- | [1/3.2.2.1;3.2.2.2]
-type Status = HS.Status
-
-statusIsSuccess :: MonadError String m => Status -> m ()
-statusIsSuccess = \case
-  HS.Status (HS.StatusCode HS.StatusSuccess _) _ _ -> pure ()
-  bad -> throwError $ "status: " <> show bad
-
-statusSuccess :: Status
-statusSuccess = HS.Status (HS.StatusCode HS.StatusSuccess []) Nothing Nothing
-
-statusFailure :: Status
-statusFailure = HS.Status (HS.StatusCode HS.StatusRequester []) Nothing Nothing
 
 
 ----------------------------------------------------------------------
@@ -357,8 +364,7 @@ statusFailure = HS.Status (HS.StatusCode HS.StatusRequester []) Nothing Nothing
 -- 'Subject' and a set of 'Statement's on that 'Subject'.  [1/2.3.3]
 data Assertion
   = Assertion
-    { _assVersion       :: Version
-    , _assID            :: ID Assertion
+    { _assID            :: ID Assertion
     , _assIssueInstant  :: Time
     , _assIssuer        :: Issuer
     , _assConditions    :: Maybe Conditions
@@ -371,8 +377,9 @@ data Conditions
   = Conditions
     { _condNotBefore           :: Maybe Time
     , _condNotOnOrAfter        :: Maybe Time
-    , _condOneTimeUse          :: Bool   -- ^ [1/2.5.1.5]
-    , _condAudienceRestriction :: Maybe (NonEmpty URI)  -- ^ 'Nothing' means do not restrict.
+    , _condOneTimeUse          :: Bool   -- ^ [1/2.5.1.5] (it's safe to ignore this)
+    , _condAudienceRestriction :: [NonEmpty URI]  -- ^ [1/2.5.1.4] this is an and of ors ('[]' means
+                                                  -- do not restrict).
     }
   deriving (Eq, Show, Generic)
 
@@ -395,7 +402,7 @@ data Subject = Subject
 -- | Information about the kind of proof of identity the 'Subject' provided to the IdP.  [1/2.4]
 data SubjectConfirmation = SubjectConfirmation
   { _scMethod :: SubjectConfirmationMethod
-  , _scData   :: [SubjectConfirmationData]
+  , _scData   :: Maybe SubjectConfirmationData
   }
   deriving (Eq, Show, Generic)
 
@@ -422,36 +429,18 @@ newtype IP = IP ST
 data Statement
   = AuthnStatement  -- [1/2.7.2]
     { _astAuthnInstant        :: Time
-    , _astSessionIndex        :: Maybe ST
+    , _astSessionIndex        :: Maybe ST  -- safe to ignore
     , _astSessionNotOnOrAfter :: Maybe Time
     , _astSubjectLocality     :: Maybe Locality
-    }
-  | AttributeStatement  -- [1/2.7.3]
-    { _attrstAttrs :: NonEmpty Attribute
     }
   deriving (Eq, Show, Generic)
 
 
 -- | [1/2.7.2.1]
 data Locality = Locality
-  { _localityAddress :: Maybe ST
+  { _localityAddress :: Maybe IP
   , _localityDNSName :: Maybe ST
   }
-  deriving (Eq, Show, Generic)
-
-
--- | [1/2.7.3.1]
-data Attribute =
-    Attribute
-    { _stattrName         :: ST
-    , _stattrNameFormat   :: Maybe URI  -- ^ [1/8.2]
-    , _stattrFriendlyName :: Maybe ST
-    , _stattrValues       :: [AttributeValue]
-    }
-  deriving (Eq, Show, Generic)
-
--- | [1/2.7.3.1.1] could be @ST@, or @Num n => n@, or something else.
-newtype AttributeValue = AttributeValueUntyped ST
   deriving (Eq, Show, Generic)
 
 
@@ -465,12 +454,10 @@ normalizeAssertion = error "normalizeAssertion: not implemented"
 
 
 ----------------------------------------------------------------------
--- record field lenses
+-- misc instances
 
 makeLenses ''AccessVerdict
 makeLenses ''Assertion
-makeLenses ''Attribute
-makeLenses ''AttributeValue
 makeLenses ''AuthnRequest
 makeLenses ''BaseID
 makeLenses ''Comparison
@@ -495,8 +482,8 @@ makeLenses ''SubjectConfirmationData
 makeLenses ''Time
 makeLenses ''UnqualifiedNameID
 makeLenses ''UserRef
-makeLenses ''Version
 
+makePrisms ''AccessVerdict
 makePrisms ''Statement
 makePrisms ''UnqualifiedNameID
 
@@ -524,16 +511,74 @@ instance Servant.ToHttpApiData IdPId where
 deriveJSON deriveJSONOptions ''ContactPerson
 deriveJSON deriveJSONOptions ''ContactType
 
-instance FromJSON Version where
-  parseJSON (String "SAML2.0") = pure Version_2_0
-  parseJSON bad = fail $ "could not parse config: bad version string: " <> show bad
+instance Servant.FromHttpApiData (ID a) where
+  parseUrlPiece = fmap ID . Servant.parseUrlPiece
 
-instance ToJSON Version where
-  toJSON Version_2_0 = String "SAML2.0"
+instance Servant.ToHttpApiData (ID a) where
+  toUrlPiece = Servant.toUrlPiece . renderID
+
+instance Servant.FromHttpApiData Time where
+  parseUrlPiece st =
+    fmap Time . parseTimeM True defaultTimeLocale timeFormat =<< Servant.parseUrlPiece @String st
+
+instance Servant.ToHttpApiData Time where
+  toUrlPiece =
+    Servant.toUrlPiece . formatTime defaultTimeLocale timeFormat . fromTime
+
+instance FromJSON Status
+instance ToJSON Status
+
+instance FromJSON DeniedReason
+instance ToJSON DeniedReason
+
+instance FromJSON AuthnResponse
+instance ToJSON AuthnResponse
+
+instance FromJSON Assertion
+instance ToJSON Assertion
+
+instance FromJSON SubjectAndStatements
+instance ToJSON SubjectAndStatements
+
+instance FromJSON Subject
+instance ToJSON Subject
+
+instance FromJSON SubjectConfirmation
+instance ToJSON SubjectConfirmation
+
+instance FromJSON SubjectConfirmationMethod
+instance ToJSON SubjectConfirmationMethod
+
+instance FromJSON SubjectConfirmationData
+instance ToJSON SubjectConfirmationData
+
+instance FromJSON IP
+instance ToJSON IP
+
+instance FromJSON Statement
+instance ToJSON Statement
+
+instance FromJSON Locality
+instance ToJSON Locality
+
+instance FromJSON (ID a)
+instance ToJSON (ID a)
+
+instance FromJSON NameID
+instance ToJSON NameID
+
+instance FromJSON UnqualifiedNameID
+instance ToJSON UnqualifiedNameID
+
+instance FromJSON Time
+instance ToJSON Time
+
+instance FromJSON Conditions
+instance ToJSON Conditions
 
 
 ----------------------------------------------------------------------
--- hand-crafted lenses
+-- hand-crafted lenses, accessors
 
 -- | To counter replay attacks we need to store 'Assertions' until they invalidate.  If
 -- 'condNotOnOrAfter' is not specified, assume 'assIssueInstant' plus 30 days.
@@ -554,19 +599,26 @@ assEndOfLife = lens gt st
 -- | [3/4.1.4.2] SubjectConfirmation [...] If the containing message is in response to an
 -- AuthnRequest, then the InResponseTo attribute MUST match the request's ID.
 rspInResponseTo :: MonadError String m => AuthnResponse -> m (ID AuthnRequest)
-rspInResponseTo aresp = case ids of
-  [] -> throwError "not found"
-  [i] -> pure i
-  is@(i:_:_) -> if L.nub is == [i]
-                then pure i
-                else throwError $ "contradictory InResponseTo values: " <> show is
+rspInResponseTo aresp = case (inResp, inSubjectConf) of
+  (_, [])
+    -> throwError "not found"  -- the inSubjectConf is required!
+  (Nothing, js@(_:_)) | L.length (L.nub js) /= 1
+    -> throwError $ "mismatching inResponseTo attributes in subject confirmation data: " <> show js
+  (Just i, js@(_:_)) | L.length (L.nub (i : js)) /= 1
+    -> throwError $ "mismatching inResponseTo attributes in response header, subject confirmation data: " <> show (i, js)
+  (_, (j:_))
+    -> pure j
   where
-    ids :: [ID AuthnRequest]
-    ids = maybeToList
+    inSubjectConf :: [ID AuthnRequest]
+    inSubjectConf
+        = maybeToList
         . (^. scdInResponseTo)
-      =<< (^. scData)
+      =<< maybeToList . (^. scData)
       =<< (^. assContents . sasSubject . subjectConfirmations)
       =<< toList (aresp ^. rspPayload)
+
+    inResp :: Maybe (ID AuthnRequest)
+    inResp = aresp ^. rspInRespTo
 
 getUserRef :: (HasCallStack, MonadError String m) => AuthnResponse -> m UserRef
 getUserRef resp = do

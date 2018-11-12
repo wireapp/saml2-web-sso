@@ -1,8 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
 
-{-# OPTIONS_GHC -Wno-orphans #-}
-
 -- | This is a sample application composed of the end-points in "SAML.WebSSO.API" plus a minimum of
 -- functionality to make a running web application.  Some parts of this module could be handy to
 -- build other apps, but it is more likely to serve as a tutorial.

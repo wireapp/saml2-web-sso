@@ -1,7 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{-# OPTIONS_GHC -Wno-orphans #-}
-
 module SAML2.WebSSO.Servant
   ( module SAML2.WebSSO.Servant
   , module SAML2.WebSSO.Servant.CPP
@@ -16,13 +14,11 @@ import Network.HTTP.Media ((//))
 import Network.HTTP.Types
 import Network.Wai hiding (Response)
 import Network.Wai.Internal as Wai
-import SAML2.Util
 import SAML2.WebSSO.Servant.CPP
 import SAML2.WebSSO.XML
 import Servant.API as Servant hiding (MkLink, URI(..))
 import Text.Hamlet.XML
 import Text.XML
-import URI.ByteString
 
 import qualified Data.Map as Map
 import qualified Network.HTTP.Types.Header as HttpTypes
@@ -66,10 +62,6 @@ mkHtml nodes = renderLBS def doc
     doctyp   = Doctype "html" (Just $ PublicID "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd")
     root     = Element "html" rootattr nodes
     rootattr = Map.fromList [("xmlns", "http://www.w3.org/1999/xhtml"), ("xml:lang", "en")]
-
-
-instance ToHttpApiData URI where
-  toUrlPiece = renderURI
 
 
 -- | [3.5.5.1] Caching

@@ -1,7 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{-# OPTIONS_GHC -Wno-orphans #-}
-
 -- | This is a partial implementation of Web SSO using the HTTP Post Binding [2/3.5].
 --
 -- The default API offers 3 end-points: one for retrieving the 'AuthnRequest' in a redirect to the
@@ -51,7 +49,6 @@ import qualified Data.ByteString.Base64.Lazy as EL
 import qualified Data.Map as Map
 import qualified Data.Text as ST
 import qualified SAML2.WebSSO.Cookie as Cky
-import qualified SAML2.WebSSO.XML.Meta as Meta
 
 
 ----------------------------------------------------------------------
@@ -77,9 +74,9 @@ api appName handleVerdict =
   :<|> authreq' defSPIssuer
   :<|> authresp' defSPIssuer defResponseURI handleVerdict
 
--- | The 'Issuer' is an identifier of a SAML participant.  In this time, it's the SP, ie., ourselves.
+-- | The 'Issuer' is an identifier of a SAML participant.  In this case, it's the SP, ie., ourselves.
 defSPIssuer :: HasConfig m => m Issuer
-defSPIssuer = Issuer <$> getSsoURI (Proxy @API) (Proxy @APIAuthResp')
+defSPIssuer = Issuer <$> defResponseURI
 
 -- | The URI that 'AuthnResponse' values are delivered to ('APIAuthResp').
 defResponseURI :: HasConfig m => m URI
@@ -207,7 +204,7 @@ meta appName getRequestIssuer getResponseURI = do
   Issuer org <- getRequestIssuer
   resp       <- getResponseURI
   contacts   <- (^. cfgContacts) <$> getConfig
-  Meta.mkSPMetadata appName org resp contacts
+  mkSPMetadata appName org resp contacts
 
 -- | Create authnreq, store it for comparison against assertions later, and return it in an HTTP
 -- redirect together with the IdP's URI.
@@ -285,7 +282,7 @@ type ResponseVerdict = ServantErr
 simpleHandleVerdict :: (SP m, SPHandler (Error err) m) => OnSuccessRedirect m -> AccessVerdict -> m (WithCookieAndLocation ST)
 simpleHandleVerdict onsuccess = \case
     AccessDenied reasons
-      -> logger Info (show reasons) >> (throwError . Forbidden . cs $ ST.intercalate ", " reasons)
+      -> logger Debug (show reasons) >> (throwError . Forbidden . cs $ ST.intercalate "; " (explainDeniedReason <$> reasons))
     AccessGranted uid
       -> onsuccess uid <&> \(setcookie, uri)
                              -> addHeader setcookie $ addHeader uri ("SSO successful, redirecting to " <> renderURI uri)
