@@ -11,7 +11,6 @@ import Control.Concurrent.MVar
 import Control.Lens
 import Control.Monad.Except
 import Control.Monad.Reader
-import Control.Monad.Writer
 import Data.EitherR (fmapL)
 import Data.Map as Map
 import Data.Proxy
