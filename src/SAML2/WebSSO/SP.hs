@@ -17,8 +17,8 @@ import GHC.Stack
 import SAML2.Util
 import SAML2.WebSSO.Config
 import SAML2.WebSSO.Types
-import Servant.API hiding (URI(..))
-import Servant hiding (URI(..))
+import SAML2.WebSSO.Servant.CPP
+import Servant hiding (URI(..), MkLink)
 import URI.ByteString
 
 import qualified Data.Semigroup
