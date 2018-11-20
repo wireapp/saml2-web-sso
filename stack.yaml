@@ -1,4 +1,4 @@
-resolver: lts-11.13
+resolver: lts-12.10
 
 packages:
 - .
@@ -17,3 +17,5 @@ extra-deps:
 - invertible-hxt-0.1  # for hsaml2
 - servant-multipart-0.11.2
 - yaml-0.9.0
+- hedgehog-quickcheck-0.1
+
