@@ -305,7 +305,8 @@ spec = describe "API" $ do
     vendorCompatibility "azure.microsoft.com" [uri|https://zb2.zerobuzz.net:60443/authresp|]
     -- https://azure.microsoft.com/en-us/
 
+    vendorCompatibility "centrify.com" [uri|https://prod-nginz-https.wire.com/sso/finalize-login|]
+
     -- TODO:
-    --  * centrify
     --  * onelogin
     --  * jives [https://community.jivesoftware.com/docs/DOC-240217#jive_content_id_IdP_Metadata]
