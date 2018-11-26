@@ -27,6 +27,10 @@ mkAuthnResponse creds idp spmeta areq grant = do
   subj <- opaqueNameID . UUID.toText <$> createUUID
   mkAuthnResponseWithSubj subj creds idp spmeta areq grant
 
+-- | Replace the 'NameID' child of the 'Subject' with a given one.
+--
+-- (There is some code sharing between this and 'mkAuthnResponseWithRawSubj', but reducing it would
+-- make both functions more complex.)
 mkAuthnResponseWithSubj
   :: forall extra m. (HasCallStack, HasMonadSign m, HasCreateUUID m, HasNow m)
   => NameID
@@ -39,6 +43,21 @@ mkAuthnResponseWithSubj subj = mkAuthnResponseWithModif modif id
               -> case parse [NodeElement el] of
                    Right (Subject _ sc) -> nodesToElem . render $ Subject subj sc
                    Left bad -> error $ show bad
+            other -> other
+        ]
+      ]
+
+-- | Delete all children of 'Subject' and insert some new ones.
+mkAuthnResponseWithRawSubj
+  :: forall extra m. (HasCallStack, HasMonadSign m, HasCreateUUID m, HasNow m)
+  => [Node]
+  -> SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> m SignedAuthnResponse
+mkAuthnResponseWithRawSubj subj = mkAuthnResponseWithModif modif id
+  where
+    modif = transformBis
+      [ [ transformer $ \case
+            (Element tag@"{urn:oasis:names:tc:SAML:2.0:assertion}Subject" attrs _)
+              -> Element tag attrs subj
             other -> other
         ]
       ]

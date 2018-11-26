@@ -5,13 +5,17 @@
 module Test.SAML2.WebSSO.XML.ExamplesSpec (spec) where
 
 import Control.Exception
+import Control.Lens
 import Control.Monad (forM_)
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Reader
 import Data.Either
 import Data.List.NonEmpty as NL
 import Data.String.Conversions
 import SAML2.Util
 import SAML2.WebSSO
+import SAML2.WebSSO.Test.Credentials
+import SAML2.WebSSO.Test.MockResponse
 import System.Environment (setEnv)
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Hspec
@@ -55,6 +59,7 @@ spec = describe "XML serialization" $ do
     -- roundtrip 7 (readSample "onelogin-response-2.xml") (undefined :: AuthnResponse)
     -- roundtrip 8 (readSample "onelogin-response-3.xml") (undefined :: AuthnResponse)
 
+
   describe "AuthnRequest" $ do
     it "works" $ do
       let req = AuthnRequest
@@ -66,6 +71,59 @@ spec = describe "XML serialization" $ do
           iss = Issuer $ unsafeParseURI "http://wire.com"
       decodeElem @Issuer @(Either String) (encodeElem iss) `shouldBe` Right iss
       decodeElem @AuthnRequest @(Either String) (encodeElem req) `shouldBe` Right req
+
+
+  describe "AuthnResponse with tricky Subject elements" $ do
+    -- https://developer.okta.com/blog/2018/02/27/a-breakdown-of-the-new-saml-authentication-bypass-vulnerability
+    -- We were not affected, but it's always good to have tests.  'mkAuthnResponseWithRawSubj'
+    -- deletes all 'SubjectConfirmation' children, but that is irrelevant for what we're testing
+    -- here.
+
+    let check :: HasCallStack => String -> [Node] -> Maybe ST -> Spec
+        check msg nameId expectedsubj = it msg $ do
+          ctx    :: CtxV           <- mkTestCtxSimple
+          spmeta :: SPMetadata     <- ioFromTestSP ctx mkTestSPMetadata
+          authnreq :: AuthnRequest <- ioFromTestSP ctx $ createAuthnRequest 3600 defSPIssuer
+          SignedAuthnResponse doc  <- ioFromTestSP ctx $
+            mkAuthnResponseWithRawSubj nameId sampleIdPPrivkey testIdPConfig spmeta authnreq True
+          let parsed :: Either String AuthnResponse = parseFromDocument @AuthnResponse doc
+          case expectedsubj of
+            Nothing -> do
+              parsed `shouldSatisfy` isLeft
+            Just subj -> do
+              parsed `shouldSatisfy` isRight
+              let Right (subjid :: NameID) = parsed <&> (^. assertionL . assContents . sasSubject . subjectID)
+              shortShowNameID subjid `shouldBe` Just subj
+
+        mknid = NodeElement . Element "{urn:oasis:names:tc:SAML:2.0:assertion}NameID" mempty
+
+    check "good"
+      [mknid [NodeContent "xkcd"]]
+      (Just "xkcd")
+
+    check "NameID with fragmented contents"
+      [mknid [NodeContent "we", NodeContent "f"]]
+      (Just "wef")
+
+    check "no NameID"
+      []
+      Nothing
+
+    check "empty NameID"
+      [mknid mempty]
+      Nothing
+
+    check "NameID with comments in contents"
+      [mknid [NodeContent "wef", NodeComment "phlaa", NodeContent "fie"]]
+      Nothing
+
+    check "NameID with whitespace in contents"
+      [mknid [NodeContent "  we f  "]]
+      (Just "  we f  ")
+
+    check "NameID with fragmented, whitespacy contents"
+      [mknid [NodeContent "  we  ", NodeContent "  f  "]]
+      (Just "  we    f  ")
 
 
   describe "centrify AuthnResponse" $ do
