@@ -9,6 +9,7 @@ import SAML2.WebSSO.Config
 
 main :: IO ()
 main = do
+  putStrLn "you can find default server config files in `test/samples/server*`."
   config <- configIO
   idps   <- idpConfigIO config
   let settings = defaultSettings
