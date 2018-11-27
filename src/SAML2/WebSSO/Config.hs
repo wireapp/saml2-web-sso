@@ -105,8 +105,8 @@ readConfig filepath =
   =<< Yaml.decodeFileEither filepath
   where
     info :: Config -> IO ()
-    info cfg = when (cfg ^. cfgLogLevel >= Info) $
-      hPutStrLn stderr . cs . Yaml.encode $ cfg
+    info cfg = when (cfg ^. cfgLogLevel <= Info) $
+      hPutStrLn stderr . ("\n>>> server config:\n" <>) . cs . Yaml.encode $ cfg
 
     warn :: Yaml.ParseException -> IO ()
     warn err = hPutStrLn stderr $
@@ -130,8 +130,8 @@ readIdPConfig cfg filepath =
   =<< Yaml.decodeFileEither filepath
   where
     info :: [IdPConfig_] -> IO ()
-    info idps = when (cfg ^. cfgLogLevel >= Info) $
-      hPutStrLn stderr . cs . Yaml.encode $ idps
+    info idps = when (cfg ^. cfgLogLevel <= Info) $
+      hPutStrLn stderr . ("\n>>>known idps:\n" <>) . cs . Yaml.encode $ idps
 
 
 ----------------------------------------------------------------------

@@ -11,7 +11,14 @@ import Servant.Server
 data Error err
   = UnknownIdP LT
   | Forbidden LT
-  | BadSamlResponse LT
+  | BadSamlResponseBase64Error LT
+  | BadSamlResponseXmlError LT
+  | BadSamlResponseSamlError LT
+  | BadSamlResponseFormFieldMissing
+  | BadSamlResponseIssuerMissing
+  | BadSamlResponseNoAssertions
+  | BadSamlResponseAssertionWithoutID
+  | BadSamlResponseInvalidSignature LT
   | BadServerConfig LT
   | InvalidCert LT
   | UnknownError
@@ -23,11 +30,18 @@ type SimpleError = Error Void
 
 
 toServantErr :: SimpleError -> ServantErr
-toServantErr (UnknownIdP msg)      = err404 { errBody = cs $ "Unknown IdP: " <> msg }
-toServantErr (Forbidden msg)       = err403 { errBody = cs $ msg }
-toServantErr (BadSamlResponse msg) = err400 { errBody = cs $ msg }
-toServantErr (InvalidCert msg)     = err400 { errBody = cs $ "Invalid certificate: " <> msg }
-toServantErr (BadServerConfig msg) = err400 { errBody = cs $ "Invalid server config: " <> msg }
+toServantErr (UnknownIdP msg)      = err404 { errBody = "Unknown IdP: " <> cs msg }
+toServantErr (Forbidden msg)       = err403 { errBody = cs msg }
+toServantErr (BadSamlResponseBase64Error msg)      = err400 { errBody = "Bad response: base64 error: " <> cs msg }
+toServantErr (BadSamlResponseXmlError msg)         = err400 { errBody = "Bad response: xml parse error: " <> cs msg }
+toServantErr (BadSamlResponseSamlError msg)        = err400 { errBody = "Bad response: saml parse error: " <> cs msg }
+toServantErr BadSamlResponseFormFieldMissing       = err400 { errBody = "Bad response: SAMLResponse form field missing from HTTP body" }
+toServantErr BadSamlResponseIssuerMissing          = err400 { errBody = "Bad response: no Issuer in AuthnResponse" }
+toServantErr BadSamlResponseNoAssertions           = err400 { errBody = "Bad response: no assertions in AuthnResponse" }
+toServantErr BadSamlResponseAssertionWithoutID     = err400 { errBody = "Bad response: assertion without ID" }
+toServantErr (BadSamlResponseInvalidSignature msg) = err400 { errBody = cs msg }
+toServantErr (InvalidCert msg)     = err400 { errBody = "Invalid certificate: " <> cs msg }
+toServantErr (BadServerConfig msg) = err400 { errBody = "Invalid server config: " <> cs msg }
 toServantErr UnknownError          = err500 { errBody = "Internal server error.  Please consult the logs." }
 toServantErr (CustomServant err)   = err
 toServantErr (CustomError avoid)   = absurd avoid

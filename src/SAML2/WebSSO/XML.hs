@@ -129,6 +129,10 @@ instance HasXMLRoot Document where
 ----------------------------------------------------------------------
 -- util
 
+-- | Attribute either is not present or has a different value.  Oppositve of 'attributeIs'.
+attributeIsNot :: Name -> ST.Text -> Axis
+attributeIsNot key val cur = [ cur | null $ attributeIs key val cur ]
+
 -- | Do not use this in production!  It works, but it's slow and failures are a bit violent.
 unsafeReadTime :: HasCallStack => String -> Time
 unsafeReadTime s = either (error ("decodeTime: " <> show s)) id $ decodeTime s
@@ -822,7 +826,7 @@ parseIdPMetadata el@(Element _ attrs _) = do
         target :: [Cursor]
         target = cur $// element "{urn:oasis:names:tc:SAML:2.0:metadata}IDPSSODescriptor"
                      &/  element "{urn:oasis:names:tc:SAML:2.0:metadata}KeyDescriptor"
-                     >=> attributeIs "use" "signing"
+                     >=> attributeIsNot "use" "encryption"  -- [4/2.4.1.1]
                      &/  element "{http://www.w3.org/2000/09/xmldsig#}KeyInfo"
     (cursorToKeyInfo `mapM` target) >>= \case
       [] -> throwError $ "could not find any AuthnResponse signature certificates."

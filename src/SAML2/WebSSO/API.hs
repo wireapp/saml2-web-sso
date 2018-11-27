@@ -98,10 +98,10 @@ renderAuthnResponseBody = EL.encode . cs . encode
 parseAuthnResponseBody :: forall m err. SPStoreIdP (Error err) m => LBS -> m AuthnResponse
 parseAuthnResponseBody base64 = do
   xmltxt <-
-    either (throwError . BadSamlResponse . ("invalid base64 encoding: " <>) . cs) pure $
+    either (throwError . BadSamlResponseBase64Error . cs) pure $
     EL.decode base64
   resp <-
-    either (throwError . BadSamlResponse . cs) pure $
+    either (throwError . BadSamlResponseXmlError . cs) pure $
     decode (cs xmltxt)
   simpleVerifyAuthnResponse (resp ^. rspIssuer) xmltxt
   pure resp
@@ -114,7 +114,7 @@ instance FromMultipart Mem AuthnResponseBody where
     where
       eval :: forall m err. SPStoreIdP (Error err) m => m AuthnResponse
       eval = do
-        base64 <- maybe (throwError . BadSamlResponse $ "no SAMLResponse in the body") pure $
+        base64 <- maybe (throwError BadSamlResponseFormFieldMissing) pure $
                   lookupInput "SAMLResponse" resp
         parseAuthnResponseBody (cs base64)
 
@@ -123,7 +123,7 @@ instance FromMultipart Mem AuthnResponseBody where
 -- argument must be a valid 'AuthnResponse'.  All assertions need to be signed by the issuer
 -- given in the arguments using the same key.
 simpleVerifyAuthnResponse :: forall m err. SPStoreIdP (Error err) m => Maybe Issuer -> LBS -> m ()
-simpleVerifyAuthnResponse Nothing _ = throwError $ BadSamlResponse "missing issuer"
+simpleVerifyAuthnResponse Nothing _ = throwError BadSamlResponseIssuerMissing
 simpleVerifyAuthnResponse (Just issuer) raw = do
     creds :: NonEmpty SignCreds <- do
       certs <- (^. idpMetadata . edCertAuthnResponse) <$> getIdPConfigByIssuer issuer
@@ -131,7 +131,7 @@ simpleVerifyAuthnResponse (Just issuer) raw = do
       forM certs $ either err pure . certToCreds
 
     doc :: Cursor <- do
-      let err = throwError . BadSamlResponse . ("could not parse document: " <>) . cs . show
+      let err = throwError . BadSamlResponseSamlError . cs . show
       either err (pure . fromDocument) (parseLBS def raw)
 
     assertions :: [Element] <- do
@@ -139,18 +139,18 @@ simpleVerifyAuthnResponse (Just issuer) raw = do
           elemOnly _ = Nothing
       case catMaybes $ elemOnly . node <$>
              (doc $/ element "{urn:oasis:names:tc:SAML:2.0:assertion}Assertion") of
-        [] -> throwError . BadSamlResponse $ "no assertions: " <> cs (show raw)
+        [] -> throwError BadSamlResponseNoAssertions
         some@(_:_) -> pure some
 
     nodeids :: [String] <- do
       let assertionID :: Element -> m String
-          assertionID el@(Element _ attrs _)
-            = maybe (throwError . BadSamlResponse $ "assertion without ID: " <> cs (show el)) (pure . cs)
+          assertionID (Element _ attrs _)
+            = maybe (throwError BadSamlResponseAssertionWithoutID) (pure . cs)
             $ Map.lookup "ID" attrs
       assertionID `mapM` assertions
 
     do
-      let err = throwError . BadSamlResponse . cs
+      let err = throwError . BadSamlResponseInvalidSignature . cs
       either err pure $ verify creds raw `mapM_` nodeids
 
 
