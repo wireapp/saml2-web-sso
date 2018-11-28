@@ -45,7 +45,7 @@ import Text.XML.Cursor
 import Text.XML.DSig
 import URI.ByteString
 
-import qualified Data.ByteString.Base64.Lazy as EL
+import qualified Data.ByteString.Base64.Lazy as EL (encode, decodeLenient)
 import qualified Data.Map as Map
 import qualified Data.Text as ST
 import qualified SAML2.WebSSO.Cookie as Cky
@@ -97,9 +97,12 @@ renderAuthnResponseBody = EL.encode . cs . encode
 -- | Implies verification, hence the constraint.
 parseAuthnResponseBody :: forall m err. SPStoreIdP (Error err) m => LBS -> m AuthnResponse
 parseAuthnResponseBody base64 = do
-  xmltxt <-
-    either (throwError . BadSamlResponseBase64Error . cs) pure $
-    EL.decode base64
+  -- https://www.ietf.org/rfc/rfc4648.txt states that all "noise" characters should be rejected
+  -- unless another standard says they should be ignored.  'EL.decodeLenient' chooses the radical
+  -- approach and ignores all "noise" characters.  since we have to deal with at least %0a, %0d%0a,
+  -- '=', and probably other noise, this seems the safe thing to do.  It is no less secure than
+  -- rejecting some noise characters and ignoring others.
+  let xmltxt = EL.decodeLenient base64
   resp <-
     either (throwError . BadSamlResponseXmlError . cs) pure $
     decode (cs xmltxt)
@@ -189,7 +192,7 @@ instance HasXMLRoot xml => Servant.MimeUnrender HTML (FormRedirect xml) where
     let formAction :: [ST] = cursor $// element "{http://www.w3.org/1999/xhtml}form" >=> attribute "action"
         formBody   :: [ST] = cursor $// element "{http://www.w3.org/1999/xhtml}input" >=> attributeIs "name" "SAMLRequest" >=> attribute "value"
     uri  <- fmapL (<> (": " <> show formAction)) . parseURI' $ mconcat formAction
-    resp <- fmapL (<> (": " <> show formBody)) $ decode . cs =<< (EL.decode . cs $ mconcat formBody)
+    resp <- fmapL (<> (": " <> show formBody)) . decode . cs . EL.decodeLenient . cs $ mconcat formBody
     pure $ FormRedirect uri resp
 
 
