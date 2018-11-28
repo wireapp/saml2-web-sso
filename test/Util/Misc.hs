@@ -27,7 +27,7 @@ import Test.Hspec
 import Text.Show.Pretty
 import Text.XML as XML
 
-import qualified Data.ByteString.Base64.Lazy as EL
+import qualified Data.ByteString.Base64.Lazy as EL (encode)
 import qualified Data.Text.Lazy.IO as LT
 
 

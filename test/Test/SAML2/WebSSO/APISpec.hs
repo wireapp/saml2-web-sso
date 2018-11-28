@@ -29,7 +29,7 @@ import URI.ByteString as URI
 import URI.ByteString.QQ
 import Util
 
-import qualified Data.ByteString.Base64.Lazy as EL
+import qualified Data.ByteString.Base64.Lazy as EL (encode, decodeLenient)
 import qualified Data.Map as Map
 import qualified Data.UUID as UUID
 import qualified Data.X509 as X509
@@ -52,6 +52,20 @@ spec = describe "API" $ do
       check "..."
       check "foiy0t019061.........|||"
       check (cs $ replicate 1000 '_')
+
+    it "works with proper %0a newlines" $ do
+      let encoded = "MTIzN\nDUK\n"
+      EL.decodeLenient encoded `shouldBe` "12345\n"
+
+    it "works with MSDOS and %0d%0a newlines" $ do
+      let encoded = "MTIzN\r\nDUK\r\n"
+      EL.decodeLenient encoded `shouldBe` "12345\n"
+
+    it "works with just plain broken input" $ do
+      -- there is no strong reason why we would want this test to pass or fail; it is just here to
+      -- document the current behavior.  see also the comment in 'parseAuthnResponseBody'.
+      let encoded = "MTI##zN@@DUK??"
+      EL.decodeLenient encoded `shouldBe` "12345\n"
 
   describe "MimeRender HTML FormRedirect" $ do
     it "fake roundtrip-0" $ do

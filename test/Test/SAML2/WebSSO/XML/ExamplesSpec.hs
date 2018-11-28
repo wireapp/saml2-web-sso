@@ -25,7 +25,7 @@ import Text.XML.DSig as DSig
 import URI.ByteString
 import Util
 
-import qualified Data.ByteString.Base64.Lazy as EL
+import qualified Data.ByteString.Base64.Lazy as EL (decodeLenient)
 import qualified Data.List as List
 import qualified Data.Map as Map
 import qualified Samples
@@ -134,8 +134,8 @@ spec = describe "XML serialization" $ do
         base64raw :: LT <- readSampleIO "centrify-response-1.base64"
 
         pendingWith "Issuer URL is 'Centrify', which isn't a valid URL.  Need to get a correct response doc first."
-        let Right (xmlraw :: LBS)
-                = EL.decode
+        let xmlraw :: LBS
+                = EL.decodeLenient
                 . cs @String @LBS
                 . List.filter (`notElem` ("\r\n" :: [Char]))
                 . cs @LT @String
