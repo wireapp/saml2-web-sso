@@ -13,16 +13,13 @@ Relevant parts of the standard are referenced throughout the code, using the not
 [8] http://docs.oasis-open.org/security/saml/v2.0/saml-glossary-2.0-os.pdf
 
 -}
-module SAML2.WebSSO
-  ( module X
-  )
-where
+module SAML2.WebSSO (module X) where
 
-import           SAML2.Util                    as X
-import           SAML2.WebSSO.API              as X
-import           SAML2.WebSSO.Config           as X
-import           SAML2.WebSSO.Error            as X
-import           SAML2.WebSSO.SP               as X
-import           SAML2.WebSSO.Types            as X
-import           SAML2.WebSSO.XML              as X
-import           SAML2.WebSSO.Cookie           as X
+import SAML2.Util as X
+import SAML2.WebSSO.API as X
+import SAML2.WebSSO.Config as X
+import SAML2.WebSSO.Error as X
+import SAML2.WebSSO.SP as X
+import SAML2.WebSSO.Types as X
+import SAML2.WebSSO.XML as X
+import SAML2.WebSSO.Cookie as X

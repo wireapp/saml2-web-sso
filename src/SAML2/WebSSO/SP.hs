@@ -2,30 +2,28 @@
 
 module SAML2.WebSSO.SP where
 
-import           Control.Lens                      hiding ( Level )
-import           Control.Monad.Except
-import           Control.Monad.Extra                      ( ifM )
-import           Control.Monad.Reader
-import           Control.Monad.Writer
-import           Data.Foldable                            ( toList )
-import           Data.List.NonEmpty                       ( NonEmpty )
-import           Data.Maybe
-import           Data.String.Conversions
-import           Data.Time
-import           Data.UUID                                ( UUID )
-import           GHC.Stack
-import           SAML2.Util
-import           SAML2.WebSSO.Config
-import           SAML2.WebSSO.Types
-import           SAML2.WebSSO.Servant.CPP
-import           Servant                           hiding ( URI(..)
-                                                          , MkLink
-                                                          )
-import           URI.ByteString
+import Control.Lens hiding (Level)
+import Control.Monad.Except
+import Control.Monad.Extra (ifM)
+import Control.Monad.Reader
+import Control.Monad.Writer
+import Data.Foldable (toList)
+import Data.List.NonEmpty (NonEmpty)
+import Data.Maybe
+import Data.String.Conversions
+import Data.Time
+import Data.UUID (UUID)
+import GHC.Stack
+import SAML2.Util
+import SAML2.WebSSO.Config
+import SAML2.WebSSO.Types
+import SAML2.WebSSO.Servant.CPP
+import Servant hiding (URI(..), MkLink)
+import URI.ByteString
 
 import qualified Data.Semigroup
-import qualified Data.UUID                     as UUID
-import qualified Data.UUID.V4                  as UUID
+import qualified Data.UUID as UUID
+import qualified Data.UUID.V4 as UUID
 
 
 ----------------------------------------------------------------------
@@ -78,8 +76,10 @@ class (SP m, SPStore m, SPStoreIdP err m, MonadError err m) => SPHandler err m w
 -- garbage collected after that time).  Iff assertion has already been stored and is still alive,
 -- return 'False'.
 storeAssertion :: SPStore m => ID Assertion -> Time -> m Bool
-storeAssertion item endOfLife =
-  ifM (isAliveID item) (pure False) (True <$ storeID item endOfLife)
+storeAssertion item endOfLife = ifM
+  (isAliveID item)
+  (pure False)
+  (True <$ storeID item endOfLife)
 
 loggerConfIO :: (HasConfig m, MonadIO m) => Level -> String -> m ()
 loggerConfIO level msg = do
@@ -87,8 +87,9 @@ loggerConfIO level msg = do
   loggerIO cfgsays level msg
 
 loggerIO :: MonadIO m => Level -> Level -> String -> m ()
-loggerIO cfgsays level msg =
-  if level >= cfgsays then liftIO $ putStrLn msg else pure ()
+loggerIO cfgsays level msg = if level >= cfgsays
+  then liftIO $ putStrLn msg
+  else pure ()
 
 createUUIDIO :: MonadIO m => m UUID
 createUUIDIO = liftIO UUID.nextRandom
@@ -116,57 +117,47 @@ createID = ID . ("_" <>) . UUID.toText <$> createUUID
 -- rejected by us.  (3) The nameID policy is expected to be configured on the IdP side to not
 -- support any set of name spaces that overlap (e.g. because user A has an email that is the account
 -- name of user B).
-createAuthnRequest
-  :: (SP m, SPStore m) => NominalDiffTime -> m Issuer -> m AuthnRequest
+createAuthnRequest :: (SP m, SPStore m) => NominalDiffTime -> m Issuer -> m AuthnRequest
 createAuthnRequest lifeExpectancySecs getIssuer = do
   _rqID           <- createID
   _rqIssueInstant <- getNow
   _rqIssuer       <- getIssuer
   let _rqNameIDPolicy = Just $ NameIdPolicy NameIDFUnspecified Nothing True
   storeID _rqID (addTime lifeExpectancySecs _rqIssueInstant)
-  pure AuthnRequest { .. }
+  pure AuthnRequest{..}
 
 
 ----------------------------------------------------------------------
 -- paths
 
-getSsoURI
-  :: forall m endpoint api
-   . ( HasCallStack
-     , HasConfig m
-     , IsElem endpoint api
-     , HasLink endpoint
-     , ToHttpApiData (MkLink endpoint)
-     )
-  => Proxy api
-  -> Proxy endpoint
-  -> m URI
+getSsoURI :: forall m endpoint api.
+                  ( HasCallStack
+                  , HasConfig m
+                  , IsElem endpoint api
+                  , HasLink endpoint
+                  , ToHttpApiData (MkLink endpoint)
+                  )
+               => Proxy api -> Proxy endpoint -> m URI
 getSsoURI proxyAPI proxyAPIAuthResp = extpath . (^. cfgSPSsoURI) <$> getConfig
- where
-  extpath :: URI -> URI
-  extpath = (=/ (cs . toUrlPiece $ safeLink proxyAPI proxyAPIAuthResp))
+  where
+    extpath :: URI -> URI
+    extpath = (=/ (cs . toUrlPiece $ safeLink proxyAPI proxyAPIAuthResp))
 
 -- | 'getSsoURI' for links that have one variable path segment.
 --
 -- FUTUREWORK: this is only sometimes what we need.  it would be nice to have a type class with a
 -- method 'getSsoURI' for arbitrary path arities.
-getSsoURI'
-  :: forall endpoint api a (f :: * -> *) t
-   . ( HasConfig f
-     , MkLink endpoint ~ (t -> a)
-     , HasLink endpoint
-     , ToHttpApiData a
-     , IsElem endpoint api
-     )
-  => Proxy api
-  -> Proxy endpoint
-  -> t
-  -> f URI
-getSsoURI' proxyAPI proxyAPIAuthResp idpid =
-  extpath . (^. cfgSPSsoURI) <$> getConfig
- where
-  extpath :: URI -> URI
-  extpath = (=/ (cs . toUrlPiece $ safeLink proxyAPI proxyAPIAuthResp idpid))
+getSsoURI' :: forall endpoint api a (f :: * -> *) t.
+              ( HasConfig f
+              , MkLink endpoint ~ (t -> a)
+              , HasLink endpoint
+              , ToHttpApiData a
+              , IsElem endpoint api
+              ) => Proxy api -> Proxy endpoint -> t -> f URI
+getSsoURI' proxyAPI proxyAPIAuthResp idpid = extpath . (^. cfgSPSsoURI) <$> getConfig
+  where
+    extpath :: URI -> URI
+    extpath = (=/ (cs . toUrlPiece $ safeLink proxyAPI proxyAPIAuthResp idpid))
 
 
 ----------------------------------------------------------------------
@@ -192,20 +183,13 @@ data JudgeCtx = JudgeCtx
 
 makeLenses ''JudgeCtx
 
-runJudgeT
-  :: forall m
-   . (Monad m, SP m)
-  => JudgeCtx
-  -> JudgeT m AccessVerdict
-  -> m AccessVerdict
-runJudgeT ctx (JudgeT em) =
-  fmap collectErrors . (`runReaderT` ctx) . runWriterT $ runExceptT em
- where
-  collectErrors
-    :: (Either DeniedReason AccessVerdict, [DeniedReason]) -> AccessVerdict
-  collectErrors (Left  err, errs'       ) = AccessDenied $ err : errs'
-  collectErrors (Right _  , errs@(_ : _)) = AccessDenied errs
-  collectErrors (Right v  , []          ) = v
+runJudgeT :: forall m. (Monad m, SP m) => JudgeCtx -> JudgeT m AccessVerdict -> m AccessVerdict
+runJudgeT ctx (JudgeT em) = fmap collectErrors . (`runReaderT` ctx) . runWriterT $ runExceptT em
+  where
+    collectErrors :: (Either DeniedReason AccessVerdict, [DeniedReason]) -> AccessVerdict
+    collectErrors (Left err, errs')     = AccessDenied $ err : errs'
+    collectErrors (Right _, errs@(_:_)) = AccessDenied errs
+    collectErrors (Right v, [])         = v
 
 -- the parts of the MonadError, MonadWriter interfaces we want here.
 class (Functor m, Applicative m, Monad m) => MonadJudge m where
@@ -264,98 +248,78 @@ instance (Monad m, SPStoreID i m) => SPStoreID i (JudgeT m) where
 judge :: (SP m, SPStore m) => AuthnResponse -> JudgeCtx -> m AccessVerdict
 judge resp ctx = runJudgeT ctx (judge' resp)
 
-judge'
-  :: (HasCallStack, MonadJudge m, SP m, SPStore m)
-  => AuthnResponse
-  -> m AccessVerdict
+judge' :: (HasCallStack, MonadJudge m, SP m, SPStore m) => AuthnResponse -> m AccessVerdict
 judge' resp = do
   case resp ^. rspStatus of
     StatusSuccess -> pure ()
     StatusFailure -> deny DeniedStatusFailure
-  uref     <- either (giveup . DeniedBadUserRefs) pure $ getUserRef resp
-  inRespTo <- either (giveup . DeniedBadInResponseTos) pure
-    $ rspInResponseTo resp
+  uref <- either (giveup . DeniedBadUserRefs) pure $ getUserRef resp
+  inRespTo <- either (giveup . DeniedBadInResponseTos) pure $ rspInResponseTo resp
   checkInResponseTo "response" inRespTo
   checkIsInPast DeniedIssueInstantNotInPast $ resp ^. rspIssueInstant
-  maybe (pure ())
-        (checkDestination DeniedBadDestination)
-        (resp ^. rspDestination)
+  maybe (pure ()) (checkDestination DeniedBadDestination) (resp ^. rspDestination)
   verdict <- checkAssertions (resp ^. rspIssuer) (resp ^. rspPayload) uref
   unStoreID inRespTo
   pure verdict
 
 -- | If this fails, we could continue ('deny'), but we stop processing ('giveup') to make DOS
 -- attacks harder.
-checkInResponseTo
-  :: (SPStore m, MonadJudge m) => String -> ID AuthnRequest -> m ()
+checkInResponseTo :: (SPStore m, MonadJudge m) => String -> ID AuthnRequest -> m ()
 checkInResponseTo loc req = do
   ok <- isAliveID req
   unless ok . giveup . DeniedBadInResponseTos $ loc <> ": " <> show req
 
-checkIsInPast
-  :: (SP m, MonadJudge m) => (Time -> Time -> DeniedReason) -> Time -> m ()
+checkIsInPast :: (SP m, MonadJudge m) => (Time -> Time -> DeniedReason) -> Time -> m ()
 checkIsInPast err tim = do
   now <- getNow
   unless (tim < now) . deny $ err tim now
 
 -- | Check that the response is intended for us (based on config's finalize-login uri stored in
 -- 'JudgeCtx').
-checkDestination
-  :: (HasConfig m, MonadJudge m)
-  => (String -> String -> DeniedReason)
-  -> URI
-  -> m ()
+checkDestination :: (HasConfig m, MonadJudge m) => (String -> String -> DeniedReason) -> URI -> m ()
 checkDestination err (renderURI -> expectedByIdp) = do
   (renderURI -> expectedByUs) <- (^. judgeCtxResponseURI) <$> getJudgeCtx
-  unless (expectedByUs == expectedByIdp) . deny $ err (cs expectedByUs)
-                                                      (cs expectedByIdp)
+  unless (expectedByUs == expectedByIdp) . deny $ err (cs expectedByUs) (cs expectedByIdp)
 
-checkAssertions
-  :: (SP m, SPStore m, MonadJudge m)
-  => Maybe Issuer
-  -> NonEmpty Assertion
-  -> UserRef
-  -> m AccessVerdict
+checkAssertions :: (SP m, SPStore m, MonadJudge m) => Maybe Issuer -> NonEmpty Assertion -> UserRef -> m AccessVerdict
 checkAssertions missuer (toList -> assertions) uref@(UserRef issuer _) = do
   forM_ assertions $ \ass -> do
     checkIsInPast DeniedAssertionIssueInstantNotInPast (ass ^. assIssueInstant)
     storeAssertion (ass ^. assID) (ass ^. assEndOfLife)
   checkConditions `mapM_` catMaybes ((^. assConditions) <$> assertions)
 
-  unless (maybe True (issuer ==) missuer) . deny $ DeniedIssuerMismatch
-    missuer
-    issuer
+  unless (maybe True (issuer ==) missuer) . deny $ DeniedIssuerMismatch missuer issuer
 
   checkSubjectConfirmations assertions
 
   let statements :: [Statement]
-      statements =
-        mconcat $ (^. assContents . sasStatements . to toList) <$> assertions
-  when (null statements) $ deny DeniedNoStatements  -- (not sure this is even possible?)
+      statements = mconcat $ (^. assContents . sasStatements . to toList) <$> assertions
+  when (null statements) $
+    deny DeniedNoStatements  -- (not sure this is even possible?)
 
-  when (null . catMaybes $ (^? _AuthnStatement) <$> statements)
-    $ deny DeniedNoAuthnStatement
+  when (null . catMaybes $ (^? _AuthnStatement) <$> statements) $
+    deny DeniedNoAuthnStatement
 
   checkStatement `mapM_` statements
   pure $ AccessGranted uref
 
 checkStatement :: (SP m, MonadJudge m) => Statement -> m ()
-checkStatement (AuthnStatement issued _ mtimeout _) = do
-  checkIsInPast DeniedAuthnStatementIssueInstantNotInPast issued
-  forM_ mtimeout $ \endoflife -> do
-    now <- getNow
-    when (endoflife <= now) . deny $ DeniedAuthnStatmentExpiredAt endoflife
+checkStatement (AuthnStatement issued _ mtimeout _) =
+  do
+    checkIsInPast DeniedAuthnStatementIssueInstantNotInPast issued
+    forM_ mtimeout $ \endoflife -> do
+      now <- getNow
+      when (endoflife <= now) . deny $ DeniedAuthnStatmentExpiredAt endoflife
 
 -- | Check all 'SubjectConfirmation's and 'Subject's in all 'Assertion'.  Deny if not at least one
 -- confirmation has method "bearer".
-checkSubjectConfirmations
-  :: (SP m, SPStore m, MonadJudge m) => [Assertion] -> m ()
+checkSubjectConfirmations :: (SP m, SPStore m, MonadJudge m) => [Assertion] -> m ()
 checkSubjectConfirmations assertions = do
-  bearerFlags :: [[HasBearerConfirmation]] <- forM assertions $ \assertion ->
-    case assertion ^. assContents . sasSubject of
+  bearerFlags :: [[HasBearerConfirmation]] <- forM assertions $
+    \assertion -> case assertion ^. assContents . sasSubject of
       Subject _ confs -> checkSubjectConfirmation assertion `mapM` confs
-  unless (mconcat (mconcat bearerFlags) == HasBearerConfirmation)
-    $ deny DeniedNoBearerConfSubj
+  unless (mconcat (mconcat bearerFlags) == HasBearerConfirmation) $
+    deny DeniedNoBearerConfSubj
 
 data HasBearerConfirmation = HasBearerConfirmation | NoBearerConfirmation
   deriving (Eq, Ord, Bounded, Enum)
@@ -369,59 +333,49 @@ instance Data.Semigroup.Semigroup HasBearerConfirmation where
 
 -- | Locally check one 'SubjectConfirmation' and deny if there is a problem.  If this is a
 -- confirmation of method "bearer", return 'HasBearerConfirmation'.
-checkSubjectConfirmation
-  :: (SPStore m, MonadJudge m)
-  => Assertion
-  -> SubjectConfirmation
-  -> m HasBearerConfirmation
+checkSubjectConfirmation :: (SPStore m, MonadJudge m) => Assertion -> SubjectConfirmation -> m HasBearerConfirmation
 checkSubjectConfirmation ass conf = do
   let bearer = if (conf ^. scMethod) == SubjectConfirmationMethodBearer
         then HasBearerConfirmation
         else NoBearerConfirmation
 
   when (bearer == HasBearerConfirmation) $ do
-    unless
-        (any (not . null . (^. condAudienceRestriction)) (ass ^. assConditions))
-      $ deny DeniedBearerConfAssertionsWithoutAudienceRestriction
+    unless (any (not . null . (^. condAudienceRestriction)) (ass ^. assConditions)) $
+      deny DeniedBearerConfAssertionsWithoutAudienceRestriction
       -- (the actual validation of the audience restrictions happens in 'checkConditions'.)
 
   checkSubjectConfirmationData `mapM_` (conf ^. scData)
   pure bearer
 
-checkSubjectConfirmationData
-  :: (HasConfig m, SP m, SPStore m, MonadJudge m)
-  => SubjectConfirmationData
-  -> m ()
+checkSubjectConfirmationData :: (HasConfig m, SP m, SPStore m, MonadJudge m)
+  => SubjectConfirmationData -> m ()
 checkSubjectConfirmationData confdat = do
   checkDestination DeniedBadRecipient $ confdat ^. scdRecipient
 
   now <- getNow
-  when (now >= confdat ^. scdNotOnOrAfter)
-    . deny
-    $ DeniedNotOnOrAfterSubjectConfirmation (confdat ^. scdNotOnOrAfter)
+  when (now >= confdat ^. scdNotOnOrAfter) . deny $
+    DeniedNotOnOrAfterSubjectConfirmation (confdat ^. scdNotOnOrAfter)
   case confdat ^. scdNotBefore of
-    Just notbef | now < notbef ->
-      deny $ DeniedNotBeforeSubjectConfirmation notbef
+    Just notbef | now < notbef -> deny $ DeniedNotBeforeSubjectConfirmation notbef
     _ -> pure ()
 
   -- double-check the result of the call to 'rspInResponseTo' in 'judge'' above.
   checkInResponseTo "assertion" `mapM_` (confdat ^. scdInResponseTo)
 
-checkConditions
-  :: forall m . (HasCallStack, MonadJudge m, SP m) => Conditions -> m ()
+checkConditions :: forall m. (HasCallStack, MonadJudge m, SP m) => Conditions -> m ()
 checkConditions (Conditions lowlimit uplimit _onetimeuse audiences) = do
   now <- getNow
   case lowlimit of
     Just lim | now < lim -> deny $ DeniedNotBeforeCondition lim
-    _                    -> pure ()
+    _ -> pure ()
 
   case uplimit of
     Just lim | now >= lim -> deny $ DeniedNotOnOrAfterCondition lim
-    _                     -> pure ()
+    _ -> pure ()
 
   Issuer us <- (^. judgeCtxAudience) <$> getJudgeCtx
 
   let checkAudience :: NonEmpty URI -> m ()
-      checkAudience aus =
-        when (us `notElem` aus) . deny $ DeniedAudienceMismatch us aus
+      checkAudience aus = when (us `notElem` aus) . deny $
+        DeniedAudienceMismatch us aus
   checkAudience `mapM_` audiences
