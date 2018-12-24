@@ -2,14 +2,17 @@
 
 module SAML2.WebSSO.Orphans where
 
-import Control.Monad ((<=<))
-import Data.Aeson
-import Data.String.Conversions
-import Data.X509 as X509
-import SAML2.Util (parseURI', renderURI, normURI)
-import Servant hiding (URI)
-import Text.XML.DSig
-import URI.ByteString
+import           Control.Monad                            ( (<=<) )
+import           Data.Aeson
+import           Data.String.Conversions
+import           Data.X509                     as X509
+import           SAML2.Util                               ( parseURI'
+                                                          , renderURI
+                                                          , normURI
+                                                          )
+import           Servant                           hiding ( URI )
+import           Text.XML.DSig
+import           URI.ByteString
 
 
 instance FromJSON URI where

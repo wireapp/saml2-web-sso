@@ -1,8 +1,11 @@
-module SAML2.WebSSO.Types.TH (deriveJSONOptions) where
+module SAML2.WebSSO.Types.TH
+  ( deriveJSONOptions
+  )
+where
 
-import Control.Lens
-import Data.Aeson
-import Data.Char
+import           Control.Lens
+import           Data.Aeson
+import           Data.Char
 
 deriveJSONOptions :: Options
 deriveJSONOptions = defaultOptions { fieldLabelModifier = labelmod }

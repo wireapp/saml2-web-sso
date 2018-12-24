@@ -1,9 +1,9 @@
 module Util.Types where
 
-import Control.Concurrent.MVar
-import Control.Lens
-import SAML2.WebSSO
-import SAML2.WebSSO.API.Example
+import           Control.Concurrent.MVar
+import           Control.Lens
+import           SAML2.WebSSO
+import           SAML2.WebSSO.API.Example
 
 
 type CtxV = MVar Ctx

@@ -3,28 +3,36 @@
 
 module SAML2.WebSSO.Types where
 
-import Control.Lens
-import Control.Monad.Except
-import Data.Aeson as Aeson
-import Data.Aeson.TH
-import Data.List.NonEmpty
-import Data.Maybe
-import Data.Monoid ((<>))
-import Data.String.Conversions (ST, cs)
-import Data.Time (UTCTime(..), NominalDiffTime, formatTime, parseTimeM, defaultTimeLocale, addUTCTime)
-import Data.UUID as UUID
-import GHC.Generics (Generic)
-import GHC.Stack
-import SAML2.Util
-import SAML2.WebSSO.Orphans ()
-import SAML2.WebSSO.Types.TH (deriveJSONOptions)
-import URI.ByteString  -- FUTUREWORK: should saml2-web-sso also use the URI from http-types?  we already
+import           Control.Lens
+import           Control.Monad.Except
+import           Data.Aeson                    as Aeson
+import           Data.Aeson.TH
+import           Data.List.NonEmpty
+import           Data.Maybe
+import           Data.Monoid                              ( (<>) )
+import           Data.String.Conversions                  ( ST
+                                                          , cs
+                                                          )
+import           Data.Time                                ( UTCTime(..)
+                                                          , NominalDiffTime
+                                                          , formatTime
+                                                          , parseTimeM
+                                                          , defaultTimeLocale
+                                                          , addUTCTime
+                                                          )
+import           Data.UUID                     as UUID
+import           GHC.Generics                             ( Generic )
+import           GHC.Stack
+import           SAML2.Util
+import           SAML2.WebSSO.Orphans                     ( )
+import           SAML2.WebSSO.Types.TH                    ( deriveJSONOptions )
+import           URI.ByteString  -- FUTUREWORK: should saml2-web-sso also use the URI from http-types?  we already
                        -- depend on that via xml-conduit anyway.  (is it a problem though that it is
                        -- string-based?  is it less of a problem because we need it anyway?)
 
-import qualified Data.List as L
-import qualified Data.Text as ST
-import qualified Data.X509 as X509
+import qualified Data.List                     as L
+import qualified Data.Text                     as ST
+import qualified Data.X509                     as X509
 import qualified Servant
 
 
@@ -285,24 +293,29 @@ data UnqualifiedNameID
   | UNameIDTransient   ST
   deriving (Eq, Ord, Show, Generic)
 
-mkNameID :: MonadError String m => UnqualifiedNameID -> Maybe ST -> Maybe ST -> Maybe ST -> m NameID
+mkNameID
+  :: MonadError String m
+  => UnqualifiedNameID
+  -> Maybe ST
+  -> Maybe ST
+  -> Maybe ST
+  -> m NameID
 mkNameID nid@(UNameIDEntity uri) m1 m2 m3 = do
-  mapM_ throwError $
-    [ "mkNameID: nameIDNameQ, nameIDSPNameQ, nameIDSPProvidedID MUST be omitted for entity NameIDs."
-      <> show [m1, m2, m3]
-    | all isJust [m1, m2, m3]
-    ] <>
-    [ "mkNameID: entity URI too long: "
-      <> show uritxt
-    | uritxt <- [renderURI uri], ST.length uritxt > 1024
-    ]
+  mapM_ throwError
+    $ [ "mkNameID: nameIDNameQ, nameIDSPNameQ, nameIDSPProvidedID MUST be omitted for entity NameIDs."
+          <> show [m1, m2, m3]
+      | all isJust [m1, m2, m3]
+      ]
+    <> [ "mkNameID: entity URI too long: " <> show uritxt
+       | uritxt <- [renderURI uri]
+       , ST.length uritxt > 1024
+       ]
   pure $ NameID nid Nothing Nothing Nothing
 mkNameID nid@(UNameIDPersistent txt) m1 m2 m3 = do
-  mapM_ throwError $
-    [ "mkNameID: persistent text too long: "
-      <> show (nid, ST.length txt)
-    | ST.length txt > 1024
-    ]
+  mapM_ throwError
+    $ [ "mkNameID: persistent text too long: " <> show (nid, ST.length txt)
+      | ST.length txt > 1024
+      ]
   pure $ NameID nid m1 m2 m3
 mkNameID nid m1 m2 m3 = do
   pure $ NameID nid m1 m2 m3
@@ -316,24 +329,27 @@ entityNameID uri = NameID (UNameIDEntity uri) Nothing Nothing Nothing
 nameIDFormat :: HasCallStack => NameIDFormat -> String
 nameIDFormat = \case
   NameIDFUnspecified -> "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"
-  NameIDFEmail       -> "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
-  NameIDFX509        -> "urn:oasis:names:tc:SAML:1.1:nameid-format:X509SubjectName"
-  NameIDFWindows     -> "urn:oasis:names:tc:SAML:1.1:nameid-format:WindowsDomainQualifiedName"
-  NameIDFKerberos    -> "urn:oasis:names:tc:SAML:2.0:nameid-format:kerberos"
-  NameIDFEntity      -> "urn:oasis:names:tc:SAML:2.0:nameid-format:entity"
-  NameIDFPersistent  -> "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
-  NameIDFTransient   -> "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"
+  NameIDFEmail -> "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
+  NameIDFX509 -> "urn:oasis:names:tc:SAML:1.1:nameid-format:X509SubjectName"
+  NameIDFWindows ->
+    "urn:oasis:names:tc:SAML:1.1:nameid-format:WindowsDomainQualifiedName"
+  NameIDFKerberos   -> "urn:oasis:names:tc:SAML:2.0:nameid-format:kerberos"
+  NameIDFEntity     -> "urn:oasis:names:tc:SAML:2.0:nameid-format:entity"
+  NameIDFPersistent -> "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
+  NameIDFTransient  -> "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"
 
 unameIDFormat :: HasCallStack => UnqualifiedNameID -> String
 unameIDFormat = \case
-  UNameIDUnspecified _ -> "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"
-  UNameIDEmail _       -> "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
-  UNameIDX509 _        -> "urn:oasis:names:tc:SAML:1.1:nameid-format:X509SubjectName"
-  UNameIDWindows _     -> "urn:oasis:names:tc:SAML:1.1:nameid-format:WindowsDomainQualifiedName"
-  UNameIDKerberos _    -> "urn:oasis:names:tc:SAML:2.0:nameid-format:kerberos"
-  UNameIDEntity _      -> "urn:oasis:names:tc:SAML:2.0:nameid-format:entity"
-  UNameIDPersistent _  -> "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
-  UNameIDTransient _   -> "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"
+  UNameIDUnspecified _ ->
+    "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"
+  UNameIDEmail _ -> "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"
+  UNameIDX509  _ -> "urn:oasis:names:tc:SAML:1.1:nameid-format:X509SubjectName"
+  UNameIDWindows _ ->
+    "urn:oasis:names:tc:SAML:1.1:nameid-format:WindowsDomainQualifiedName"
+  UNameIDKerberos   _ -> "urn:oasis:names:tc:SAML:2.0:nameid-format:kerberos"
+  UNameIDEntity     _ -> "urn:oasis:names:tc:SAML:2.0:nameid-format:entity"
+  UNameIDPersistent _ -> "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
+  UNameIDTransient  _ -> "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"
 
 -- | Extract the 'UnqualifiedNameID' part from the input and render it to a 'ST'.  If there are any
 -- qualifiers, return 'Nothing' to prevent name clashes (where two inputs are different, but produce
@@ -584,41 +600,45 @@ instance ToJSON Conditions
 -- 'condNotOnOrAfter' is not specified, assume 'assIssueInstant' plus 30 days.
 assEndOfLife :: Lens' Assertion Time
 assEndOfLife = lens gt st
-  where
-    fallback :: Assertion -> Time
-    fallback ass = addTime (30 * 24 * 60 * 60) (ass ^. assIssueInstant)
+ where
+  fallback :: Assertion -> Time
+  fallback ass = addTime (30 * 24 * 60 * 60) (ass ^. assIssueInstant)
 
-    gt :: Assertion -> Time
-    gt ass = fromMaybe (fallback ass)
-            . (^? to _assConditions . _Just . to _condNotOnOrAfter . _Just)
-            $ ass
+  gt :: Assertion -> Time
+  gt ass =
+    fromMaybe (fallback ass)
+      . (^? to _assConditions . _Just . to _condNotOnOrAfter . _Just)
+      $ ass
 
-    st :: Assertion -> Time -> Assertion
-    st ass tim = ass & assConditions . _Just . condNotOnOrAfter .~ Just tim
+  st :: Assertion -> Time -> Assertion
+  st ass tim = ass & assConditions . _Just . condNotOnOrAfter .~ Just tim
 
 -- | [3/4.1.4.2] SubjectConfirmation [...] If the containing message is in response to an
 -- AuthnRequest, then the InResponseTo attribute MUST match the request's ID.
 rspInResponseTo :: MonadError String m => AuthnResponse -> m (ID AuthnRequest)
 rspInResponseTo aresp = case (inResp, inSubjectConf) of
-  (_, [])
-    -> throwError "not found"  -- the inSubjectConf is required!
-  (Nothing, js@(_:_)) | L.length (L.nub js) /= 1
-    -> throwError $ "mismatching inResponseTo attributes in subject confirmation data: " <> show js
-  (Just i, js@(_:_)) | L.length (L.nub (i : js)) /= 1
-    -> throwError $ "mismatching inResponseTo attributes in response header, subject confirmation data: " <> show (i, js)
-  (_, (j:_))
-    -> pure j
-  where
-    inSubjectConf :: [ID AuthnRequest]
-    inSubjectConf
-        = maybeToList
-        . (^. scdInResponseTo)
-      =<< maybeToList . (^. scData)
+  (_, []) -> throwError "not found"  -- the inSubjectConf is required!
+  (Nothing, js@(_ : _)) | L.length (L.nub js) /= 1 ->
+    throwError
+      $  "mismatching inResponseTo attributes in subject confirmation data: "
+      <> show js
+  (Just i, js@(_ : _)) | L.length (L.nub (i : js)) /= 1 ->
+    throwError
+      $ "mismatching inResponseTo attributes in response header, subject confirmation data: "
+      <> show (i, js)
+  (_, (j : _)) -> pure j
+ where
+  inSubjectConf :: [ID AuthnRequest]
+  inSubjectConf =
+    maybeToList
+      .   (^. scdInResponseTo)
+      =<< maybeToList
+      .   (^. scData)
       =<< (^. assContents . sasSubject . subjectConfirmations)
       =<< toList (aresp ^. rspPayload)
 
-    inResp :: Maybe (ID AuthnRequest)
-    inResp = aresp ^. rspInRespTo
+  inResp :: Maybe (ID AuthnRequest)
+  inResp = aresp ^. rspInRespTo
 
 getUserRef :: (HasCallStack, MonadError String m) => AuthnResponse -> m UserRef
 getUserRef resp = do
@@ -626,11 +646,12 @@ getUserRef resp = do
 
   issuer :: Issuer <- case nub $ (^. assIssuer) <$> assertions of
     i :| [] -> pure i
-    bad -> throwError $ "bad issuers: " <> show bad
+    bad     -> throwError $ "bad issuers: " <> show bad
 
-  subject :: NameID <- case nub $ (^. assContents . sasSubject) <$> assertions of
-    Subject s _ :| [] -> pure s
-    bad -> throwError $ "bad subjects: " <> show bad
+  subject :: NameID <-
+    case nub $ (^. assContents . sasSubject) <$> assertions of
+      Subject s _ :| [] -> pure s
+      bad               -> throwError $ "bad subjects: " <> show bad
 
   pure $ UserRef issuer subject
 

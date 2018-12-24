@@ -8,25 +8,29 @@ module SAML2.WebSSO.Cookie
   , cookieToHeader
   , toggleCookie
   , setSimpleCookieValue
-  ) where
+  )
+where
 
-import Control.Lens
-import Control.Monad.Except
-import Data.Binary.Builder (toLazyByteString)
-import Data.Proxy
-import Data.String.Conversions
-import Data.Time
-import GHC.TypeLits (KnownSymbol, symbolVal)
-import GHC.Types
-import SAML2.WebSSO.SP
-import SAML2.WebSSO.Types
-import SAML2.WebSSO.XML
-import Servant.API as Servant hiding (URI(..))
-import Web.Cookie
+import           Control.Lens
+import           Control.Monad.Except
+import           Data.Binary.Builder                      ( toLazyByteString )
+import           Data.Proxy
+import           Data.String.Conversions
+import           Data.Time
+import           GHC.TypeLits                             ( KnownSymbol
+                                                          , symbolVal
+                                                          )
+import           GHC.Types
+import           SAML2.WebSSO.SP
+import           SAML2.WebSSO.Types
+import           SAML2.WebSSO.XML
+import           Servant.API                   as Servant
+                                                   hiding ( URI(..) )
+import           Web.Cookie
 
-import qualified Data.ByteString.Builder as SBSBuilder
-import qualified Data.Text as ST
-import qualified Network.HTTP.Types.Header as HttpTypes
+import qualified Data.ByteString.Builder       as SBSBuilder
+import qualified Data.Text                     as ST
+import qualified Network.HTTP.Types.Header     as HttpTypes
 
 
 newtype SimpleSetCookie name = SimpleSetCookie { fromSimpleSetCookie :: SetCookie }
@@ -40,42 +44,60 @@ instance KnownSymbol name => FromHttpApiData (SimpleSetCookie name) where
 
 cookieToHeader :: SimpleSetCookie name -> HttpTypes.Header
 cookieToHeader =
-  ("set-cookie",) . cs . toLazyByteString .
-  renderSetCookie . fromSimpleSetCookie
+  ("set-cookie", )
+    . cs
+    . toLazyByteString
+    . renderSetCookie
+    . fromSimpleSetCookie
 
-cookieName :: forall (proxy :: Symbol -> *) (name :: Symbol). KnownSymbol name => proxy name -> SBS
+cookieName
+  :: forall (proxy :: Symbol -> *) (name :: Symbol)
+   . KnownSymbol name
+  => proxy name
+  -> SBS
 cookieName _ = cs $ symbolVal (Proxy @name)
 
-headerValueToCookie :: forall name. KnownSymbol name => ST -> Either ST (SimpleSetCookie name)
+headerValueToCookie
+  :: forall name . KnownSymbol name => ST -> Either ST (SimpleSetCookie name)
 headerValueToCookie txt = do
   let cookie = parseSetCookie $ cs txt
-  case ["missing cookie name"  | setCookieName cookie == ""] <>
-       [cs $ "wrong cookie name: got " <> setCookieName cookie <> ", expected " <> cookieName (Proxy @name)
-                               | setCookieName cookie /= cookieName (Proxy @name)] <>
-       ["missing cookie value" | setCookieValue cookie == ""]
-    of errs@(_:_) -> throwError $ ST.intercalate ", " errs
-       []         -> pure (SimpleSetCookie cookie)
+  case
+      [ "missing cookie name" | setCookieName cookie == "" ]
+      <> [ cs
+           $  "wrong cookie name: got "
+           <> setCookieName cookie
+           <> ", expected "
+           <> cookieName (Proxy @name)
+         | setCookieName cookie /= cookieName (Proxy @name)
+         ]
+      <> [ "missing cookie value" | setCookieValue cookie == "" ]
+    of
+      errs@(_ : _) -> throwError $ ST.intercalate ", " errs
+      []           -> pure (SimpleSetCookie cookie)
 
-toggleCookie :: forall name m. (SP m, KnownSymbol name) => SBS -> Maybe (ST, NominalDiffTime) -> m (SimpleSetCookie name)
+toggleCookie
+  :: forall name m
+   . (SP m, KnownSymbol name)
+  => SBS
+  -> Maybe (ST, NominalDiffTime)
+  -> m (SimpleSetCookie name)
 toggleCookie path = fmap SimpleSetCookie . \case
   Just (value, ttl) -> getNow <&> \now -> cookie
-    { setCookieValue = cs value
+    { setCookieValue   = cs value
     , setCookieExpires = Just . fromTime $ ttl `addTime` now
-    , setCookieMaxAge = Just $ realToFrac ttl
+    , setCookieMaxAge  = Just $ realToFrac ttl
     }
-  Nothing -> pure cookie
-    { setCookieValue = ""
-    , setCookieExpires = Just $ fromTime beginningOfTime
-    , setCookieMaxAge = Just (-1)
-    }
-  where
-    cookie = defaultSetCookie
-      { setCookieName = cookieName (Proxy @name)
-      , setCookieSecure = True
-      , setCookiePath = Just path
-      , setCookieHttpOnly = True
-      , setCookieSameSite = Just sameSiteStrict
-      }
+  Nothing -> pure cookie { setCookieValue   = ""
+                         , setCookieExpires = Just $ fromTime beginningOfTime
+                         , setCookieMaxAge  = Just (-1)
+                         }
+ where
+  cookie = defaultSetCookie { setCookieName     = cookieName (Proxy @name)
+                            , setCookieSecure   = True
+                            , setCookiePath     = Just path
+                            , setCookieHttpOnly = True
+                            , setCookieSameSite = Just sameSiteStrict
+                            }
 
 beginningOfTime :: Time
 beginningOfTime = unsafeReadTime "1970-01-01T00:00:00Z"

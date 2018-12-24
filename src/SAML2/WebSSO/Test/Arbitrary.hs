@@ -4,32 +4,36 @@
 
 module SAML2.WebSSO.Test.Arbitrary where
 
-import Control.Lens
-import Data.List.NonEmpty as NL
-import Data.Proxy
-import Data.String.Conversions
-import Data.Time
-import Data.Time.Lens as TL
-import GHC.Stack
-import GHC.TypeLits
-import Hedgehog
-import SAML2.WebSSO
-import Test.QuickCheck (Arbitrary(arbitrary, shrink))
-import Test.QuickCheck.Instances ()
-import Text.XML
-import URI.ByteString
-import Web.Cookie
+import           Control.Lens
+import           Data.List.NonEmpty            as NL
+import           Data.Proxy
+import           Data.String.Conversions
+import           Data.Time
+import           Data.Time.Lens                as TL
+import           GHC.Stack
+import           GHC.TypeLits
+import           Hedgehog
+import           SAML2.WebSSO
+import           Test.QuickCheck                          ( Arbitrary
+                                                            ( arbitrary
+                                                            , shrink
+                                                            )
+                                                          )
+import           Test.QuickCheck.Instances                ( )
+import           Text.XML
+import           URI.ByteString
+import           Web.Cookie
 
-import qualified Data.Map as Map
-import qualified Data.Text as ST
-import qualified Data.Time.Lens as TimeL
-import qualified Data.UUID as UUID
-import qualified Data.X509 as X509
-import qualified Hedgehog.Gen as Gen
-import qualified Hedgehog.Gen.QuickCheck as THQ
-import qualified Hedgehog.Range as Range
-import qualified Test.QuickCheck.Hedgehog as TQH
-import qualified Text.XML.DSig as DSig
+import qualified Data.Map                      as Map
+import qualified Data.Text                     as ST
+import qualified Data.Time.Lens                as TimeL
+import qualified Data.UUID                     as UUID
+import qualified Data.X509                     as X509
+import qualified Hedgehog.Gen                  as Gen
+import qualified Hedgehog.Gen.QuickCheck       as THQ
+import qualified Hedgehog.Range                as Range
+import qualified Test.QuickCheck.Hedgehog      as TQH
+import qualified Text.XML.DSig                 as DSig
 
 
 genHttps :: Gen URI
@@ -42,8 +46,8 @@ genHttps = genHttps' Nothing
 -- required here.  https://github.com/Soostone/uri-bytestring/issues/45
 genHttps' :: Maybe (Range Int) -> Gen URI
 genHttps' glen = do
-  domain  <- ST.intercalate "." <$> Gen.list (Range.linear 2 5) genNiceWord
-  path    <- ST.intercalate "/" <$> Gen.list (Range.linear 0 5) genNiceWord
+  domain <- ST.intercalate "." <$> Gen.list (Range.linear 2 5) genNiceWord
+  path <- ST.intercalate "/" <$> Gen.list (Range.linear 0 5) genNiceWord
 
   mMaxLen :: Maybe Int <- maybe (pure Nothing) (fmap Just . Gen.integral_) glen
   let uri = maybe id ST.take mMaxLen $ "https://" <> domain <> "/" <> path
@@ -55,20 +59,101 @@ genHttps' glen = do
 -- (quickcheck has something like this as well.)
 genNiceText :: Range Int -> Gen ST
 genNiceText rng = ST.unwords <$> Gen.list rng word
-  where
+ where
     -- popular estonian first names.
-    word = Gen.element
-      [ "aiandama", "aitama", "aitamah", "aleksander", "andres", "andrus", "anu", "arri", "aruka"
-      , "aytama", "aytamah", "betti", "daggi", "dagi", "dagmara", "diana", "edenema", "eduk"
-      , "eliisabet", "elisabet", "elsbet", "elts", "etti", "etty", "hele", "hendrik", "jaak"
-      , "juku", "juri", "kaisa", "kaja", "katariina", "koit", "leena", "lenni", "liisi", "lilli"
-      , "loviise", "maarja", "marika", "nikolai", "rina", "sandra", "sula", "taevas", "taniel"
-      , "tonis", "ulli", "urmi", "vicenc", "anna", "eluta", "hillar", "jaagup", "jaan", "janek"
-      , "jannis", "jens", "johan", "johanna", "juhan", "katharina", "kati", "katja", "krista"
-      , "kristian", "kristina", "kristjan", "krists", "laura", "leks", "liisa", "marga"
-      , "margarete", "mari", "maria", "marye", "mati", "matt", "mihkel", "mikk", "olli", "olly"
-      , "peet", "peeter", "pinja", "reet", "riki", "riks", "rolli", "toomas"
-      ]
+  word = Gen.element
+    [ "aiandama"
+    , "aitama"
+    , "aitamah"
+    , "aleksander"
+    , "andres"
+    , "andrus"
+    , "anu"
+    , "arri"
+    , "aruka"
+    , "aytama"
+    , "aytamah"
+    , "betti"
+    , "daggi"
+    , "dagi"
+    , "dagmara"
+    , "diana"
+    , "edenema"
+    , "eduk"
+    , "eliisabet"
+    , "elisabet"
+    , "elsbet"
+    , "elts"
+    , "etti"
+    , "etty"
+    , "hele"
+    , "hendrik"
+    , "jaak"
+    , "juku"
+    , "juri"
+    , "kaisa"
+    , "kaja"
+    , "katariina"
+    , "koit"
+    , "leena"
+    , "lenni"
+    , "liisi"
+    , "lilli"
+    , "loviise"
+    , "maarja"
+    , "marika"
+    , "nikolai"
+    , "rina"
+    , "sandra"
+    , "sula"
+    , "taevas"
+    , "taniel"
+    , "tonis"
+    , "ulli"
+    , "urmi"
+    , "vicenc"
+    , "anna"
+    , "eluta"
+    , "hillar"
+    , "jaagup"
+    , "jaan"
+    , "janek"
+    , "jannis"
+    , "jens"
+    , "johan"
+    , "johanna"
+    , "juhan"
+    , "katharina"
+    , "kati"
+    , "katja"
+    , "krista"
+    , "kristian"
+    , "kristina"
+    , "kristjan"
+    , "krists"
+    , "laura"
+    , "leks"
+    , "liisa"
+    , "marga"
+    , "margarete"
+    , "mari"
+    , "maria"
+    , "marye"
+    , "mati"
+    , "matt"
+    , "mihkel"
+    , "mikk"
+    , "olli"
+    , "olly"
+    , "peet"
+    , "peeter"
+    , "pinja"
+    , "reet"
+    , "riki"
+    , "riks"
+    , "rolli"
+    , "toomas"
+    ]
 
 genNiceWord :: Gen ST
 genNiceWord = genNiceText (Range.singleton 1)
@@ -78,32 +163,40 @@ genUserRef = THQ.quickcheck arbitrary
 
 genConfig :: Gen Config
 genConfig = do
-  _cfgLogLevel   <- Gen.enumBounded
-  _cfgSPHost     <- cs <$> genNiceWord
-  _cfgSPPort     <- Gen.int (Range.linear 1 9999)
-  _cfgSPAppURI   <- genHttps
-  _cfgSPSsoURI   <- genHttps
-  _cfgContacts   <- (:|) <$> genSPContactPerson <*> Gen.list (Range.linear 0 3) genSPContactPerson
-  pure Config {..}
+  _cfgLogLevel <- Gen.enumBounded
+  _cfgSPHost   <- cs <$> genNiceWord
+  _cfgSPPort   <- Gen.int (Range.linear 1 9999)
+  _cfgSPAppURI <- genHttps
+  _cfgSPSsoURI <- genHttps
+  _cfgContacts <-
+    (:|)
+    <$> genSPContactPerson
+    <*> Gen.list (Range.linear 0 3) genSPContactPerson
+  pure Config { .. }
 
 genSPContactPerson :: Gen ContactPerson
-genSPContactPerson = ContactPerson
-  <$> Gen.enumBounded
-  <*> Gen.maybe genNiceWord
-  <*> Gen.maybe genNiceWord
-  <*> Gen.maybe genNiceWord
-  <*> Gen.maybe genHttps
-  <*> Gen.maybe genNiceWord
+genSPContactPerson =
+  ContactPerson
+    <$> Gen.enumBounded
+    <*> Gen.maybe genNiceWord
+    <*> Gen.maybe genNiceWord
+    <*> Gen.maybe genNiceWord
+    <*> Gen.maybe genHttps
+    <*> Gen.maybe genNiceWord
 
 genIdPMetadata :: Gen IdPMetadata
-genIdPMetadata = IdPMetadata
-  <$> genIssuer
-  <*> genHttps
-  <*> (NL.fromList <$> Gen.list (Range.linear 1 3) genX509SignedCertificate)
+genIdPMetadata =
+  IdPMetadata
+    <$> genIssuer
+    <*> genHttps
+    <*> (NL.fromList <$> Gen.list (Range.linear 1 3) genX509SignedCertificate)
 
 -- FUTUREWORK: we can do better than constant here...
 genX509SignedCertificate :: Gen X509.SignedCertificate
-genX509SignedCertificate = either (error . show) pure $ DSig.parseKeyInfo "<KeyInfo xmlns=\"http://www.w3.org/2000/09/xmldsig#\"><X509Data><X509Certificate>MIIDBTCCAe2gAwIBAgIQev76BWqjWZxChmKkGqoAfDANBgkqhkiG9w0BAQsFADAtMSswKQYDVQQDEyJhY2NvdW50cy5hY2Nlc3Njb250cm9sLndpbmRvd3MubmV0MB4XDTE4MDIxODAwMDAwMFoXDTIwMDIxOTAwMDAwMFowLTErMCkGA1UEAxMiYWNjb3VudHMuYWNjZXNzY29udHJvbC53aW5kb3dzLm5ldDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMgmGiRfLh6Fdi99XI2VA3XKHStWNRLEy5Aw/gxFxchnh2kPdk/bejFOs2swcx7yUWqxujjCNRsLBcWfaKUlTnrkY7i9x9noZlMrijgJy/Lk+HH5HX24PQCDf+twjnHHxZ9G6/8VLM2e5ZBeZm+t7M3vhuumEHG3UwloLF6cUeuPdW+exnOB1U1fHBIFOG8ns4SSIoq6zw5rdt0CSI6+l7b1DEjVvPLtJF+zyjlJ1Qp7NgBvAwdiPiRMU4l8IRVbuSVKoKYJoyJ4L3eXsjczoBSTJ6VjV2mygz96DC70MY3avccFrk7tCEC6ZlMRBfY1XPLyldT7tsR3EuzjecSa1M8CAwEAAaMhMB8wHQYDVR0OBBYEFIks1srixjpSLXeiR8zES5cTY6fBMA0GCSqGSIb3DQEBCwUAA4IBAQCKthfK4C31DMuDyQZVS3F7+4Evld3hjiwqu2uGDK+qFZas/D/eDunxsFpiwqC01RIMFFN8yvmMjHphLHiBHWxcBTS+tm7AhmAvWMdxO5lzJLS+UWAyPF5ICROe8Mu9iNJiO5JlCo0Wpui9RbB1C81Xhax1gWHK245ESL6k7YWvyMYWrGqr1NuQcNS0B/AIT1Nsj1WY7efMJQOmnMHkPUTWryVZlthijYyd7P2Gz6rY5a81DAFqhDNJl2pGIAE6HWtSzeUEh3jCsHEkoglKfm4VrGJEuXcALmfCMbdfTvtu4rlsaP2hQad+MG/KJFlenoTK34EMHeBPDCpqNDz8UVNk</X509Certificate></X509Data></KeyInfo>"
+genX509SignedCertificate =
+  either (error . show) pure
+    $ DSig.parseKeyInfo
+        "<KeyInfo xmlns=\"http://www.w3.org/2000/09/xmldsig#\"><X509Data><X509Certificate>MIIDBTCCAe2gAwIBAgIQev76BWqjWZxChmKkGqoAfDANBgkqhkiG9w0BAQsFADAtMSswKQYDVQQDEyJhY2NvdW50cy5hY2Nlc3Njb250cm9sLndpbmRvd3MubmV0MB4XDTE4MDIxODAwMDAwMFoXDTIwMDIxOTAwMDAwMFowLTErMCkGA1UEAxMiYWNjb3VudHMuYWNjZXNzY29udHJvbC53aW5kb3dzLm5ldDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMgmGiRfLh6Fdi99XI2VA3XKHStWNRLEy5Aw/gxFxchnh2kPdk/bejFOs2swcx7yUWqxujjCNRsLBcWfaKUlTnrkY7i9x9noZlMrijgJy/Lk+HH5HX24PQCDf+twjnHHxZ9G6/8VLM2e5ZBeZm+t7M3vhuumEHG3UwloLF6cUeuPdW+exnOB1U1fHBIFOG8ns4SSIoq6zw5rdt0CSI6+l7b1DEjVvPLtJF+zyjlJ1Qp7NgBvAwdiPiRMU4l8IRVbuSVKoKYJoyJ4L3eXsjczoBSTJ6VjV2mygz96DC70MY3avccFrk7tCEC6ZlMRBfY1XPLyldT7tsR3EuzjecSa1M8CAwEAAaMhMB8wHQYDVR0OBBYEFIks1srixjpSLXeiR8zES5cTY6fBMA0GCSqGSIb3DQEBCwUAA4IBAQCKthfK4C31DMuDyQZVS3F7+4Evld3hjiwqu2uGDK+qFZas/D/eDunxsFpiwqC01RIMFFN8yvmMjHphLHiBHWxcBTS+tm7AhmAvWMdxO5lzJLS+UWAyPF5ICROe8Mu9iNJiO5JlCo0Wpui9RbB1C81Xhax1gWHK245ESL6k7YWvyMYWrGqr1NuQcNS0B/AIT1Nsj1WY7efMJQOmnMHkPUTWryVZlthijYyd7P2Gz6rY5a81DAFqhDNJl2pGIAE6HWtSzeUEh3jCsHEkoglKfm4VrGJEuXcALmfCMbdfTvtu4rlsaP2hQad+MG/KJFlenoTK34EMHeBPDCpqNDz8UVNk</X509Certificate></X509Data></KeyInfo>"
 
 genSPMetadata :: Gen SPMetadata
 genSPMetadata = do
@@ -114,8 +207,8 @@ genSPMetadata = do
   _spOrgDisplayName <- genNiceWord
   _spOrgURL         <- genHttps
   _spResponseURL    <- genHttps
-  _spContacts       <- NL.fromList <$> Gen.list (Range.linear 1 3) genContactPerson
-  pure SPMetadata {..}
+  _spContacts <- NL.fromList <$> Gen.list (Range.linear 1 3) genContactPerson
+  pure SPMetadata { .. }
 
 genContactPerson :: Gen ContactPerson
 genContactPerson = do
@@ -125,7 +218,7 @@ genContactPerson = do
   _cntSurname   <- Gen.maybe genNiceWord
   _cntEmail     <- Gen.maybe genEmail
   _cntPhone     <- Gen.maybe genNiceWord
-  pure ContactPerson {..}
+  pure ContactPerson { .. }
 
 genEmail :: Gen URI
 genEmail = do
@@ -133,18 +226,14 @@ genEmail = do
   pure . unsafeParseURI $ "email:" <> loc <> "@example.com"
 
 genAuthnRequest :: Gen AuthnRequest
-genAuthnRequest = AuthnRequest
-  <$> genID
-  <*> genTime
-  <*> genIssuer
-  <*> Gen.maybe genNameIDPolicy
+genAuthnRequest =
+  AuthnRequest <$> genID <*> genTime <*> genIssuer <*> Gen.maybe genNameIDPolicy
 
 -- | (we only allow full microseconds, since someone, somewhere does the rounding for us in the
 -- tests if we don't do it here, which makes the affected tests fail.)
 genTime :: Gen Time
 genTime = Time . picoToMicro <$> THQ.quickcheck arbitrary
-  where
-    picoToMicro = TimeL.seconds %~ ((* (1000 * 1000)) . (/ (1000 * 1000)))
+  where picoToMicro = TimeL.seconds %~ ((* (1000 * 1000)) . (/ (1000 * 1000)))
 
 genDuration :: Gen Duration
 genDuration = pure Duration
@@ -159,10 +248,8 @@ genIssuer :: Gen Issuer
 genIssuer = Issuer <$> genHttps
 
 genNameIDPolicy :: Gen NameIdPolicy
-genNameIDPolicy = NameIdPolicy
-  <$> genNameIDFormat
-  <*> Gen.maybe genNiceWord
-  <*> Gen.bool
+genNameIDPolicy =
+  NameIdPolicy <$> genNameIDFormat <*> Gen.maybe genNiceWord <*> Gen.bool
 
 genNameIDFormat :: Gen NameIDFormat
 genNameIDFormat = Gen.enumBounded
@@ -172,24 +259,23 @@ genNameID = do
   unid <- genUnqualifiedNameID
   case unid of
     UNameIDEntity enturi -> pure $ entityNameID enturi
-    _ -> either (error . show) pure =<<
-         (mkNameID unid <$> qualifier <*> qualifier <*> qualifier)
-  where
-    qualifier = Gen.maybe . genNiceText $ Range.exponential 1 100
+    _ ->
+      either (error . show) pure
+        =<< (mkNameID unid <$> qualifier <*> qualifier <*> qualifier)
+  where qualifier = Gen.maybe . genNiceText $ Range.exponential 1 100
 
 genUnqualifiedNameID :: Gen UnqualifiedNameID
 genUnqualifiedNameID = Gen.choice
   [ UNameIDUnspecified <$> mktxt 2000
-  , UNameIDEmail       <$> mktxt 2000
-  , UNameIDX509        <$> mktxt 2000
-  , UNameIDWindows     <$> mktxt 2000
-  , UNameIDKerberos    <$> mktxt 2000
-  , UNameIDEntity      <$> genHttps' (Just (Range.linear 12 1024))
-  , UNameIDPersistent  <$> mktxt 1024
-  , UNameIDTransient   <$> mktxt 2000
+  , UNameIDEmail <$> mktxt 2000
+  , UNameIDX509 <$> mktxt 2000
+  , UNameIDWindows <$> mktxt 2000
+  , UNameIDKerberos <$> mktxt 2000
+  , UNameIDEntity <$> genHttps' (Just (Range.linear 12 1024))
+  , UNameIDPersistent <$> mktxt 1024
+  , UNameIDTransient <$> mktxt 2000
   ]
-  where
-    mktxt charlen = cs <$> Gen.text (Range.linear 1 charlen) Gen.alpha
+  where mktxt charlen = cs <$> Gen.text (Range.linear 1 charlen) Gen.alpha
 
 genNonEmpty :: Range Int -> Gen a -> Gen (NonEmpty a)
 genNonEmpty rng gen = (:|) <$> gen <*> Gen.list rng gen
@@ -198,9 +284,10 @@ genStatus :: Gen Status
 genStatus = Gen.enumBounded
 
 genAuthnResponse :: Gen AuthnResponse
-genAuthnResponse = genResponse (NL.fromList <$> Gen.list (Range.linear 1 3) genAssertion)
+genAuthnResponse =
+  genResponse (NL.fromList <$> Gen.list (Range.linear 1 3) genAssertion)
 
-genResponse :: forall payload. Gen payload -> Gen (Response payload)
+genResponse :: forall payload . Gen payload -> Gen (Response payload)
 genResponse genPayload = do
   _rspID           <- genID
   _rspInRespTo     <- Gen.maybe genID
@@ -209,7 +296,7 @@ genResponse genPayload = do
   _rspIssuer       <- Gen.maybe genIssuer
   _rspStatus       <- genStatus
   _rspPayload      <- Gen.small genPayload
-  pure Response {..}
+  pure Response { .. }
 
 genAssertion :: Gen Assertion
 genAssertion = do
@@ -218,29 +305,31 @@ genAssertion = do
   _assIssuer       <- genIssuer
   _assConditions   <- Gen.maybe genConditions
   _assContents     <- genSubjectAndStatements
-  pure Assertion {..}
+  pure Assertion { .. }
 
 genConditions :: Gen Conditions
-genConditions = Conditions
-  <$> Gen.maybe genTime
-  <*> Gen.maybe genTime
-  <*> Gen.bool
-  <*> Gen.list (Range.linear 0 3) (genNonEmpty (Range.linear 0 3) genHttps)
+genConditions =
+  Conditions
+    <$> Gen.maybe genTime
+    <*> Gen.maybe genTime
+    <*> Gen.bool
+    <*> Gen.list (Range.linear 0 3) (genNonEmpty (Range.linear 0 3) genHttps)
 
 genSubjectAndStatements :: Gen SubjectAndStatements
-genSubjectAndStatements = SubjectAndStatements
-  <$> genSubject
-  <*> genNonEmpty (Range.linear 0 3) genStatement
+genSubjectAndStatements =
+  SubjectAndStatements
+    <$> genSubject
+    <*> genNonEmpty (Range.linear 0 3) genStatement
 
 genSubject :: Gen Subject
-genSubject = Subject
-  <$> genNameID
-  <*> Gen.list (Range.linear 0 8) genSubjectConfirmation
+genSubject =
+  Subject <$> genNameID <*> Gen.list (Range.linear 0 8) genSubjectConfirmation
 
 genSubjectConfirmation :: Gen SubjectConfirmation
-genSubjectConfirmation = SubjectConfirmation
-  <$> genSubjectConfirmationMethod
-  <*> Gen.maybe genSubjectConfirmationData
+genSubjectConfirmation =
+  SubjectConfirmation
+    <$> genSubjectConfirmationMethod
+    <*> Gen.maybe genSubjectConfirmationData
 
 genSubjectConfirmationMethod :: Gen SubjectConfirmationMethod
 genSubjectConfirmationMethod = Gen.enumBounded
@@ -252,7 +341,7 @@ genSubjectConfirmationData = do
   _scdRecipient    <- genHttps
   _scdInResponseTo <- Gen.maybe genID
   _scdAddress      <- Gen.maybe genIP
-  pure SubjectConfirmationData {..}
+  pure SubjectConfirmationData { .. }
 
 genIP :: Gen IP
 genIP = IP <$> (genNiceText $ Range.linear 1 10)
@@ -263,12 +352,10 @@ genStatement = do
   _astSessionIndex        <- Gen.maybe genNiceWord
   _astSessionNotOnOrAfter <- Gen.maybe genTime
   _astSubjectLocality     <- Gen.maybe genLocality
-  pure AuthnStatement {..}
+  pure AuthnStatement { .. }
 
 genLocality :: Gen Locality
-genLocality = Locality
-  <$> Gen.maybe genIP
-  <*> Gen.maybe genNiceWord
+genLocality = Locality <$> Gen.maybe genIP <*> Gen.maybe genNiceWord
 
 genXMLDocument :: Gen Document
 genXMLDocument = do
@@ -284,16 +371,12 @@ genXMLNode = Gen.choice
   ]
 
 genXMLElement :: Gen Element
-genXMLElement = Element
-  <$> genXMLName
-  <*> genXMLAttrs
-  <*> Gen.list (Range.linear 1 10) (Gen.small genXMLNode)
+genXMLElement = Element <$> genXMLName <*> genXMLAttrs <*> Gen.list
+  (Range.linear 1 10)
+  (Gen.small genXMLNode)
 
 genXMLName :: Gen Name
-genXMLName = Name
-  <$> genNiceWord
-  <*> Gen.maybe genNiceWord
-  <*> pure Nothing -- @Gen.maybe genNiceWord@, but in documents that use the same prefix for two
+genXMLName = Name <$> genNiceWord <*> Gen.maybe genNiceWord <*> pure Nothing -- @Gen.maybe genNiceWord@, but in documents that use the same prefix for two
                    -- different spaces, this breaks the test suite.  (FUTUREWORK: arguably the
                    -- parser libraries (either HXT or xml-conduit) should catch this and throw an
                    -- error.  current behavior is unspecified result of the name space lookup.)
@@ -314,8 +397,10 @@ genIdPId :: Gen IdPId
 genIdPId = IdPId <$> genUUID
 
 genSignedCertificate :: Gen X509.SignedCertificate
-genSignedCertificate = either (error . show) pure $ DSig.parseKeyInfo
-  "<KeyInfo xmlns=\"http://www.w3.org/2000/09/xmldsig#\"><X509Data><X509Certificate>MIIDBTCCAe2gAwIBAgIQev76BWqjWZxChmKkGqoAfDANBgkqhkiG9w0BAQsFADAtMSswKQYDVQQDEyJhY2NvdW50cy5hY2Nlc3Njb250cm9sLndpbmRvd3MubmV0MB4XDTE4MDIxODAwMDAwMFoXDTIwMDIxOTAwMDAwMFowLTErMCkGA1UEAxMiYWNjb3VudHMuYWNjZXNzY29udHJvbC53aW5kb3dzLm5ldDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMgmGiRfLh6Fdi99XI2VA3XKHStWNRLEy5Aw/gxFxchnh2kPdk/bejFOs2swcx7yUWqxujjCNRsLBcWfaKUlTnrkY7i9x9noZlMrijgJy/Lk+HH5HX24PQCDf+twjnHHxZ9G6/8VLM2e5ZBeZm+t7M3vhuumEHG3UwloLF6cUeuPdW+exnOB1U1fHBIFOG8ns4SSIoq6zw5rdt0CSI6+l7b1DEjVvPLtJF+zyjlJ1Qp7NgBvAwdiPiRMU4l8IRVbuSVKoKYJoyJ4L3eXsjczoBSTJ6VjV2mygz96DC70MY3avccFrk7tCEC6ZlMRBfY1XPLyldT7tsR3EuzjecSa1M8CAwEAAaMhMB8wHQYDVR0OBBYEFIks1srixjpSLXeiR8zES5cTY6fBMA0GCSqGSIb3DQEBCwUAA4IBAQCKthfK4C31DMuDyQZVS3F7+4Evld3hjiwqu2uGDK+qFZas/D/eDunxsFpiwqC01RIMFFN8yvmMjHphLHiBHWxcBTS+tm7AhmAvWMdxO5lzJLS+UWAyPF5ICROe8Mu9iNJiO5JlCo0Wpui9RbB1C81Xhax1gWHK245ESL6k7YWvyMYWrGqr1NuQcNS0B/AIT1Nsj1WY7efMJQOmnMHkPUTWryVZlthijYyd7P2Gz6rY5a81DAFqhDNJl2pGIAE6HWtSzeUEh3jCsHEkoglKfm4VrGJEuXcALmfCMbdfTvtu4rlsaP2hQad+MG/KJFlenoTK34EMHeBPDCpqNDz8UVNk</X509Certificate></X509Data></KeyInfo>"
+genSignedCertificate =
+  either (error . show) pure
+    $ DSig.parseKeyInfo
+        "<KeyInfo xmlns=\"http://www.w3.org/2000/09/xmldsig#\"><X509Data><X509Certificate>MIIDBTCCAe2gAwIBAgIQev76BWqjWZxChmKkGqoAfDANBgkqhkiG9w0BAQsFADAtMSswKQYDVQQDEyJhY2NvdW50cy5hY2Nlc3Njb250cm9sLndpbmRvd3MubmV0MB4XDTE4MDIxODAwMDAwMFoXDTIwMDIxOTAwMDAwMFowLTErMCkGA1UEAxMiYWNjb3VudHMuYWNjZXNzY29udHJvbC53aW5kb3dzLm5ldDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMgmGiRfLh6Fdi99XI2VA3XKHStWNRLEy5Aw/gxFxchnh2kPdk/bejFOs2swcx7yUWqxujjCNRsLBcWfaKUlTnrkY7i9x9noZlMrijgJy/Lk+HH5HX24PQCDf+twjnHHxZ9G6/8VLM2e5ZBeZm+t7M3vhuumEHG3UwloLF6cUeuPdW+exnOB1U1fHBIFOG8ns4SSIoq6zw5rdt0CSI6+l7b1DEjVvPLtJF+zyjlJ1Qp7NgBvAwdiPiRMU4l8IRVbuSVKoKYJoyJ4L3eXsjczoBSTJ6VjV2mygz96DC70MY3avccFrk7tCEC6ZlMRBfY1XPLyldT7tsR3EuzjecSa1M8CAwEAAaMhMB8wHQYDVR0OBBYEFIks1srixjpSLXeiR8zES5cTY6fBMA0GCSqGSIb3DQEBCwUAA4IBAQCKthfK4C31DMuDyQZVS3F7+4Evld3hjiwqu2uGDK+qFZas/D/eDunxsFpiwqC01RIMFFN8yvmMjHphLHiBHWxcBTS+tm7AhmAvWMdxO5lzJLS+UWAyPF5ICROe8Mu9iNJiO5JlCo0Wpui9RbB1C81Xhax1gWHK245ESL6k7YWvyMYWrGqr1NuQcNS0B/AIT1Nsj1WY7efMJQOmnMHkPUTWryVZlthijYyd7P2Gz6rY5a81DAFqhDNJl2pGIAE6HWtSzeUEh3jCsHEkoglKfm4VrGJEuXcALmfCMbdfTvtu4rlsaP2hQad+MG/KJFlenoTK34EMHeBPDCpqNDz8UVNk</X509Certificate></X509Data></KeyInfo>"
 
 genIdPConfig :: Gen a -> Gen (IdPConfig a)
 genIdPConfig genExtra = do
@@ -323,35 +408,38 @@ genIdPConfig genExtra = do
   _idpMetadataURI <- genHttps
   _idpMetadata    <- genIdPMetadata
   _idpExtraInfo   <- genExtra
-  pure IdPConfig {..}
+  pure IdPConfig { .. }
 
 genFormRedirect :: Gen a -> Gen (FormRedirect a)
 genFormRedirect genBody = FormRedirect <$> genHttps <*> genBody
 
-genSimpleSetCookie :: forall (name :: Symbol). KnownSymbol name => Gen (SimpleSetCookie name)
+genSimpleSetCookie
+  :: forall (name :: Symbol) . KnownSymbol name => Gen (SimpleSetCookie name)
 genSimpleSetCookie = do
-  val <- cs <$> genNiceWord
-  path <- Gen.choice [ Just . cs . ST.intercalate "/" <$> Gen.list (Range.linear 0 3) genNiceWord
-                     , pure $ Just "/"
-                     , pure Nothing
-                     ]
-  expires <- Gen.maybe (THQ.quickcheck arbitrary <&> TL.seconds %~ (* 10e12) . (/ 10e12))  -- only full seconds
+  val  <- cs <$> genNiceWord
+  path <- Gen.choice
+    [ Just . cs . ST.intercalate "/" <$> Gen.list (Range.linear 0 3) genNiceWord
+    , pure $ Just "/"
+    , pure Nothing
+    ]
+  expires <- Gen.maybe
+    (THQ.quickcheck arbitrary <&> TL.seconds %~ (* 10e12) . (/ 10e12))  -- only full seconds
   maxage <- Gen.maybe $ fromIntegral <$> Gen.int (Range.linear 0 1000)  -- only non-negative, full seconds
-  domain <- Gen.maybe (cs . ST.intercalate "." <$> Gen.list (Range.linear 2 3) genNiceWord)
+  domain <- Gen.maybe
+    (cs . ST.intercalate "." <$> Gen.list (Range.linear 2 3) genNiceWord)
   httponly <- Gen.bool
-  secure <- Gen.bool
+  secure   <- Gen.bool
   samesite <- Gen.maybe $ Gen.element [sameSiteLax, sameSiteStrict]
-  pure . SimpleSetCookie $ def
-    { setCookieName = cookieName (Proxy @name)
-    , setCookieValue = val
-    , setCookiePath = path
-    , setCookieExpires = expires
-    , setCookieMaxAge = maxage
-    , setCookieDomain = domain
-    , setCookieHttpOnly = httponly
-    , setCookieSecure = secure
-    , setCookieSameSite = samesite
-    }
+  pure . SimpleSetCookie $ def { setCookieName     = cookieName (Proxy @name)
+                               , setCookieValue    = val
+                               , setCookiePath     = path
+                               , setCookieExpires  = expires
+                               , setCookieMaxAge   = maxage
+                               , setCookieDomain   = domain
+                               , setCookieHttpOnly = httponly
+                               , setCookieSecure   = secure
+                               , setCookieSameSite = samesite
+                               }
 
 genAuthnResponseBody :: Gen AuthnResponseBody
 genAuthnResponseBody = do
@@ -433,24 +521,25 @@ instance Arbitrary IdPMetadata where
   arbitrary = TQH.hedgehog genIdPMetadata
 
 shrinkElement :: Element -> [Element]
-shrinkElement (Element tag attrs nodes) = case (shrinkAttrs attrs, shrink nodes) of
-  ([], []) -> []
-  (attrs', []) -> (\shrunk -> Element tag shrunk nodes) <$> attrs'
-  ([], nodes') -> (\shrunk -> Element tag attrs shrunk) <$> nodes'
-  (attrs', nodes') -> Element tag <$> attrs' <*> nodes'
+shrinkElement (Element tag attrs nodes) =
+  case (shrinkAttrs attrs, shrink nodes) of
+    ([]    , []    ) -> []
+    (attrs', []    ) -> (\shrunk -> Element tag shrunk nodes) <$> attrs'
+    ([]    , nodes') -> (\shrunk -> Element tag attrs shrunk) <$> nodes'
+    (attrs', nodes') -> Element tag <$> attrs' <*> nodes'
 
 shrinkAttrs :: Map.Map Name ST.Text -> [Map.Map Name ST.Text]
 shrinkAttrs = fmap Map.fromList . shallowShrinkList . Map.toList
 
 shrinkNode :: Node -> [Node]
-shrinkNode (NodeElement el) = NodeElement <$> shrinkElement el
-shrinkNode (NodeInstruction _) = []
-shrinkNode (NodeContent "") = []
-shrinkNode (NodeContent _) = [NodeContent ""]
-shrinkNode (NodeComment "") = []
-shrinkNode (NodeComment _) = [NodeComment ""]
+shrinkNode (NodeElement     el) = NodeElement <$> shrinkElement el
+shrinkNode (NodeInstruction _ ) = []
+shrinkNode (NodeContent     "") = []
+shrinkNode (NodeContent     _ ) = [NodeContent ""]
+shrinkNode (NodeComment     "") = []
+shrinkNode (NodeComment     _ ) = [NodeComment ""]
 
 shallowShrinkList :: Eq a => [a] -> [[a]]
-shallowShrinkList [] = []
-shallowShrinkList [_] = []
-shallowShrinkList xs@(_:_:_) = [] : ((:[]) <$> xs)
+shallowShrinkList []             = []
+shallowShrinkList [   _        ] = []
+shallowShrinkList xs@(_ : _ : _) = [] : ((: []) <$> xs)
