@@ -32,6 +32,9 @@ type SimpleError = Error Void
 toServantErr :: SimpleError -> ServantErr
 toServantErr (UnknownIdP msg)      = err404 { errBody = "Unknown IdP: " <> cs msg }
 toServantErr (Forbidden msg)       = err403 { errBody = cs msg }
+  -- (this should probably be 401, not 403, but according to the standard we would also need to add
+  -- a WWW-Authenticate header if we do that, and we are not using saml, not basic auth.
+  -- https://en.wikipedia.org/wiki/List_of_HTTP_status_codes#4xx_Client_errors)
 toServantErr (BadSamlResponseBase64Error msg)      = err400 { errBody = "Bad response: base64 error: " <> cs msg }
 toServantErr (BadSamlResponseXmlError msg)         = err400 { errBody = "Bad response: xml parse error: " <> cs msg }
 toServantErr (BadSamlResponseSamlError msg)        = err400 { errBody = "Bad response: saml parse error: " <> cs msg }
