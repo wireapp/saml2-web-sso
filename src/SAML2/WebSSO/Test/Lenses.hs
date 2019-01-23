@@ -1,7 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 -- | WARNING: these optics make assumptions about the shape of the AuthnResponse that are not valid
--- in general!  (they are useful for testing, though.)
+-- in general.  e.g., we assume that there is exactly one 'SubjectConfirmation', but 'Subject'
+-- contains a list of them that could have length 0 or 5.  similarly, we only take the first of a
+-- (non-empty) list of assertions into account, and ignore the others.
 module SAML2.WebSSO.Test.Lenses where
 
 import Control.Lens
