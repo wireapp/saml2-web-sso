@@ -8,6 +8,7 @@ import Control.Concurrent.MVar
 import Control.Lens
 import Data.List.NonEmpty (NonEmpty((:|)))
 import SAML2.WebSSO
+import SAML2.WebSSO.Test.Lenses
 import SAML2.WebSSO.API.Example (AssertionStore)
 import Test.Hspec
 import URI.ByteString.QQ

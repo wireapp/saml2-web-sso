@@ -15,6 +15,7 @@ import Data.String.Conversions
 import SAML2.Util
 import SAML2.WebSSO
 import SAML2.WebSSO.Test.Credentials
+import SAML2.WebSSO.Test.Lenses
 import SAML2.WebSSO.Test.MockResponse
 import System.Environment (setEnv)
 import System.IO.Unsafe (unsafePerformIO)
