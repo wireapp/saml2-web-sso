@@ -843,7 +843,7 @@ parseIdPMetadataHead el@(Element tag attrs _) = do
 
   let cursorToKeyInfo :: MonadError String m => Cursor -> m X509.SignedCertificate
       cursorToKeyInfo = \case
-        (node -> NodeElement key) -> parseKeyInfo . renderText def . mkDocument $ key
+        (node -> NodeElement key) -> parseKeyInfo False . renderText def . mkDocument $ key
         bad -> throwError $ "unexpected: could not parse x509 cert: " <> show bad
 
   -- some metadata documents really have more than one of these.  since there is no way of knowing

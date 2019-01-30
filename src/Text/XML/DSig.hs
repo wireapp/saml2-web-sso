@@ -34,6 +34,7 @@ import Control.Lens
 import Control.Monad.Except
 import Data.Either (isRight)
 import Data.EitherR (fmapL)
+import Data.Foldable (toList)
 import Data.List (foldl')
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.Monoid ((<>))
@@ -97,20 +98,28 @@ verifySelfSignature cert = do
 -- | Read the KeyInfo element of a meta file's IDPSSODescriptor into a public key that can be used
 -- for signing.  Tested for KeyInfo elements that contain an x509 certificate.
 --
--- Self-signatures are *not* verified.  The reason is that some IdPs (e.g. centrify) sign their
--- certificates with external CAs.  If you need to authenticate 'KeyInfo' data, either call
--- 'verifySelfSignature' yourself, or verify it with the approriate external cert.
-parseKeyInfo :: (HasCallStack, MonadError String m) => LT -> m X509.SignedCertificate
-parseKeyInfo (cs @LT @LBS -> lbs) = case HS.xmlToSAML @HS.KeyInfo =<< stripWhitespaceLBS lbs of
-  Right keyinf -> case HS.keyInfoElements keyinf of
-    HS.X509Data (HS.X509Certificate cert :| []) :| []
-      -> {- verifySelfSignature cert >> -} pure cert
-    HS.X509Data (HS.X509Certificate _ :| bad) :| bad'
-      -> throwError $ "unreadable trailing data or noise: " <> show (bad, bad')
+-- Self-signatures are only verified if first argument is 'True'.  The reason for this flag is
+-- that some IdPs (e.g. centrify) sign their certificates with external CAs.  Verification
+-- against external cert needs to be done separately before calling this function.
+parseKeyInfo :: (HasCallStack, MonadError String m) => Bool -> LT -> m X509.SignedCertificate
+parseKeyInfo doVerify (cs @LT @LBS -> lbs) = case HS.xmlToSAML @HS.KeyInfo =<< stripWhitespaceLBS lbs of
+  Right keyinf -> case filter (not . ignorable) . toList $ HS.keyInfoElements keyinf of
+    [HS.X509Data dt]
+      -> parseX509Data dt
+    []
+      -> throwError $ "KeyInfo element must contain X509Data"
     unsupported
-      -> throwError $ "expected exactly one KeyInfo element: " <> show unsupported
+      -> throwError $ "unsupported children in KeyInfo element: " <> show unsupported
   Left errmsg
-    -> throwError $ "expected exactly one KeyInfo XML element: " <> errmsg
+    -> throwError $ "expected exactly one KeyInfo element: " <> errmsg
+  where
+    ignorable (HS.KeyName _) = True
+    ignorable _ = False
+
+    parseX509Data (HS.X509Certificate cert :| [])
+      = when doVerify (verifySelfSignature cert) >> pure cert
+    parseX509Data bad
+      = throwError $ "data with more than one child: " <> show (toList bad)
 
 -- | Call 'stripWhitespaceDoc' on a rendered bytestring.
 stripWhitespaceLBS :: m ~ Either String => LBS -> m LBS

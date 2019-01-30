@@ -26,7 +26,7 @@ instance FromHttpApiData URI where
   parseUrlPiece = either (fail . show) pure . parseURI' <=< parseUrlPiece
 
 instance FromJSON X509.SignedCertificate where
-  parseJSON = withText "KeyInfo element" $ either fail pure . parseKeyInfo . cs
+  parseJSON = withText "KeyInfo element" $ either fail pure . parseKeyInfo False . cs
 
 instance ToJSON X509.SignedCertificate where
   toJSON = String . cs . renderKeyInfo
