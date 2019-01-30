@@ -795,8 +795,35 @@ importContactType = \case
   HS.ContactTypeOther          -> ContactOther
 
 
-parseIdPMetadata :: MonadError String m => Element -> m IdPMetadata
-parseIdPMetadata el@(Element _ attrs _) = do
+parseIdPMetadata :: (MonadError String m) => Element -> m IdPMetadata
+parseIdPMetadata el@(Element tag _ _) = case tag of
+  "{urn:oasis:names:tc:SAML:2.0:metadata}EntitiesDescriptor"
+    -> (parseIdPMetadataList >=> parseIdPMetadataHead) el
+  "{urn:oasis:names:tc:SAML:2.0:metadata}EntityDescriptor"
+    -> parseIdPMetadataHead el
+  bad
+    -> throwError $ "expected <EntitiesDescriptor> or <EntityDescriptor>: " <> show bad
+
+-- | Some IdPs send a list with one element in it.  In that case, we return the child so we
+-- can call 'parseIdPMetadataHead' on it.
+parseIdPMetadataList :: MonadError String m => Element -> m Element
+parseIdPMetadataList (Element tag _ chs) = do
+  unless (tag == "{urn:oasis:names:tc:SAML:2.0:metadata}EntitiesDescriptor") $
+    throwError "expected <EntitiesDescriptor>"
+  let isElem = \case
+        (NodeElement _) -> True
+        _ -> False
+  case filter isElem chs of
+    [NodeElement ch] -> pure ch
+    bad  -> let msg = "expected <EntitiesDescriptor> with exactly one child element"
+            in throwError $ msg <> "; found " <> show (length bad)
+
+-- | This is the sane case: since we only want one element, just send that.
+parseIdPMetadataHead :: MonadError String m => Element -> m IdPMetadata
+parseIdPMetadataHead el@(Element tag attrs _) = do
+  unless (tag == "{urn:oasis:names:tc:SAML:2.0:metadata}EntityDescriptor") $
+    throwError "expected <EntityDescriptor>"
+
   _edIssuer :: Issuer <- do
     issueruri :: ST <- maybe (throwError "no issuer") pure (Map.lookup "entityID" attrs)
     Issuer <$> parseURI' issueruri
