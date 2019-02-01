@@ -122,9 +122,9 @@ instance FromMultipart Mem AuthnResponseBody where
         parseAuthnResponseBody (cs base64)
 
 
--- | Pull assertions sub-forest and pass all trees in it to 'verify' individually.  The 'LBS'
--- argument must be a valid 'AuthnResponse'.  All assertions need to be signed by the issuer
--- given in the arguments using the same key.
+-- | Pull assertions sub-forest and pass unparsed xml input to 'verify' with a reference to
+-- each assertion individually.  The input must be a valid 'AuthnResponse'.  All assertions
+-- need to be signed by the issuer given in the arguments using the same key.
 simpleVerifyAuthnResponse :: forall m err. SPStoreIdP (Error err) m => Maybe Issuer -> LBS -> m ()
 simpleVerifyAuthnResponse Nothing _ = throwError BadSamlResponseIssuerMissing
 simpleVerifyAuthnResponse (Just issuer) raw = do
