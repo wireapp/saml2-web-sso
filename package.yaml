@@ -72,6 +72,7 @@ dependencies:
   - servant
   - servant-multipart
   - servant-server
+  - silently
   - string-conversions
   - text
   - time

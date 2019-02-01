@@ -42,6 +42,8 @@ import Data.String.Conversions
 import Data.UUID as UUID
 import GHC.Stack
 import Network.URI (URI, parseRelativeReference)
+import System.IO.Silently (hCapture)
+import System.IO (stdout, stderr)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Random (random, mkStdGen)
 import Text.XML as XML
@@ -192,9 +194,10 @@ mkSignCredsWithCert mValidSince size = do
 -- list of 'SignCred's.
 {-# NOINLINE verify #-}
 verify :: forall m. (MonadError String m) => NonEmpty SignCreds -> LBS -> String -> m ()
-verify creds el signedID = case unsafePerformIO (verifyIO creds el signedID) of
-  []   -> pure ()
-  errs -> throwError $ show (snd <$> errs)
+verify creds el signedID = case unsafePerformIO (try $ verifyIO creds el signedID) of
+  Right []   -> pure ()
+  Right errs -> throwError $ show (snd <$> errs)
+  Left exc   -> throwError $ show @SomeException exc
 
 verifyRoot :: forall m. (MonadError String m) => NonEmpty SignCreds -> LBS -> m ()
 verifyRoot creds el = do
@@ -211,11 +214,16 @@ verifyRoot creds el = do
 -- | Try a list of creds against a document.  If all fail, return a list of errors for each cert; if
 -- *any* succeed, return the empty list.
 verifyIO :: NonEmpty SignCreds -> LBS -> String -> IO [(SignCreds, Either HS.SignatureError ())]
-verifyIO creds el signedID = do
+verifyIO creds el signedID = capture' $ do
   results <- NL.zip creds <$> forM creds (\cred -> verifyIO' cred el signedID)
   case NL.filter (isRight . snd) results of
     (_:_) -> pure []
     []    -> pure $ NL.toList results
+  where
+    capture' :: IO a -> IO a
+    capture' action = hCapture [stdout, stderr] action >>= \case
+      ("", out) -> pure out
+      (noise, _) -> throwIO . ErrorCall $ "unexpected noise on stdout/stderr: " <> noise
 
 verifyIO' :: SignCreds -> LBS -> String -> IO (Either HS.SignatureError ())
 verifyIO' (SignCreds SignDigestSha256 (SignKeyRSA key)) el signedID = runExceptT $ do
