@@ -26,12 +26,12 @@ spec = describe "xml:dsig" $ do
     it "works(1)" $ do
       keyinfo <- readSampleIO "microsoft-idp-keyinfo.xml"
       let want = Samples.microsoft_idp_keyinfo
-          Right (SignCreds _ (SignKeyRSA have)) = certToCreds =<< parseKeyInfo keyinfo
+          Right (SignCreds _ (SignKeyRSA have)) = certToCreds =<< parseKeyInfo True keyinfo
       have `shouldBe` want
 
     it "works(2)" $ do
       keyinfo <- readSampleIO "okta-keyinfo-1.xml"
-      (certToCreds =<< parseKeyInfo keyinfo) `shouldSatisfy` isRight
+      (certToCreds =<< parseKeyInfo True keyinfo) `shouldSatisfy` isRight
 
     it "works against mkSignCredsWithCert" $ do
       (_privcreds, creds, cert) <- mkSignCredsWithCert Nothing 192
@@ -40,18 +40,18 @@ spec = describe "xml:dsig" $ do
 
   describe "verify" $ do
     it "works" $ do
-      Right keyinfo <- (parseKeyInfo >=> certToCreds) <$> readSampleIO "microsoft-idp-keyinfo.xml"
+      Right keyinfo <- (parseKeyInfo True >=> certToCreds) <$> readSampleIO "microsoft-idp-keyinfo.xml"
       raw <- cs <$> readSampleIO "microsoft-authnresponse-2.xml"
       verify (keyinfo :| []) raw "_c79c3ec8-1c26-4752-9443-1f76eb7d5dd6" `shouldBe` Right ()
 
     it "works with more than one key" $ do
-      Right keyinfo <- (parseKeyInfo >=> certToCreds) <$> readSampleIO "microsoft-idp-keyinfo.xml"
+      Right keyinfo <- (parseKeyInfo True >=> certToCreds) <$> readSampleIO "microsoft-idp-keyinfo.xml"
       raw <- cs <$> readSampleIO "microsoft-authnresponse-2.xml"
       verify (keyinfo :| [sampleIdPPubkey]) raw "_c79c3ec8-1c26-4752-9443-1f76eb7d5dd6" `shouldBe` Right ()
 
   describe "verifyRoot" $ do
     it "works" $ do
-      Right keyinfo <- (parseKeyInfo >=> certToCreds) <$> readSampleIO "microsoft-idp-keyinfo.xml"
+      Right keyinfo <- (parseKeyInfo True >=> certToCreds) <$> readSampleIO "microsoft-idp-keyinfo.xml"
       raw <- cs <$> readSampleIO "microsoft-meta-2.xml"
       verifyRoot (keyinfo :| []) raw `shouldBe` Right ()
 
