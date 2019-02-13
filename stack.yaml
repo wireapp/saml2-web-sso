@@ -5,7 +5,7 @@ packages:
 
 - location:
     git: https://github.com/wireapp/hsaml2
-    commit: 000868849efd85ba82d2bf0ac5757f801d49ad5a
+    commit: 678997815033584e023205fe774d16201ccf8f62
   extra-dep: true
 
 - location:
@@ -18,4 +18,3 @@ extra-deps:
 - servant-multipart-0.11.2
 - yaml-0.9.0
 - hedgehog-quickcheck-0.1
-
