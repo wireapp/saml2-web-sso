@@ -71,6 +71,7 @@ module SAML2.WebSSO.Types
   , nameIDNameQ
   , nameIDSPNameQ
   , nameIDSPProvidedID
+  , nameIDToST
   , shortShowNameID
   , NameIDFormat(..), nameIDFormat
   , NameIDReprFormat
@@ -588,6 +589,13 @@ unameIDFormat = \case
   UNameIDEntity _      -> "urn:oasis:names:tc:SAML:2.0:nameid-format:entity"
   UNameIDPersistent _  -> "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
   UNameIDTransient _   -> "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"
+
+nameIDToST :: NameID -> ST
+nameIDToST (NameID (UNameIDUnspecified txt) Nothing Nothing Nothing) = txt
+nameIDToST (NameID (UNameIDEmail (Email txt)) Nothing Nothing Nothing) = cs $ Email.toByteString txt
+nameIDToST (NameID (UNameIDEntity uri) Nothing Nothing Nothing) = renderURI uri
+nameIDToST other = cs $ show other  -- (some of the others may also have obvious
+                                    -- serializations, but we don't need them for now.)
 
 -- | Extract the 'UnqualifiedNameID' part from the input and render it to a 'ST'.  If there are any
 -- qualifiers, return 'Nothing' to prevent name clashes (where two inputs are different, but produce

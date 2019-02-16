@@ -15,7 +15,6 @@ module SAML2.WebSSO.XML
   , unsafeReadTime
   , decodeTime
   , renderTime
-  , nameIDToST
   , userRefToST
   , explainDeniedReason
   , mkSPMetadata
@@ -154,13 +153,6 @@ renderTime (Time utctime) =
         (t, u) -> case List.splitAt 8 u of
           (_, "") -> t <> u
           (v, _)  -> t <> v <> "Z"
-
-nameIDToST :: NameID -> ST
-nameIDToST (NameID (UNameIDUnspecified txt) Nothing Nothing Nothing) = txt
-nameIDToST (NameID (UNameIDEmail txt) Nothing Nothing Nothing) = txt
-nameIDToST (NameID (UNameIDEntity uri) Nothing Nothing Nothing) = renderURI uri
-nameIDToST other = cs $ encodeElem other  -- (some of the others may also have obvious
-                                          -- serializations, but we don't need them for now.)
 
 userRefToST :: UserRef -> ST
 userRefToST (UserRef (Issuer tenant) subject) = "{" <> renderURI tenant <> "}" <> nameIDToST subject
