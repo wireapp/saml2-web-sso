@@ -1,7 +1,135 @@
 {-# LANGUAGE StrictData          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 
-module SAML2.WebSSO.Types where
+module SAML2.WebSSO.Types
+  ( AccessVerdict(..)
+  , avReasons
+  , avUserId
+  , DeniedReason
+  , UserRef(..)
+  , uidTenant, uidSubject
+  , Issuer(..)
+  , fromIssuer
+  , SPMetadata, mkSPMetadata
+  , spID
+  , spValidUntil
+  , spCacheDuration
+  , spOrgName
+  , spOrgDisplayName
+  , spOrgURL
+  , spResponseURL
+  , spContacts
+  , ContactPerson, mkContactPerson
+  , cntType
+  , cntCompany
+  , cntGivenName
+  , cntSurname
+  , cntEmail
+  , cntPhone
+  , ContactType(..)
+  , IdPMetadata(..)
+  , edIssuer
+  , edRequestURI
+  , edCertAuthnResponse
+  , IdPId(..)
+  , IdPConfig_
+  , IdPConfig(..)
+  , idpId
+  , idpMetadata
+  , idpExtraInfo
+  , AuthnRequest(..)
+  , rqID
+  , rqIssueInstant
+  , rqIssuer
+  , rqNameIDPolicy
+  , Comparison(..)
+  , RequestedAuthnContext, mkRequestedAuthnContext
+  , rqacAuthnContexts
+  , rqacComparison
+  , NameIdPolicy, mkNameIDPolicy
+  , nidFormat
+  , nidSpNameQualifier
+  , nidAllowCreate
+  , AuthnResponse
+  , Response(..)
+  , rspID
+  , rspInRespTo
+  , rspIssueInstant
+  , rspDestination
+  , rspIssuer
+  , rspStatus
+  , rspPayload
+  , Time(..), timeFormat, addTime
+  , Duration(..)
+  , ID, renderID, mkID
+  , BaseID, mkBaseID
+  , baseID
+  , baseIDNameQ
+  , baseIDSPNameQ
+  , NameID, mkNameID, opaqueNameID, entityNameID
+  , nameID
+  , nameIDNameQ
+  , nameIDSPNameQ
+  , nameIDSPProvidedID
+  , shortShowNameID
+  , NameIDFormat(..), nameIDFormat
+  , NameIDReprFormat
+  , UnqualifiedNameID
+  , mkUNameIDUnspecified
+  , mkUNameIDEmail
+  , mkUNameIDX509
+  , mkUNameIDWindows
+  , mkUNameIDKerberos
+  , mkUNameIDEntity
+  , mkUNameIDPersistent
+  , mkUNameIDTransient
+  , unameIDFormat
+  , Status(..)
+  , Assertion(..)
+  , assID
+  , assIssueInstant
+  , assIssuer
+  , assConditions
+  , assContents
+  , Conditions(..)
+  , condNotBefore
+  , condNotOnOrAfter
+  , condOneTimeUse
+  , condAudienceRestriction
+  , SubjectAndStatements(..)
+  , sasSubject
+  , sasStatements
+  , Subject(..)
+  , subjectID
+  , subjectConfirmations
+  , SubjectConfirmation(..)
+  , scMethod
+  , scData
+  , SubjectConfirmationMethod(..)
+  , SubjectConfirmationData(..)
+  , scdNotBefore
+  , scdNotOnOrAfter
+  , scdRecipient
+  , scdInResponseTo
+  , scdAddress
+  , IP, fromIP, mkIP
+  , DNSName, fromDNSName, mkDNSName
+  , Statement, mkAuthnStatement
+  , astAuthnInstant
+  , astSessionIndex
+  , astSessionNotOnOrAfter
+  , astSubjectLocality
+  , Locality(..)
+  , localityAddress
+  , localityDNSName
+  , normalizeAssertion
+  , idPIdToST
+  , assEndOfLife
+  , rspInResponseTo
+  , getUserRef
+  , nelConcat
+  , (<$$>)
+  ) where
 
 import Control.Lens
 import Control.Monad.Except
@@ -26,6 +154,10 @@ import qualified Data.List as L
 import qualified Data.Text as ST
 import qualified Data.X509 as X509
 import qualified Servant
+
+
+escapeXML :: ST -> ST
+escapeXML = _
 
 
 ----------------------------------------------------------------------
@@ -87,24 +219,62 @@ data SPMetadata = SPMetadata
   { _spID             :: ID SPMetadata
   , _spValidUntil     :: UTCTime          -- FUTUREWORK: Time
   , _spCacheDuration  :: NominalDiffTime  -- FUTUREWORK: Duration
-  , _spOrgName        :: ST
-  , _spOrgDisplayName :: ST
+  , __spOrgName        :: ST
+  , __spOrgDisplayName :: ST
   , _spOrgURL         :: URI
   , _spResponseURL    :: URI
   , _spContacts       :: NonEmpty ContactPerson
   }
   deriving (Eq, Show, Generic)
 
+mkSPMetadata
+  :: ID SPMetadata
+  -> UTCTime
+  -> NominalDiffTime
+  -> ST
+  -> ST
+  -> URI
+  -> URI
+  -> NonEmpty ContactPerson
+  -> SPMetadata
+mkSPMetadata
+  _spID
+  _spValidUntil
+  _spCacheDuration
+  (escapeXML -> __spOrgName)
+  (escapeXML -> __spOrgDisplayName)
+  _spOrgURL
+  _spResponseURL
+  _spContacts
+  = SPMetadata {..}
+
 -- | [4/2.3.2.2].  Zero or more persons are required in metainfo document [4/2.4.1].
 data ContactPerson = ContactPerson
   { _cntType      :: ContactType
-  , _cntCompany   :: Maybe ST
-  , _cntGivenName :: Maybe ST
-  , _cntSurname   :: Maybe ST
+  , __cntCompany   :: Maybe ST
+  , __cntGivenName :: Maybe ST
+  , __cntSurname   :: Maybe ST
   , _cntEmail     :: Maybe URI
-  , _cntPhone     :: Maybe ST
+  , __cntPhone     :: Maybe ST
   }
   deriving (Eq, Show, Generic)
+
+mkContactPerson
+  :: ContactType
+  -> Maybe ST
+  -> Maybe ST
+  -> Maybe ST
+  -> Maybe URI
+  -> Maybe ST
+  -> ContactPerson
+mkContactPerson
+  _cntType
+  (fmap escapeXML -> __cntCompany)
+  (fmap escapeXML -> __cntGivenName)
+  (fmap escapeXML -> __cntSurname)
+  _cntEmail
+  (fmap escapeXML -> __cntPhone)
+  = ContactPerson {..}
 
 data ContactType
   = ContactTechnical
@@ -181,16 +351,36 @@ data Comparison = Exact | Minimum | Maximum | Better
   deriving (Eq, Show, Generic)
 
 data RequestedAuthnContext = RequestedAuthnContext
-  { _rqacAuthnContexts :: [ST] -- ^ either classRef or declRef
+  { __rqacAuthnContexts :: [ST] -- ^ either classRef or declRef
   , _rqacComparison    :: Comparison
   } deriving (Eq, Show, Generic)
+
+mkRequestedAuthnContext
+  :: [ST]
+  -> Comparison
+  -> RequestedAuthnContext
+mkRequestedAuthnContext
+  (fmap escapeXML -> __rqacAuthnContexts)
+  _rqacComparison
+  = RequestedAuthnContext {..}
 
 -- | [1/3.4.1.1]
 data NameIdPolicy = NameIdPolicy
   { _nidFormat          :: NameIDFormat
-  , _nidSpNameQualifier :: Maybe ST
+  , __nidSpNameQualifier :: Maybe ST
   , _nidAllowCreate     :: Bool  -- ^ default: 'False'
   } deriving (Eq, Show, Generic)
+
+mkNameIDPolicy
+  :: NameIDFormat
+  -> Maybe ST
+  -> Bool
+  -> NameIdPolicy
+mkNameIDPolicy
+  _nidFormat
+  (fmap escapeXML -> __nidSpNameQualifier)
+  _nidAllowCreate
+  = NameIdPolicy {..}
 
 -- | [1/3.4]
 type AuthnResponse = Response (NonEmpty Assertion)
@@ -233,22 +423,59 @@ addTime n (Time t) = Time $ addUTCTime n t
 newtype ID m = ID { renderID :: ST }
   deriving (Eq, Ord, Show, Generic)
 
+mkID :: ST -> ID m
+mkID = ID . escapeXML
+
 -- | [1/2.2.1]
 data BaseID = BaseID
-  { _baseID        :: ST
-  , _baseIDNameQ   :: Maybe ST
-  , _baseIDSPNameQ :: Maybe ST
+  { __baseID        :: ST
+  , __baseIDNameQ   :: Maybe ST
+  , __baseIDSPNameQ :: Maybe ST
   }
   deriving (Eq, Show, Generic)
+
+mkBaseID :: ST -> Maybe ST -> Maybe ST -> BaseID
+mkBaseID i n s = BaseID (escapeXML i) (escapeXML <$> n) (escapeXML <$> s)
 
 -- | [1/2.2.2], [1/2.2.3], [1/3.4.1.1], see 'mkNameID' implementation for constraints on this type.
 data NameID = NameID
   { _nameID             :: UnqualifiedNameID
-  , _nameIDNameQ        :: Maybe ST
-  , _nameIDSPNameQ      :: Maybe ST
-  , _nameIDSPProvidedID :: Maybe ST
+  , __nameIDNameQ        :: Maybe ST
+  , __nameIDSPNameQ      :: Maybe ST
+  , __nameIDSPProvidedID :: Maybe ST
   }
   deriving (Eq, Ord, Show, Generic)
+
+mkNameID :: MonadError String m => UnqualifiedNameID -> Maybe ST -> Maybe ST -> Maybe ST -> m NameID
+mkNameID _ _ _ _ = _  -- TODO: sanitize input harder!!  do not accept UnqualifiedNameID, but
+                      -- unsanitized input.  split this up like in 'entityNameID' drop the
+                      -- 'mkUName...' functions in favor of these.
+mkNameID nid@(UNameIDEntity uri) m1 m2 m3 = do
+  mapM_ throwError $
+    [ "mkNameID: nameIDNameQ, nameIDSPNameQ, nameIDSPProvidedID MUST be omitted for entity NameIDs."
+      <> show [m1, m2, m3]
+    | all isJust [m1, m2, m3]
+    ] <>
+    [ "mkNameID: entity URI too long: "
+      <> show uritxt
+    | uritxt <- [renderURI uri], ST.length uritxt > 1024
+    ]
+  pure $ NameID nid Nothing Nothing Nothing
+mkNameID nid@(UNameIDPersistent txt) m1 m2 m3 = do
+  mapM_ throwError $
+    [ "mkNameID: persistent text too long: "
+      <> show (nid, ST.length txt)
+    | ST.length txt > 1024
+    ]
+  pure $ NameID nid m1 m2 m3
+mkNameID nid m1 m2 m3 = do
+  pure $ NameID nid m1 m2 m3
+
+opaqueNameID :: ST -> NameID
+opaqueNameID raw = NameID (UNameIDUnspecified raw) Nothing Nothing Nothing
+
+entityNameID :: URI -> NameID
+entityNameID uri = NameID (UNameIDEntity uri) Nothing Nothing Nothing
 
 -- | [1/8.3]
 data NameIDFormat
@@ -276,7 +503,7 @@ type family NameIDReprFormat (t :: NameIDFormat) where
 -- | [1/8.3]  (FUTUREWORK: there may be a way to make this nicer by using 'NameIDFormat', 'NameIDReprFormat'.
 data UnqualifiedNameID
   = UNameIDUnspecified ST  -- ^ 'nameIDNameQ', 'nameIDSPNameQ' SHOULD be omitted.
-  | UNameIDEmail       ST
+  | UNameIDEmail       _  -- TODO: make this a *typed* email address!
   | UNameIDX509        ST
   | UNameIDWindows     ST
   | UNameIDKerberos    ST
@@ -285,33 +512,30 @@ data UnqualifiedNameID
   | UNameIDTransient   ST
   deriving (Eq, Ord, Show, Generic)
 
-mkNameID :: MonadError String m => UnqualifiedNameID -> Maybe ST -> Maybe ST -> Maybe ST -> m NameID
-mkNameID nid@(UNameIDEntity uri) m1 m2 m3 = do
-  mapM_ throwError $
-    [ "mkNameID: nameIDNameQ, nameIDSPNameQ, nameIDSPProvidedID MUST be omitted for entity NameIDs."
-      <> show [m1, m2, m3]
-    | all isJust [m1, m2, m3]
-    ] <>
-    [ "mkNameID: entity URI too long: "
-      <> show uritxt
-    | uritxt <- [renderURI uri], ST.length uritxt > 1024
-    ]
-  pure $ NameID nid Nothing Nothing Nothing
-mkNameID nid@(UNameIDPersistent txt) m1 m2 m3 = do
-  mapM_ throwError $
-    [ "mkNameID: persistent text too long: "
-      <> show (nid, ST.length txt)
-    | ST.length txt > 1024
-    ]
-  pure $ NameID nid m1 m2 m3
-mkNameID nid m1 m2 m3 = do
-  pure $ NameID nid m1 m2 m3
+mkUNameIDUnspecified :: ST -> UnqualifiedNameID
+mkUNameIDUnspecified = undefined
 
-opaqueNameID :: ST -> NameID
-opaqueNameID raw = NameID (UNameIDUnspecified raw) Nothing Nothing Nothing
+mkUNameIDEmail :: ST -> UnqualifiedNameID
+mkUNameIDEmail = UNameIDEmail . escapeXML
 
-entityNameID :: URI -> NameID
-entityNameID uri = NameID (UNameIDEntity uri) Nothing Nothing Nothing
+mkUNameIDX509 :: ST -> UnqualifiedNameID
+mkUNameIDX509 = UNameIDX509 . escapeXML
+
+mkUNameIDWindows :: ST -> UnqualifiedNameID
+mkUNameIDWindows = UNameIDWindows . escapeXML
+
+mkUNameIDKerberos :: ST -> UnqualifiedNameID
+mkUNameIDKerberos = UNameIDKerberos . escapeXML
+
+mkUNameIDEntity :: URI -> UnqualifiedNameID
+mkUNameIDEntity = UNameIDEntity
+
+mkUNameIDPersistent :: ST -> UnqualifiedNameID
+mkUNameIDPersistent = UNameIDPersistent . escapeXML
+
+mkUNameIDTransient :: ST -> UnqualifiedNameID
+mkUNameIDTransient = UNameIDTransient . escapeXML
+
 
 nameIDFormat :: HasCallStack => NameIDFormat -> String
 nameIDFormat = \case
@@ -422,24 +646,45 @@ data SubjectConfirmationData = SubjectConfirmationData
   }
   deriving (Eq, Show, Generic)
 
-newtype IP = IP ST
+newtype IP = IP { fromIP :: _ }  -- TODO: use a better type than ST here!
   deriving (Eq, Show, Generic)
+
+mkIP :: ST -> IP
+mkIP = IP . _
+
+newtype DNSName = DNSName { fromDNSName :: _ }  -- TODO: use a better type than ST here!
+  deriving (Eq, Show, Generic)
+
+mkDNSName :: ST -> DNSName
+mkDNSName = DNSName . _
 
 -- | The core content of the 'Assertion'.  [1/2.7]
 data Statement
   = AuthnStatement  -- [1/2.7.2]
     { _astAuthnInstant        :: Time
-    , _astSessionIndex        :: Maybe ST  -- safe to ignore
+    , __astSessionIndex       :: Maybe ST  -- safe to ignore
     , _astSessionNotOnOrAfter :: Maybe Time
     , _astSubjectLocality     :: Maybe Locality
     }
   deriving (Eq, Show, Generic)
 
+mkAuthnStatement
+  :: Time
+  -> Maybe ST
+  -> Maybe Time
+  -> Maybe Locality
+  -> Statement
+mkAuthnStatement
+  _astAuthnInstant
+  (fmap escapeXML -> __astSessionIndex)
+  _astSessionNotOnOrAfter
+  _astSubjectLocality
+  = AuthnStatement {..}
 
 -- | [1/2.7.2.1]
 data Locality = Locality
   { _localityAddress :: Maybe IP
-  , _localityDNSName :: Maybe ST
+  , _localityDNSName :: Maybe DNSName
   }
   deriving (Eq, Show, Generic)
 
@@ -479,13 +724,58 @@ makeLenses ''Subject
 makeLenses ''SubjectAndStatements
 makeLenses ''SubjectConfirmation
 makeLenses ''SubjectConfirmationData
-makeLenses ''Time
 makeLenses ''UnqualifiedNameID
 makeLenses ''UserRef
 
 makePrisms ''AccessVerdict
 makePrisms ''Statement
 makePrisms ''UnqualifiedNameID
+
+baseID :: Getter BaseID ST
+baseID = _baseID
+
+baseIDNameQ :: Getter BaseID (Maybe ST)
+baseIDNameQ = _baseIDNameQ
+
+baseIDSPNameQ :: Getter BaseID (Maybe ST)
+baseIDSPNameQ = _baseIDSPNameQ
+
+nameIDNameQ :: Getter NameID (Maybe ST)
+nameIDNameQ = _nameIDNameQ
+
+nameIDSPNameQ :: Getter NameID (Maybe ST)
+nameIDSPNameQ = _nameIDSPNameQ
+
+nameIDSPProvidedID :: Getter NameID (Maybe ST)
+nameIDSPProvidedID = _nameIDSPProvidedID
+
+cntCompany :: Getter ContactPerson (Maybe ST)
+cntCompany = _cntCompany
+
+cntGivenName :: Getter ContactPerson (Maybe ST)
+cntGivenName = _cntGivenName
+
+cntSurname :: Getter ContactPerson (Maybe ST)
+cntSurname = _cntSurname
+
+cntPhone :: Getter ContactPerson (Maybe ST)
+cntPhone = _cntPhone
+
+nidSpNameQualifier :: Getter NameIdPolicy (Maybe ST)
+nidSpNameQualifier = _nidSpNameQualifier
+
+spOrgName :: Getter SPMetadata ST
+spOrgName = _spOrgName
+
+spOrgDisplayName :: Getter SPMetadata ST
+spOrgDisplayName = _spOrgDisplayName
+
+rqacAuthnContexts :: Getter RequestedAuthnContext [ST]
+rqacAuthnContexts = _rqacAuthnContexts
+
+astSessionIndex :: Getter Statement (Maybe ST)
+astSessionIndex = _astSessionIndex
+
 
 deriveJSON deriveJSONOptions ''IdPMetadata
 deriveJSON deriveJSONOptions ''IdPConfig
@@ -554,6 +844,9 @@ instance ToJSON SubjectConfirmationData
 
 instance FromJSON IP
 instance ToJSON IP
+
+instance FromJSON DNSName
+instance ToJSON DNSName
 
 instance FromJSON Statement
 instance ToJSON Statement
