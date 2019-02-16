@@ -154,6 +154,7 @@ import qualified Data.List as L
 import qualified Data.Text as ST
 import qualified Data.X509 as X509
 import qualified Servant
+import qualified Text.Email.Validate as Email
 
 
 escapeXML :: ST -> ST
@@ -503,7 +504,7 @@ type family NameIDReprFormat (t :: NameIDFormat) where
 -- | [1/8.3]  (FUTUREWORK: there may be a way to make this nicer by using 'NameIDFormat', 'NameIDReprFormat'.
 data UnqualifiedNameID
   = UNameIDUnspecified ST  -- ^ 'nameIDNameQ', 'nameIDSPNameQ' SHOULD be omitted.
-  | UNameIDEmail       _  -- TODO: make this a *typed* email address!
+  | UNameIDEmail       Email
   | UNameIDX509        ST
   | UNameIDWindows     ST
   | UNameIDKerberos    ST
@@ -512,11 +513,14 @@ data UnqualifiedNameID
   | UNameIDTransient   ST
   deriving (Eq, Ord, Show, Generic)
 
+newtype Email = Email { fromEmail :: Email.EmailAddress }
+  deriving (Eq, Ord, Show)
+
 mkUNameIDUnspecified :: ST -> UnqualifiedNameID
 mkUNameIDUnspecified = undefined
 
-mkUNameIDEmail :: ST -> UnqualifiedNameID
-mkUNameIDEmail = UNameIDEmail . escapeXML
+mkUNameIDEmail :: MonadError String m => ST -> m UnqualifiedNameID
+mkUNameIDEmail = either throwError (pure . UNameIDEmail . Email) . Email.validate . cs
 
 mkUNameIDX509 :: ST -> UnqualifiedNameID
 mkUNameIDX509 = UNameIDX509 . escapeXML
@@ -565,7 +569,7 @@ unameIDFormat = \case
 shortShowNameID :: NameID -> Maybe ST
 shortShowNameID (NameID uqn Nothing Nothing Nothing) = case uqn of
   UNameIDUnspecified st  -> Just st
-  UNameIDEmail       st  -> Just st
+  UNameIDEmail       em  -> Just . cs . Email.toByteString . fromEmail $ em
   UNameIDX509        st  -> Just st
   UNameIDWindows     st  -> Just st
   UNameIDKerberos    st  -> Just st
@@ -859,6 +863,12 @@ instance ToJSON (ID a)
 
 instance FromJSON NameID
 instance ToJSON NameID
+
+instance FromJSON Email where
+  parseJSON = withText "email address" $ either fail (pure . Email) . Email.validate . cs
+
+instance ToJSON Email where
+  toJSON = String . cs . Email.toByteString . fromEmail
 
 instance FromJSON UnqualifiedNameID
 instance ToJSON UnqualifiedNameID

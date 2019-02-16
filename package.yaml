@@ -55,6 +55,7 @@ dependencies:
   - cookie
   - cryptonite
   - data-default
+  - email-validate
   - errors
   - exceptions
   - extra
