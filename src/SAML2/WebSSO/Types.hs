@@ -153,12 +153,18 @@ import URI.ByteString  -- FUTUREWORK: should saml2-web-sso also use the URI from
 import qualified Data.List as L
 import qualified Data.Text as ST
 import qualified Data.X509 as X509
+import qualified Network.DNS.Utils as DNS
 import qualified Servant
 import qualified Text.Email.Validate as Email
 
 
+-- | Take any 'Text' and return a 'Text' that is safe to inject into serialized XML.
 escapeXML :: ST -> ST
 escapeXML = _
+
+assertEscapedXML :: MonadError String m => ST -> m ()
+assertEscapedXML txt = unless (escapeXML txt == txt) $ do
+  throwError $ "text is unsafe to inject into XML: " <> show txt
 
 
 ----------------------------------------------------------------------
@@ -656,11 +662,13 @@ newtype IP = IP { fromIP :: _ }  -- TODO: use a better type than ST here!
 mkIP :: ST -> IP
 mkIP = IP . _
 
-newtype DNSName = DNSName { fromDNSName :: _ }  -- TODO: use a better type than ST here!
+newtype DNSName = DNSName { fromDNSName :: ST }
   deriving (Eq, Show, Generic)
 
-mkDNSName :: ST -> DNSName
-mkDNSName = DNSName . _
+mkDNSName :: MonadError String m => ST -> m DNSName
+mkDNSName raw = do
+  assertEscapedXML raw
+  pure . DNSName . cs . DNS.normalize . cs $ raw
 
 -- | The core content of the 'Assertion'.  [1/2.7]
 data Statement
