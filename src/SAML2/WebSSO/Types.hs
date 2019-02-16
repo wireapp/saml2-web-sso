@@ -160,8 +160,22 @@ import qualified Text.Email.Validate as Email
 
 -- | Take any 'Text' and return a 'Text' that is safe to inject into serialized XML.
 escapeXML :: ST -> ST
-escapeXML = _
+escapeXML = cs . escapeXMLSlow . cs
 
+-- | This is fast to implement, but will not have great performance.  (If you have time to
+-- write a faster implementation, please write a quickcheck test that tests that against this
+-- one.)
+escapeXMLSlow :: String -> String
+escapeXMLSlow ('<'  : xs) = "&lt;"   <> escapeXMLSlow xs
+escapeXMLSlow ('&'  : xs) = "&amp;"  <> escapeXMLSlow xs
+escapeXMLSlow ('\'' : xs) = "&apos;" <> escapeXMLSlow xs
+escapeXMLSlow ('"'  : xs) = "&quot;" <> escapeXMLSlow xs
+escapeXMLSlow (x    : xs) = x        :  escapeXMLSlow xs
+escapeXMLSlow ""          = ""
+
+-- | This library follows the approach that any strings in its data types are safe to inject
+-- into XML even without escaping.  This is more restrictive, but SAML2 allows for this, and
+-- it makes it easier to reason that XML serialization has no security issues.
 assertEscapedXML :: MonadError String m => ST -> m ()
 assertEscapedXML txt = unless (escapeXML txt == txt) $ do
   throwError $ "text is unsafe to inject into XML: " <> show txt
