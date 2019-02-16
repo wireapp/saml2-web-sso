@@ -167,6 +167,7 @@ escapeXML = cs . escapeXMLSlow . cs
 -- one.)
 escapeXMLSlow :: String -> String
 escapeXMLSlow ('<'  : xs) = "&lt;"   <> escapeXMLSlow xs
+escapeXMLSlow ('>'  : xs) = "&gt;"   <> escapeXMLSlow xs
 escapeXMLSlow ('&'  : xs) = "&amp;"  <> escapeXMLSlow xs
 escapeXMLSlow ('\'' : xs) = "&apos;" <> escapeXMLSlow xs
 escapeXMLSlow ('"'  : xs) = "&quot;" <> escapeXMLSlow xs
