@@ -66,7 +66,7 @@ module SAML2.WebSSO.Types
   , baseID
   , baseIDNameQ
   , baseIDSPNameQ
-  , NameID, mkNameID, opaqueNameID, entityNameID
+  , NameID, mkNameID, unspecifiedNameID, emailNameID, entityNameID
   , nameID
   , nameIDNameQ
   , nameIDSPNameQ
@@ -472,9 +472,6 @@ data NameID = NameID
   deriving (Eq, Ord, Show, Generic)
 
 mkNameID :: MonadError String m => UnqualifiedNameID -> Maybe ST -> Maybe ST -> Maybe ST -> m NameID
-mkNameID _ _ _ _ = _  -- TODO: sanitize input harder!!  do not accept UnqualifiedNameID, but
-                      -- unsanitized input.  split this up like in 'entityNameID' drop the
-                      -- 'mkUName...' functions in favor of these.
 mkNameID nid@(UNameIDEntity uri) m1 m2 m3 = do
   mapM_ throwError $
     [ "mkNameID: nameIDNameQ, nameIDSPNameQ, nameIDSPProvidedID MUST be omitted for entity NameIDs."
@@ -496,11 +493,16 @@ mkNameID nid@(UNameIDPersistent txt) m1 m2 m3 = do
 mkNameID nid m1 m2 m3 = do
   pure $ NameID nid m1 m2 m3
 
-opaqueNameID :: ST -> NameID
-opaqueNameID raw = NameID (UNameIDUnspecified raw) Nothing Nothing Nothing
+unspecifiedNameID :: ST -> NameID
+unspecifiedNameID raw = NameID (mkUNameIDUnspecified raw) Nothing Nothing Nothing
+
+emailNameID :: MonadError String m => ST -> m NameID
+emailNameID raw = do
+  email <- mkUNameIDEmail raw
+  pure $ NameID email Nothing Nothing Nothing
 
 entityNameID :: URI -> NameID
-entityNameID uri = NameID (UNameIDEntity uri) Nothing Nothing Nothing
+entityNameID uri = NameID (mkUNameIDEntity uri) Nothing Nothing Nothing
 
 -- | [1/8.3]
 data NameIDFormat
