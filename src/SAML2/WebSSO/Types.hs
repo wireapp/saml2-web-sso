@@ -112,7 +112,7 @@ module SAML2.WebSSO.Types
   , scdRecipient
   , scdInResponseTo
   , scdAddress
-  , IP, fromIP, mkIP
+  , IP, ipToST, mkIP
   , DNSName, fromDNSName, mkDNSName
   , Statement, mkAuthnStatement
   , astAuthnInstant
@@ -153,6 +153,9 @@ import URI.ByteString  -- FUTUREWORK: should saml2-web-sso also use the URI from
 import qualified Data.List as L
 import qualified Data.Text as ST
 import qualified Data.X509 as X509
+import qualified Foundation.Network.IPv4 as IPv4
+import qualified Foundation.Network.IPv6 as IPv6
+import qualified Foundation.Parser as IP
 import qualified Network.DNS.Utils as DNS
 import qualified Servant
 import qualified Text.Email.Validate as Email
@@ -671,11 +674,25 @@ data SubjectConfirmationData = SubjectConfirmationData
   }
   deriving (Eq, Show, Generic)
 
-newtype IP = IP { fromIP :: _ }  -- TODO: use a better type than ST here!
+
+data IP
+  = IPv4 IPv4.IPv4
+  | IPv6 IPv6.IPv6
   deriving (Eq, Show, Generic)
 
-mkIP :: ST -> IP
-mkIP = IP . _
+mkIP :: MonadError String m => ST -> m IP
+mkIP raw = do
+  let mv4 = IP.parseOnly IPv4.ipv4Parser (cs @_ @String raw)
+      mv6 = IP.parseOnly IPv6.ipv6Parser (cs @_ @String raw)
+  case (mv4, mv6) of
+    (Right v4, _) -> pure $ IPv4 v4
+    (_, Right v6) -> pure $ IPv6 v6
+    bad           -> throwError $ "could not parse IP address: " <> show bad
+
+ipToST :: IP -> ST
+ipToST (IPv4 ip) = cs $ show ip
+ipToST (IPv6 ip) = cs $ show ip
+
 
 newtype DNSName = DNSName { fromDNSName :: ST }
   deriving (Eq, Show, Generic)
@@ -869,8 +886,11 @@ instance ToJSON SubjectConfirmationMethod
 instance FromJSON SubjectConfirmationData
 instance ToJSON SubjectConfirmationData
 
-instance FromJSON IP
-instance ToJSON IP
+instance FromJSON IP where
+  parseJSON = withText "IP address" $ either fail pure . mkIP
+
+instance ToJSON IP where
+  toJSON = String . ipToST
 
 instance FromJSON DNSName
 instance ToJSON DNSName
