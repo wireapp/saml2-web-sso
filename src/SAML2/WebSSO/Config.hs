@@ -80,14 +80,13 @@ fallbackConfig = Config
   }
 
 fallbackContact :: ContactPerson
-fallbackContact = ContactPerson
-  { _cntType      = ContactSupport
-  , _cntCompany   = Just "evil corp."
-  , _cntGivenName = Just "Dr."
-  , _cntSurname   = Just "Girlfriend"
-  , _cntEmail     = Just [uri|email:president@evil.corp|]
-  , _cntPhone     = Just "+314159265"
-  }
+fallbackContact = mkContactPerson
+  ContactSupport
+  (Just "evil corp.")
+  (Just "Dr.")
+  (Just "Girlfriend")
+  (Just [uri|email:president@evil.corp|])
+  (Just "+314159265")
 
 
 ----------------------------------------------------------------------

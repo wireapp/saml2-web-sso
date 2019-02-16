@@ -101,7 +101,7 @@ getNowIO = Time <$> liftIO getCurrentTime
 -- <>) . filter (/= '-') . cs . UUID.toText <$> createUUID@.  Hopefully the more common form
 -- produced by this function is also ok.)
 createID :: SP m => m (ID a)
-createID = ID . ("_" <>) . UUID.toText <$> createUUID
+createID = mkID . ("_" <>) . UUID.toText <$> createUUID
 
 -- | Generate an 'AuthnRequest' value for the initiate-login response.  The 'NameIdPolicy' is
 -- 'NameIDFUnspecified'.
@@ -122,7 +122,7 @@ createAuthnRequest lifeExpectancySecs getIssuer = do
   _rqID           <- createID
   _rqIssueInstant <- getNow
   _rqIssuer       <- getIssuer
-  let _rqNameIDPolicy = Just $ NameIdPolicy NameIDFUnspecified Nothing True
+  let _rqNameIDPolicy = Just $ mkNameIdPolicy NameIDFUnspecified Nothing True
   storeID _rqID (addTime lifeExpectancySecs _rqIssueInstant)
   pure AuthnRequest{..}
 
@@ -297,15 +297,17 @@ checkAssertions missuer (toList -> assertions) uref@(UserRef issuer _) = do
   when (null statements) $
     deny DeniedNoStatements  -- (not sure this is even possible?)
 
-  when (null . catMaybes $ (^? _AuthnStatement) <$> statements) $
+  unless (any isAuthnStatement statements) $
     deny DeniedNoAuthnStatement
 
   checkStatement `mapM_` statements
   pure $ AccessGranted uref
 
 checkStatement :: (SP m, MonadJudge m) => Statement -> m ()
-checkStatement (AuthnStatement issued _ mtimeout _) =
+checkStatement stm =
   do
+    let issued   = stm ^. astAuthnInstant
+        mtimeout = stm ^. astSessionNotOnOrAfter
     checkIsInPast DeniedAuthnStatementIssueInstantNotInPast issued
     forM_ mtimeout $ \endoflife -> do
       now <- getNow

@@ -290,7 +290,7 @@ importNameIDPolicy nip = do
   _nidFormat             <- importNameIDFormat $ HS.nameIDPolicyFormat nip
   let _nidSpNameQualifier = cs <$> HS.nameIDPolicySPNameQualifier nip
       _nidAllowCreate     = HS.nameIDPolicyAllowCreate nip
-  pure NameIdPolicy {..}
+  pure $ mkNameIdPolicy _nidFormat _nidSpNameQualifier _nidAllowCreate
 
 exportNameIDPolicy :: HasCallStack => NameIdPolicy -> HS.NameIDPolicy
 exportNameIDPolicy nip = HS.NameIDPolicy
@@ -468,7 +468,7 @@ importIP :: (HasCallStack, MonadError String m) => HS.IP -> m IP
 importIP = pure . IP . cs
 
 exportIP :: (HasCallStack) => IP -> HS.IP
-exportIP (IP s) = cs s
+exportIP = cs . ipToST
 
 importConditions :: forall m. (HasCallStack, MonadError String m) => HS.Conditions -> m Conditions
 importConditions conds = do
@@ -509,16 +509,16 @@ importStatement (HS.StatementAuthn st) = Just <$> do
   _astSessionNotOnOrAfter <- fmapFlipM importTime $ HS.authnStatementSessionNotOnOrAfter st
   _astSubjectLocality     <- fmapFlipM importLocality $ HS.authnStatementSubjectLocality st
   -- NB: @HS.authnStatementContext st@ is ignored [1/2.7.2.2].
-  pure AuthnStatement {..}
+  pure $ AuthnStatement _astAuthnInstant _astSessionIndex _astSessionNotOnOrAfter _astSubjectLocality
 
 importStatement bad = die (Proxy @Statement) bad
 
 exportStatement :: (HasCallStack) => Statement -> HS.Statement
-exportStatement AuthnStatement{..} = HS.StatementAuthn HS.AuthnStatement
-  { HS.authnStatementInstant             = exportTime _astAuthnInstant
-  , HS.authnStatementSessionIndex        = cs <$> _astSessionIndex
-  , HS.authnStatementSessionNotOnOrAfter = exportTime <$> _astSessionNotOnOrAfter
-  , HS.authnStatementSubjectLocality     = exportLocality <$> _astSubjectLocality
+exportStatement stm = HS.StatementAuthn HS.AuthnStatement
+  { HS.authnStatementInstant             = stm ^. astAuthnInstant
+  , HS.authnStatementSessionIndex        = cs <$> (stm ^. astSessionIndex)
+  , HS.authnStatementSessionNotOnOrAfter = exportTime <$> (stm ^. astSessionNotOnOrAfter)
+  , HS.authnStatementSubjectLocality     = exportLocality <$> (stm ^. astSubjectLocality)
   , HS.authnStatementContext             = HS.AuthnContext Nothing Nothing []
   }
 

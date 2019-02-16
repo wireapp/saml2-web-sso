@@ -5,7 +5,7 @@ module SAML2.WebSSO.Types
   ( AccessVerdict(..)
   , avReasons
   , avUserId
-  , DeniedReason
+  , DeniedReason(..)
   , UserRef(..)
   , uidTenant, uidSubject
   , Issuer(..)
@@ -46,7 +46,7 @@ module SAML2.WebSSO.Types
   , RequestedAuthnContext, mkRequestedAuthnContext
   , rqacAuthnContexts
   , rqacComparison
-  , NameIdPolicy, mkNameIDPolicy
+  , NameIdPolicy, mkNameIdPolicy
   , nidFormat
   , nidSpNameQualifier
   , nidAllowCreate
@@ -114,7 +114,7 @@ module SAML2.WebSSO.Types
   , scdAddress
   , IP, ipToST, mkIP
   , DNSName, fromDNSName, mkDNSName
-  , Statement, mkAuthnStatement
+  , Statement, mkAuthnStatement, isAuthnStatement
   , astAuthnInstant
   , astSessionIndex
   , astSessionNotOnOrAfter
@@ -396,12 +396,12 @@ data NameIdPolicy = NameIdPolicy
   , _nidAllowCreate     :: Bool  -- ^ default: 'False'
   } deriving (Eq, Show, Generic)
 
-mkNameIDPolicy
+mkNameIdPolicy
   :: NameIDFormat
   -> Maybe ST
   -> Bool
   -> NameIdPolicy
-mkNameIDPolicy
+mkNameIdPolicy
   _nidFormat
   (fmap escapeXML -> __nidSpNameQualifier)
   _nidAllowCreate
@@ -713,6 +713,10 @@ data Statement
     , _astSubjectLocality     :: Maybe Locality
     }
   deriving (Eq, Show, Generic)
+
+-- | (just in case we add other constructors in the future.)
+isAuthnStatement :: Statement -> Bool
+isAuthnStatement AuthnStatement{} = True
 
 mkAuthnStatement
   :: Time
