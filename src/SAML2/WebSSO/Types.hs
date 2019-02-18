@@ -477,14 +477,14 @@ data NameIDFormat
 
 -- | [1/8.3]
 type family NameIDReprFormat (t :: NameIDFormat) where
-  NameIDReprFormat 'NameIDFUnspecified = ST
-  NameIDReprFormat 'NameIDFEmail       = ST
-  NameIDReprFormat 'NameIDFX509        = ST
-  NameIDReprFormat 'NameIDFWindows     = ST
-  NameIDReprFormat 'NameIDFKerberos    = ST
+  NameIDReprFormat 'NameIDFUnspecified = XmlText
+  NameIDReprFormat 'NameIDFEmail       = Email
+  NameIDReprFormat 'NameIDFX509        = XmlText
+  NameIDReprFormat 'NameIDFWindows     = XmlText
+  NameIDReprFormat 'NameIDFKerberos    = XmlText
   NameIDReprFormat 'NameIDFEntity      = URI
-  NameIDReprFormat 'NameIDFPersistent  = ST
-  NameIDReprFormat 'NameIDFTransient   = ST
+  NameIDReprFormat 'NameIDFPersistent  = XmlText
+  NameIDReprFormat 'NameIDFTransient   = XmlText
 
 -- | [1/8.3]  (FUTUREWORK: there may be a way to make this nicer by using 'NameIDFormat', 'NameIDReprFormat'.
 data UnqualifiedNameID
