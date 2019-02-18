@@ -4,6 +4,8 @@
 module SAML2.WebSSO.Types
   ( XmlText, mkXmlText, escapeXmlText
   , AccessVerdict(..)
+  , _AccessDenied
+  , _AccessGranted
   , avReasons
   , avUserId
   , DeniedReason(..)
@@ -500,7 +502,7 @@ newtype Email = Email { fromEmail :: Email.EmailAddress }
   deriving (Eq, Ord, Show)
 
 mkUNameIDUnspecified :: ST -> UnqualifiedNameID
-mkUNameIDUnspecified = undefined
+mkUNameIDUnspecified = UNameIDUnspecified . mkXmlText
 
 mkUNameIDEmail :: MonadError String m => ST -> m UnqualifiedNameID
 mkUNameIDEmail = either throwError (pure . UNameIDEmail . Email) . Email.validate . cs

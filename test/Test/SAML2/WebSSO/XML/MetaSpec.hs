@@ -25,7 +25,7 @@ spec = do
 
   describe "spMeta" $ do
     it "does not smoke" $ do
-      let given = testSPMetadata $ ID "_e3a565aa-1392-4446-a4d6-3771453808f0"
+      let given = testSPMetadata $ mkID "_e3a565aa-1392-4446-a4d6-3771453808f0"
           want = renderToDocument given
       have :: Either String Document <- fmapL show . parseText def . cs <$> readSampleIO "our-spssodescriptor.xml"
       have `shouldBe` Right want
@@ -36,8 +36,8 @@ testSPMetadata mid = SPMetadata
   { _spID = mid
   , _spValidUntil = fromTime $ addTime (60 * 60 * 24 * 365) timeNow
   , _spCacheDuration = 2592000
-  , _spOrgName = "drnick"
-  , _spOrgDisplayName = "drnick"
+  , _spOrgName = mkXmlText "drnick"
+  , _spOrgDisplayName = mkXmlText "drnick"
   , _spOrgURL = [uri|http://example.com/|]
   , _spResponseURL = [uri|http://example.com/sso/login|]
   , _spContacts = fallbackContact :| []
