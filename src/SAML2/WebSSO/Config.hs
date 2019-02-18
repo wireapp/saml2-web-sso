@@ -80,13 +80,13 @@ fallbackConfig = Config
   }
 
 fallbackContact :: ContactPerson
-fallbackContact = mkContactPerson
+fallbackContact = ContactPerson
   ContactSupport
-  (Just "evil corp.")
-  (Just "Dr.")
-  (Just "Girlfriend")
+  (Just $ mkXmlText "evil corp.")
+  (Just $ mkXmlText "Dr.")
+  (Just $ mkXmlText "Girlfriend")
   (Just [uri|email:president@evil.corp|])
-  (Just "+314159265")
+  (Just $ mkXmlText "+314159265")
 
 
 ----------------------------------------------------------------------

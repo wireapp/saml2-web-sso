@@ -122,7 +122,7 @@ createAuthnRequest lifeExpectancySecs getIssuer = do
   _rqID           <- createID
   _rqIssueInstant <- getNow
   _rqIssuer       <- getIssuer
-  let _rqNameIDPolicy = Just $ mkNameIdPolicy NameIDFUnspecified Nothing True
+  let _rqNameIDPolicy = Just $ NameIdPolicy NameIDFUnspecified Nothing True
   storeID _rqID (addTime lifeExpectancySecs _rqIssueInstant)
   pure AuthnRequest{..}
 

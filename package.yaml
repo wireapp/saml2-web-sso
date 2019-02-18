@@ -61,6 +61,7 @@ dependencies:
   - exceptions
   - extra
   - filepath
+  - foundation
   - ghc-prim
   - hourglass
   - http-media

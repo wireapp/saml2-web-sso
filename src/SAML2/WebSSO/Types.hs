@@ -2,7 +2,8 @@
 {-# LANGUAGE OverloadedStrings   #-}
 
 module SAML2.WebSSO.Types
-  ( AccessVerdict(..)
+  ( XmlText, mkXmlText, escapeXmlText
+  , AccessVerdict(..)
   , avReasons
   , avUserId
   , DeniedReason(..)
@@ -61,7 +62,7 @@ module SAML2.WebSSO.Types
   , rspPayload
   , Time(..), timeFormat, addTime
   , Duration(..)
-  , ID(..)
+  , ID(..), mkID
   , BaseID, mkBaseID
   , baseID
   , baseIDNameQ
@@ -75,6 +76,7 @@ module SAML2.WebSSO.Types
   , shortShowNameID
   , NameIDFormat(..), nameIDFormat
   , NameIDReprFormat
+  , Email(..)
   , UnqualifiedNameID(..)
   , mkUNameIDUnspecified
   , mkUNameIDEmail
@@ -403,6 +405,9 @@ addTime n (Time t) = Time $ addUTCTime n t
 newtype ID m = ID { fromID :: XmlText }
   deriving (Eq, Ord, Show, Generic)
 
+mkID :: ST -> ID m
+mkID = ID . mkXmlText
+
 -- | [1/2.2.1]
 data BaseID = BaseID
   { _baseID        :: XmlText
@@ -667,7 +672,7 @@ mkDNSName raw = do
 data Statement
   = AuthnStatement  -- [1/2.7.2]
     { _astAuthnInstant        :: Time
-    , _astSessionIndex        :: Maybe XmlText  -- safe to ignore
+    , _astSessionIndex        :: Maybe XmlText  -- ^ safe to ignore
     , _astSessionNotOnOrAfter :: Maybe Time
     , _astSubjectLocality     :: Maybe Locality
     }
