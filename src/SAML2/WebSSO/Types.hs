@@ -77,7 +77,6 @@ module SAML2.WebSSO.Types
   , nameIDToST
   , shortShowNameID
   , NameIDFormat(..), nameIDFormat
-  , NameIDReprFormat
   , Email(..)
   , UnqualifiedNameID(..)
   , mkUNameIDUnspecified
@@ -474,17 +473,6 @@ data NameIDFormat
   | NameIDFPersistent   -- ^ use UUIDv4 where we have the choice.
   | NameIDFTransient
   deriving (Eq, Ord, Enum, Bounded, Show, Generic)
-
--- | [1/8.3]
-type family NameIDReprFormat (t :: NameIDFormat) where
-  NameIDReprFormat 'NameIDFUnspecified = XmlText
-  NameIDReprFormat 'NameIDFEmail       = Email
-  NameIDReprFormat 'NameIDFX509        = XmlText
-  NameIDReprFormat 'NameIDFWindows     = XmlText
-  NameIDReprFormat 'NameIDFKerberos    = XmlText
-  NameIDReprFormat 'NameIDFEntity      = URI
-  NameIDReprFormat 'NameIDFPersistent  = XmlText
-  NameIDReprFormat 'NameIDFTransient   = XmlText
 
 -- | [1/8.3]  (FUTUREWORK: there may be a way to make this nicer by using 'NameIDFormat', 'NameIDReprFormat'.
 data UnqualifiedNameID
