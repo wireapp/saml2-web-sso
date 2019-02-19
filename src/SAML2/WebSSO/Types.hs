@@ -165,7 +165,7 @@ import qualified Servant
 import qualified Text.Email.Validate as Email
 
 
--- | Text that needs to be escaped when rendered into XML.  See 'mkXmlText', 'mkXmlText'.
+-- | Text that needs to be escaped when rendered into XML.  See 'mkXmlText', 'escapeXmlText'.
 newtype XmlText = XmlText { fromXmlText :: ST }
   deriving (Eq, Ord, Show, Generic)
 
