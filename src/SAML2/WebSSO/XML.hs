@@ -259,9 +259,9 @@ importAuthnRequest req = do
   _rqID           <- importID $ HS.protocolID proto
   _rqIssueInstant <- importTime $ HS.protocolIssueInstant proto
   _rqIssuer       <- importRequiredIssuer $ HS.protocolIssuer proto
-  _rqNameIDPolicy <- fmapFlipM importNameIDPolicy $ HS.authnRequestNameIDPolicy req
+  _rqNameIDPolicy <- traverse importNameIDPolicy $ HS.authnRequestNameIDPolicy req
 
-  fmapFlipM importURI (HS.protocolDestination proto) >>= \case
+  traverse importURI (HS.protocolDestination proto) >>= \case
     Nothing -> pure ()
     Just dest -> die (Proxy @AuthnRequest) ("protocol destination not allowed: " <> show dest)
 
@@ -324,10 +324,10 @@ importAuthnResponse rsp = do
 
   () <- importVersion $ HS.protocolVersion proto
   _rspID           <- importID $ HS.protocolID proto
-  _rspInRespTo     <- (importID . cs) `fmapFlipM` HS.statusInResponseTo rsptyp
+  _rspInRespTo     <- (importID . cs) `traverse` HS.statusInResponseTo rsptyp
   _rspIssueInstant <- importTime $ HS.protocolIssueInstant proto
-  _rspDestination  <- fmapFlipM importURI $ HS.protocolDestination proto
-  _rspIssuer       <- fmapFlipM importIssuer $ HS.protocolIssuer proto
+  _rspDestination  <- traverse importURI $ HS.protocolDestination proto
+  _rspIssuer       <- traverse importIssuer $ HS.protocolIssuer proto
   _rspStatus       <- importStatus $ HS.status rsptyp
   _rspPayload      <- maybe (throwError "no assertions") pure . NL.nonEmpty =<< (importAssertion `mapM` HS.responseAssertions rsp)
 
@@ -363,7 +363,7 @@ importAssertion (HS.NotEncrypted ass) = do
   _assID           <- importID $ HS.assertionID ass
   _assIssueInstant <- importTime $ HS.assertionIssueInstant ass
   _assIssuer       <- importIssuer $ HS.assertionIssuer ass
-  _assConditions   <- fmapFlipM importConditions $ HS.assertionConditions ass
+  _assConditions   <- traverse importConditions $ HS.assertionConditions ass
   _assContents     <- do
     subj  <- importSubject $ HS.assertionSubject ass
     when (null $ HS.assertionStatement ass) $
@@ -431,11 +431,11 @@ exportSubjectConfirmation (SubjectConfirmation SubjectConfirmationMethodBearer s
 importSubjectConfirmationData :: (HasCallStack, MonadError String m) => HS.SubjectConfirmationData -> m SubjectConfirmationData
 importSubjectConfirmationData (HS.SubjectConfirmationData notbefore (Just notonorafter) (Just recipient) inresp confaddr _ _) =
   SubjectConfirmationData
-  <$> importTime `fmapFlipM` notbefore
+  <$> importTime `traverse` notbefore
   <*> importTime notonorafter
   <*> importURI recipient
-  <*> importID `fmapFlipM` inresp
-  <*> importIP `fmapFlipM` confaddr
+  <*> importID `traverse` inresp
+  <*> importIP `traverse` confaddr
 
   -- ignore: 'HS.subjectConfirmationKeyInfo' (this is only required for holder of key subjects
   -- [3/3.1], [1/2.4.1.2], [1/2.4.1.4])
@@ -465,8 +465,8 @@ exportIP = cs . ipToST
 
 importConditions :: forall m. (HasCallStack, MonadError String m) => HS.Conditions -> m Conditions
 importConditions conds = do
-  _condNotBefore <- fmapFlipM importTime $ HS.conditionsNotBefore conds
-  _condNotOnOrAfter <- fmapFlipM importTime $ HS.conditionsNotOnOrAfter conds
+  _condNotBefore <- traverse importTime $ HS.conditionsNotBefore conds
+  _condNotOnOrAfter <- traverse importTime $ HS.conditionsNotOnOrAfter conds
   let _condOneTimeUse = False
       _condAudienceRestriction = []
 
@@ -499,8 +499,8 @@ importStatement (HS.StatementAttribute _) = pure Nothing
 importStatement (HS.StatementAuthn st) = Just <$> do
   _astAuthnInstant <- importTime $ HS.authnStatementInstant st
   let _astSessionIndex = mkXmlText . cs <$> HS.authnStatementSessionIndex st
-  _astSessionNotOnOrAfter <- fmapFlipM importTime $ HS.authnStatementSessionNotOnOrAfter st
-  _astSubjectLocality     <- fmapFlipM importLocality $ HS.authnStatementSubjectLocality st
+  _astSessionNotOnOrAfter <- traverse importTime $ HS.authnStatementSessionNotOnOrAfter st
+  _astSubjectLocality     <- traverse importLocality $ HS.authnStatementSubjectLocality st
   -- NB: @HS.authnStatementContext st@ is ignored [1/2.7.2.2].
   pure $ AuthnStatement _astAuthnInstant _astSessionIndex _astSessionNotOnOrAfter _astSubjectLocality
 
@@ -774,7 +774,7 @@ importContactPerson contact = do
       _cntGivenName = mkXmlText . cs <$> HS.contactGivenName contact
       _cntSurname   = mkXmlText . cs <$> HS.contactSurName contact
       _cntPhone     = listToMaybe $ mkXmlText . cs <$> HS.contactTelephoneNumber contact
-  _cntEmail        <- fmapFlipM importURI $ listToMaybe (HS.contactEmailAddress contact)
+  _cntEmail        <- traverse importURI $ listToMaybe (HS.contactEmailAddress contact)
   pure ContactPerson {..}
 
 
