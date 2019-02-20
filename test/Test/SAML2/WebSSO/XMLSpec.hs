@@ -84,3 +84,6 @@ spec = describe "XML Sanitization" $ do
                       Nothing
                       Nothing
                       Nothing :: Either String NameID)
+
+    it "rendering doesn't double escape" $ do
+       False `shouldBe` True
