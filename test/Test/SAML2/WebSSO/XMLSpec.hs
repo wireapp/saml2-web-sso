@@ -59,11 +59,11 @@ spec = describe "XML Sanitization" $ do
 
     it "should decode an escaped name if format is unspecified" $ do
       decodeElem (xmlWithName unspecifiedFormat "&lt;somebody@example.org&gt;")
-        `shouldBe` Right (unspecifiedNameID "<somebody@example.org>" :: NameID)
+        `shouldBe` Right (unspecifiedNameID "<somebody@example.org>")
 
     it "should unescape names" $ do
       decodeElem (xmlWithName unspecifiedFormat "&lt;somebody@example.org&gt;")
-        `shouldBe` Right (unspecifiedNameID "<somebody@example.org>" :: NameID)
+        `shouldBe` Right (unspecifiedNameID "<somebody@example.org>")
 
     it "should not unescape more than once" $ do
       decodeElem
