@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings   #-}
 
 module SAML2.WebSSO.Types
-  ( XmlText, mkXmlText, escapeXmlText, unescapeXmlText
+  ( XmlText, mkXmlText, escapeXmlText
   , AccessVerdict(..)
   , _AccessDenied
   , _AccessGranted
