@@ -166,21 +166,13 @@ import qualified Text.Email.Validate as Email
 
 
 -- | Text that needs to be escaped when rendered into XML.  See 'mkXmlText', 'escapeXmlText'.
+-- XmlText must be preferred over 'ST' within this module
 newtype XmlText = XmlText { fromXmlText :: ST }
   deriving (Eq, Ord, Show, Generic)
 
+-- | Construct an 'XmlText'
 mkXmlText :: ST -> XmlText
 mkXmlText = XmlText
-
-unescapeXmlText :: ST -> ST
-unescapeXmlText txt
-  | "&lt;"   `ST.isPrefixOf` txt = "<"  <> unescapeXmlText (ST.drop (ST.length "&lt;")   txt)
-  | "&gt;"   `ST.isPrefixOf` txt = ">"  <> unescapeXmlText (ST.drop (ST.length "&gt;")   txt)
-  | "&amp;"  `ST.isPrefixOf` txt = "&"  <> unescapeXmlText (ST.drop (ST.length "&amp;")  txt)
-  | "&apos;" `ST.isPrefixOf` txt = "'"  <> unescapeXmlText (ST.drop (ST.length "&apos;") txt)
-  | "&quot;" `ST.isPrefixOf` txt = "\"" <> unescapeXmlText (ST.drop (ST.length "&quot;") txt)
-  | txt == ""                    = txt
-  | otherwise                    = ST.take 1 txt <> unescapeXmlText (ST.drop 1 txt)
 
 -- | Take an 'XmlText' and return a 'Text' that is safe to inject into serialized XML.
 escapeXmlText :: XmlText -> ST
