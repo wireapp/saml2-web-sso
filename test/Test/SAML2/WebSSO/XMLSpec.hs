@@ -1,37 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-{-# OPTIONS_GHC -Wno-unused-binds -Wno-incomplete-patterns -Wno-incomplete-uni-patterns -Wno-unused-imports #-}
+{-# OPTIONS_GHC -Wno-unused-binds -Wno-incomplete-patterns -Wno-incomplete-uni-patterns #-}
 
 module Test.SAML2.WebSSO.XMLSpec (spec) where
 
-import Control.Exception
-import Control.Lens
-import Control.Monad (forM_)
-import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Reader
 import Data.Either
-import Data.List.NonEmpty as NL
 import Data.String.Conversions
 import SAML2.Util
 import SAML2.WebSSO
-import SAML2.WebSSO.Types
-import SAML2.WebSSO.Test.Credentials
-import SAML2.WebSSO.Test.Lenses
-import SAML2.WebSSO.Test.MockResponse
-import System.Environment (setEnv)
-import System.IO.Unsafe (unsafePerformIO)
 import Test.Hspec
-import Text.Show.Pretty (ppShow)
-import Text.XML
-import Text.XML.DSig as DSig
-import URI.ByteString
-import Util
 
-import qualified Data.ByteString.Base64.Lazy as EL (decodeLenient)
-import qualified Data.List as List
-import qualified Data.Map as Map
 import qualified Data.Text.Lazy as LT
-import qualified Samples
 import qualified SAML2.Core as HS
 import qualified SAML2.XML as HS
 
