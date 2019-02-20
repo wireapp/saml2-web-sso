@@ -32,6 +32,8 @@ import qualified Data.List as List
 import qualified Data.Map as Map
 import qualified Data.Text.Lazy as LT
 import qualified Samples
+import qualified SAML2.Core as HS
+import qualified SAML2.XML as HS
 
 -- | embed an email into a valid NameID context
 xmlWithName :: Maybe LT -> LT -> LT
@@ -98,3 +100,11 @@ spec = describe "XML Sanitization" $ do
     it "rendering doesn't double escape" $ do
       encodeElem (unspecifiedNameID "<something>")
         `shouldBe` (xmlWithName Nothing "&lt;something&gt;")
+
+    it "sadly, hsaml2 does not escape unsafe strings" $ do
+      -- this test case reproduces an issue with hsaml2 that motivates us manually escaping
+      -- the 'XmlText's in the serialization functions here in saml2-web-sso.
+
+      HS.samlToXML (HS.simpleNameID HS.NameIDFormatUnspecified "<something>")
+        `shouldBe` "<NameID xmlns=\"urn:oasis:names:tc:SAML:2.0:assertion\"><something></NameID>"
+        -- it really shouldn't, though!
