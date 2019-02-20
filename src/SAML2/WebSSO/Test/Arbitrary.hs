@@ -261,7 +261,7 @@ genSubjectConfirmationData = do
   pure SubjectConfirmationData {..}
 
 genDNSName :: Gen DNSName
-genDNSName = Gen.choice $ either (error . show) pure . mkDNSName <$>
+genDNSName = Gen.choice $ pure . mkDNSName <$>
   [ "localhost"
   , "one.example.com"
   , "two.example.com"

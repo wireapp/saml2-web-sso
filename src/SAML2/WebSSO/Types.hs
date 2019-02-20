@@ -186,14 +186,6 @@ escapeXmlText (XmlText txt) = go txt
       '"'  -> "&quot;"
       c    -> ST.singleton c
 
--- | This library follows the approach that any strings in its data types are safe to inject
--- into XML even without escaping.  This is more restrictive, but SAML2 allows for this, and
--- it makes it easier to reason that XML serialization has no security issues.
-assertEscapedXml :: MonadError String m => ST -> m ()
-assertEscapedXml txt = unless (mkXmlText txt == XmlText txt) $ do
-  throwError $ "text is unsafe to inject into XML: " <> show txt
-
-
 ----------------------------------------------------------------------
 -- high-level
 
@@ -643,13 +635,11 @@ ipToST (IPv4 ip) = cs $ show ip
 ipToST (IPv6 ip) = cs $ show ip
 
 
-newtype DNSName = DNSName { fromDNSName :: ST }
+newtype DNSName = DNSName { fromDNSName :: XmlText }
   deriving (Eq, Show, Generic)
 
-mkDNSName :: MonadError String m => ST -> m DNSName
-mkDNSName raw = do
-  assertEscapedXml raw
-  pure . DNSName . cs . DNS.normalize . cs $ raw
+mkDNSName :: ST -> DNSName
+mkDNSName = DNSName . mkXmlText . cs . DNS.normalize  . cs
 
 -- | The core content of the 'Assertion'.  [1/2.7]
 data Statement

@@ -518,13 +518,13 @@ exportStatement stm = HS.StatementAuthn HS.AuthnStatement
 
 importLocality :: (HasCallStack, MonadError String m) => HS.SubjectLocality -> m Locality
 importLocality loc = Locality
-  <$> (fmapFlipM importIP         $ HS.subjectLocalityAddress loc)
-  <*> (fmapFlipM (mkDNSName . cs) $ HS.subjectLocalityDNSName loc)
+  <$> (traverse importIP         $ HS.subjectLocalityAddress loc)
+  <*> (pure $ (mkDNSName . cs) <$> HS.subjectLocalityDNSName loc)
 
 exportLocality :: HasCallStack => Locality -> HS.SubjectLocality
 exportLocality loc = HS.SubjectLocality
   { HS.subjectLocalityAddress = exportIP <$> loc ^. localityAddress
-  , HS.subjectLocalityDNSName = cs . fromDNSName <$> loc ^. localityDNSName
+  , HS.subjectLocalityDNSName = cs . escapeXmlText . fromDNSName <$> loc ^. localityDNSName
   }
 
 
