@@ -54,15 +54,15 @@ spec = describe "XML Sanitization" $ do
         `shouldBe` (emailNameID "somebody@example.org" :: Either String NameID)
 
     it "should fail to decode an invalid email" $ do
-      decodeElem @NameID (xmlWithName emailFormat "&lt;somebody@example.org&gt;")  
+      decodeElem @NameID (xmlWithName emailFormat "&lt;somebody@example.org&gt;")
         `shouldSatisfy` isLeft
 
     it "should decode an escaped name if format is unspecified" $ do
-      decodeElem (xmlWithName unspecifiedFormat "&lt;somebody@example.org&gt;")  
+      decodeElem (xmlWithName unspecifiedFormat "&lt;somebody@example.org&gt;")
         `shouldBe` Right (unspecifiedNameID "<somebody@example.org>" :: NameID)
 
     it "should unescape names" $ do
-      decodeElem (xmlWithName unspecifiedFormat "&lt;somebody@example.org&gt;")  
+      decodeElem (xmlWithName unspecifiedFormat "&lt;somebody@example.org&gt;")
         `shouldBe` Right (unspecifiedNameID "<somebody@example.org>" :: NameID)
 
     it "should not unescape more than once" $ do
