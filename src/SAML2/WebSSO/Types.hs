@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings   #-}
 
 module SAML2.WebSSO.Types
-  ( XmlText, mkXmlText, escapeXmlText
+  ( XmlText, mkXmlText, escapeXmlText, unescapeXmlText
   , AccessVerdict(..)
   , _AccessDenied
   , _AccessGranted
@@ -170,16 +170,17 @@ newtype XmlText = XmlText { fromXmlText :: ST }
   deriving (Eq, Ord, Show, Generic)
 
 mkXmlText :: ST -> XmlText
-mkXmlText = XmlText . go
-  where
-    go txt
-      | "&lt;"   `ST.isPrefixOf` txt = "<"  <> go (ST.drop (ST.length "&lt;")   txt)
-      | "&gt;"   `ST.isPrefixOf` txt = ">"  <> go (ST.drop (ST.length "&gt;")   txt)
-      | "&amp;"  `ST.isPrefixOf` txt = "&"  <> go (ST.drop (ST.length "&amp;")  txt)
-      | "&apos;" `ST.isPrefixOf` txt = "'"  <> go (ST.drop (ST.length "&apos;") txt)
-      | "&quot;" `ST.isPrefixOf` txt = "\"" <> go (ST.drop (ST.length "&quot;") txt)
-      | txt == ""                    = txt
-      | otherwise                    = ST.take 1 txt <> go (ST.drop 1 txt)
+mkXmlText = XmlText
+
+unescapeXmlText :: ST -> ST
+unescapeXmlText txt
+  | "&lt;"   `ST.isPrefixOf` txt = "<"  <> unescapeXmlText (ST.drop (ST.length "&lt;")   txt)
+  | "&gt;"   `ST.isPrefixOf` txt = ">"  <> unescapeXmlText (ST.drop (ST.length "&gt;")   txt)
+  | "&amp;"  `ST.isPrefixOf` txt = "&"  <> unescapeXmlText (ST.drop (ST.length "&amp;")  txt)
+  | "&apos;" `ST.isPrefixOf` txt = "'"  <> unescapeXmlText (ST.drop (ST.length "&apos;") txt)
+  | "&quot;" `ST.isPrefixOf` txt = "\"" <> unescapeXmlText (ST.drop (ST.length "&quot;") txt)
+  | txt == ""                    = txt
+  | otherwise                    = ST.take 1 txt <> unescapeXmlText (ST.drop 1 txt)
 
 -- | Take an 'XmlText' and return a 'Text' that is safe to inject into serialized XML.
 escapeXmlText :: XmlText -> ST
