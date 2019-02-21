@@ -29,6 +29,7 @@ import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Gen.QuickCheck as THQ
 import qualified Hedgehog.Range as Range
 import qualified Test.QuickCheck.Hedgehog as TQH
+import qualified Text.Email.Validate as Email
 import qualified Text.XML.DSig as DSig
 
 
@@ -89,11 +90,11 @@ genConfig = do
 genSPContactPerson :: Gen ContactPerson
 genSPContactPerson = ContactPerson
   <$> Gen.enumBounded
-  <*> Gen.maybe genNiceWord
-  <*> Gen.maybe genNiceWord
-  <*> Gen.maybe genNiceWord
+  <*> Gen.maybe (mkXmlText <$> genNiceWord)
+  <*> Gen.maybe (mkXmlText <$> genNiceWord)
+  <*> Gen.maybe (mkXmlText <$> genNiceWord)
   <*> Gen.maybe genHttps
-  <*> Gen.maybe genNiceWord
+  <*> Gen.maybe (mkXmlText <$> genNiceWord)
 
 genIdPMetadata :: Gen IdPMetadata
 genIdPMetadata = IdPMetadata
@@ -110,8 +111,8 @@ genSPMetadata = do
   _spID             <- genID
   _spValidUntil     <- fromTime <$> genTime
   _spCacheDuration  <- genNominalDifftime
-  _spOrgName        <- genNiceWord
-  _spOrgDisplayName <- genNiceWord
+  _spOrgName        <- mkXmlText <$> genNiceWord
+  _spOrgDisplayName <- mkXmlText <$> genNiceWord
   _spOrgURL         <- genHttps
   _spResponseURL    <- genHttps
   _spContacts       <- NL.fromList <$> Gen.list (Range.linear 1 3) genContactPerson
@@ -120,17 +121,22 @@ genSPMetadata = do
 genContactPerson :: Gen ContactPerson
 genContactPerson = do
   _cntType      <- Gen.enumBounded
-  _cntCompany   <- Gen.maybe genNiceWord
-  _cntGivenName <- Gen.maybe genNiceWord
-  _cntSurname   <- Gen.maybe genNiceWord
-  _cntEmail     <- Gen.maybe genEmail
-  _cntPhone     <- Gen.maybe genNiceWord
+  _cntCompany   <- Gen.maybe (mkXmlText <$> genNiceWord)
+  _cntGivenName <- Gen.maybe (mkXmlText <$> genNiceWord)
+  _cntSurname   <- Gen.maybe (mkXmlText <$> genNiceWord)
+  _cntEmail     <- Gen.maybe genEmailURI
+  _cntPhone     <- Gen.maybe (mkXmlText <$> genNiceWord)
   pure ContactPerson {..}
 
-genEmail :: Gen URI
-genEmail = do
+genEmailURI :: Gen URI
+genEmailURI = do
   loc <- genNiceWord
   pure . unsafeParseURI $ "email:" <> loc <> "@example.com"
+
+genEmail :: HasCallStack => Gen Email
+genEmail = do
+  loc <- genNiceWord
+  maybe (error "genEmail") (pure . Email) . Email.emailAddress . cs $ loc <> "@example.com"
 
 genAuthnRequest :: Gen AuthnRequest
 genAuthnRequest = AuthnRequest
@@ -153,7 +159,7 @@ genNominalDifftime :: Gen NominalDiffTime
 genNominalDifftime = THQ.quickcheck arbitrary
 
 genID :: Gen (ID a)
-genID = ID . ("_" <>) . UUID.toText <$> genUUID
+genID = mkID . ("_" <>) . UUID.toText <$> genUUID
 
 genIssuer :: Gen Issuer
 genIssuer = Issuer <$> genHttps
@@ -161,7 +167,7 @@ genIssuer = Issuer <$> genHttps
 genNameIDPolicy :: Gen NameIdPolicy
 genNameIDPolicy = NameIdPolicy
   <$> genNameIDFormat
-  <*> Gen.maybe genNiceWord
+  <*> Gen.maybe (mkXmlText <$> genNiceWord)
   <*> Gen.bool
 
 genNameIDFormat :: Gen NameIDFormat
@@ -180,7 +186,7 @@ genNameID = do
 genUnqualifiedNameID :: Gen UnqualifiedNameID
 genUnqualifiedNameID = Gen.choice
   [ UNameIDUnspecified <$> mktxt 2000
-  , UNameIDEmail       <$> mktxt 2000
+  , UNameIDEmail       <$> genEmail
   , UNameIDX509        <$> mktxt 2000
   , UNameIDWindows     <$> mktxt 2000
   , UNameIDKerberos    <$> mktxt 2000
@@ -189,7 +195,7 @@ genUnqualifiedNameID = Gen.choice
   , UNameIDTransient   <$> mktxt 2000
   ]
   where
-    mktxt charlen = cs <$> Gen.text (Range.linear 1 charlen) Gen.alpha
+    mktxt charlen = mkXmlText <$> Gen.text (Range.linear 1 charlen) Gen.alpha
 
 genNonEmpty :: Range Int -> Gen a -> Gen (NonEmpty a)
 genNonEmpty rng gen = (:|) <$> gen <*> Gen.list rng gen
@@ -254,13 +260,38 @@ genSubjectConfirmationData = do
   _scdAddress      <- Gen.maybe genIP
   pure SubjectConfirmationData {..}
 
+genDNSName :: Gen DNSName
+genDNSName = Gen.choice $ pure . mkDNSName <$>
+  [ "localhost"
+  , "one.example.com"
+  , "two.example.com"
+  , "three.example.com"
+  , "four.example.com"
+  , "five.example.com"
+  , "six.example.com"
+  , "seven.example.com"
+  ]
+
 genIP :: Gen IP
-genIP = IP <$> (genNiceText $ Range.linear 1 10)
+genIP = Gen.choice $ either (error . show) pure . mkIP <$>
+  [ "127.0.0.1"
+  , "::1"
+  , "192.168.1.0"
+  , "192.168.1.1"
+  , "192.168.1.2"
+  , "192.168.1.3"
+  , "192.168.1.4"
+  , "192.168.1.5"
+  , "192.168.1.6"
+  , "192.168.1.7"
+  , "192.168.1.8"
+  , "192.168.1.9"
+  ]
 
 genStatement :: Gen Statement
 genStatement = do
   _astAuthnInstant        <- genTime
-  _astSessionIndex        <- Gen.maybe genNiceWord
+  _astSessionIndex        <- Gen.maybe (mkXmlText <$> genNiceWord)
   _astSessionNotOnOrAfter <- Gen.maybe genTime
   _astSubjectLocality     <- Gen.maybe genLocality
   pure AuthnStatement {..}
@@ -268,7 +299,7 @@ genStatement = do
 genLocality :: Gen Locality
 genLocality = Locality
   <$> Gen.maybe genIP
-  <*> Gen.maybe genNiceWord
+  <*> Gen.maybe genDNSName
 
 genXMLDocument :: Gen Document
 genXMLDocument = do

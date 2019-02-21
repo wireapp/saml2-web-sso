@@ -48,8 +48,3 @@ normURI = unsafeParseURI . cs . normalizeURIRef' URINormalizationOptions
   , unoRemoveDotSegments = True
   , unoDefaultPorts      = mempty
   }
-
--- | fmap an outer computation into an inner computation that may fail, then flip inner @n@ and
--- outer @m@.  (except for the flip, this is just 'fmap'.)
-fmapFlipM :: (Monad m, Traversable n) => (a -> m b) -> n a -> m (n b)
-fmapFlipM f = sequence . fmap f

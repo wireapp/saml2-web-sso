@@ -55,10 +55,13 @@ dependencies:
   - cookie
   - cryptonite
   - data-default
+  - dns
+  - email-validate
   - errors
   - exceptions
   - extra
   - filepath
+  - foundation
   - ghc-prim
   - hourglass
   - http-media

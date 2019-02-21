@@ -81,13 +81,12 @@ fallbackConfig = Config
 
 fallbackContact :: ContactPerson
 fallbackContact = ContactPerson
-  { _cntType      = ContactSupport
-  , _cntCompany   = Just "evil corp."
-  , _cntGivenName = Just "Dr."
-  , _cntSurname   = Just "Girlfriend"
-  , _cntEmail     = Just [uri|email:president@evil.corp|]
-  , _cntPhone     = Just "+314159265"
-  }
+  ContactSupport
+  (Just $ mkXmlText "evil corp.")
+  (Just $ mkXmlText "Dr.")
+  (Just $ mkXmlText "Girlfriend")
+  (Just [uri|email:president@evil.corp|])
+  (Just $ mkXmlText "+314159265")
 
 
 ----------------------------------------------------------------------

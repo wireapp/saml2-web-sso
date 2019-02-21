@@ -192,12 +192,20 @@ mkSignCredsWithCert mValidSince size = do
 -- use later.  As longs as all credentials are from the same authoritative source, it may be ok to
 -- ask for *any* of them to match a signature.  So here is an @or@ over 'verify' and a non-empty
 -- list of 'SignCred's.
+--
+-- NB: The call to 'unsafePerformIO' in this function is sound under the assumption that
+-- 'verifyIO' has no effects in 'IO' other than throwing 'SomeException' (which are captured
+-- by 'try'.  Technically, it does have other effects, like opening temp files for capturing
+-- stderr (if any), but we do not care about those.  The only thing we care about is that the
+-- conceptually pure function of validating a signature will either be called twice with the
+-- same arguments and return the same result value, or not be called a second time with the
+-- same arguments, in which case that same value will be used.
 {-# NOINLINE verify #-}
 verify :: forall m. (MonadError String m) => NonEmpty SignCreds -> LBS -> String -> m ()
-verify creds el signedID = case unsafePerformIO (try $ verifyIO creds el signedID) of
+verify creds el signedID = case unsafePerformIO (try @SomeException $ verifyIO creds el signedID) of
   Right []   -> pure ()
   Right errs -> throwError $ show (snd <$> errs)
-  Left exc   -> throwError $ show @SomeException exc
+  Left exc   -> throwError $ show exc
 
 verifyRoot :: forall m. (MonadError String m) => NonEmpty SignCreds -> LBS -> m ()
 verifyRoot creds el = do
@@ -223,7 +231,7 @@ verifyIO creds el signedID = capture' $ do
     capture' :: IO a -> IO a
     capture' action = hCapture [stdout, stderr] action >>= \case
       ("", out) -> pure out
-      (noise, _) -> throwIO . ErrorCall $ "unexpected noise on stdout/stderr: " <> noise
+      (noise, _) -> throwIO . ErrorCall $ "noise on stdout/stderr from hsaml2 package: " <> noise
 
 verifyIO' :: SignCreds -> LBS -> String -> IO (Either HS.SignatureError ())
 verifyIO' (SignCreds SignDigestSha256 (SignKeyRSA key)) el signedID = runExceptT $ do
@@ -260,7 +268,7 @@ signRootAt sigPos (SignPrivCreds hashAlg (SignPrivKeyRSA keypair)) doc
                      ]
 
     docCanonic :: SBS
-           <- either (throwError . show @SomeException) (pure . cs) . unsafePerformIO . try $
+           <- either (throwError . show) (pure . cs) . unsafePerformIO . try @SomeException $
               HS.applyTransforms transforms (HXT.mkRoot [] [docInHXT])
 
     let digest :: SBS
@@ -283,7 +291,7 @@ signRootAt sigPos (SignPrivCreds hashAlg (SignPrivKeyRSA keypair)) doc
           -- (note that there are two rounds of SHA256 application, hence two mentions of the has alg here)
 
     signedInfoSBS :: SBS
-      <- either (throwError . show @SomeException) (pure . cs) . unsafePerformIO . try $
+      <- either (throwError . show) (pure . cs) . unsafePerformIO . try @SomeException $
            HS.applyCanonicalization (HS.signedInfoCanonicalizationMethod signedInfo) Nothing $
              HS.samlToDoc signedInfo
 

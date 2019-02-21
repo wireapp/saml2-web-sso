@@ -1,7 +1,139 @@
 {-# LANGUAGE StrictData          #-}
 {-# LANGUAGE OverloadedStrings   #-}
 
-module SAML2.WebSSO.Types where
+module SAML2.WebSSO.Types
+  ( XmlText, mkXmlText, escapeXmlText, unsafeFromXmlText
+  , AccessVerdict(..)
+  , _AccessDenied
+  , _AccessGranted
+  , avReasons
+  , avUserId
+  , DeniedReason(..)
+  , UserRef(..)
+  , uidTenant, uidSubject
+  , Issuer(..)
+  , fromIssuer
+  , SPMetadata(..)
+  , spID
+  , spValidUntil
+  , spCacheDuration
+  , spOrgName
+  , spOrgDisplayName
+  , spOrgURL
+  , spResponseURL
+  , spContacts
+  , ContactPerson(..)
+  , cntType
+  , cntCompany
+  , cntGivenName
+  , cntSurname
+  , cntEmail
+  , cntPhone
+  , ContactType(..)
+  , IdPMetadata(..)
+  , edIssuer
+  , edRequestURI
+  , edCertAuthnResponse
+  , IdPId(..)
+  , IdPConfig_
+  , IdPConfig(..)
+  , idpId
+  , idpMetadata
+  , idpExtraInfo
+  , AuthnRequest(..)
+  , rqID
+  , rqIssueInstant
+  , rqIssuer
+  , rqNameIDPolicy
+  , Comparison(..)
+  , RequestedAuthnContext(..)
+  , rqacAuthnContexts
+  , rqacComparison
+  , NameIdPolicy(..)
+  , nidFormat
+  , nidSpNameQualifier
+  , nidAllowCreate
+  , AuthnResponse
+  , Response(..)
+  , rspID
+  , rspInRespTo
+  , rspIssueInstant
+  , rspDestination
+  , rspIssuer
+  , rspStatus
+  , rspPayload
+  , Time(..), timeFormat, addTime
+  , Duration(..)
+  , ID(..), mkID
+  , BaseID, mkBaseID
+  , baseID
+  , baseIDNameQ
+  , baseIDSPNameQ
+  , NameID, mkNameID, unspecifiedNameID, emailNameID, entityNameID
+  , nameID
+  , nameIDNameQ
+  , nameIDSPNameQ
+  , nameIDSPProvidedID
+  , nameIDToST
+  , shortShowNameID
+  , NameIDFormat(..), nameIDFormat
+  , Email(..)
+  , UnqualifiedNameID(..)
+  , mkUNameIDUnspecified
+  , mkUNameIDEmail
+  , mkUNameIDX509
+  , mkUNameIDWindows
+  , mkUNameIDKerberos
+  , mkUNameIDEntity
+  , mkUNameIDPersistent
+  , mkUNameIDTransient
+  , unameIDFormat
+  , Status(..)
+  , Assertion(..)
+  , assID
+  , assIssueInstant
+  , assIssuer
+  , assConditions
+  , assContents
+  , Conditions(..)
+  , condNotBefore
+  , condNotOnOrAfter
+  , condOneTimeUse
+  , condAudienceRestriction
+  , SubjectAndStatements(..)
+  , sasSubject
+  , sasStatements
+  , Subject(..)
+  , subjectID
+  , subjectConfirmations
+  , SubjectConfirmation(..)
+  , scMethod
+  , scData
+  , SubjectConfirmationMethod(..)
+  , SubjectConfirmationData(..)
+  , scdNotBefore
+  , scdNotOnOrAfter
+  , scdRecipient
+  , scdInResponseTo
+  , scdAddress
+  , IP, ipToST, mkIP
+  , DNSName, fromDNSName, mkDNSName
+  , Statement(..), isAuthnStatement
+  , astAuthnInstant
+  , astSessionIndex
+  , astSessionNotOnOrAfter
+  , astSubjectLocality
+  , Locality(..)
+  , localityAddress
+  , localityDNSName
+  , normalizeAssertion
+  , idPIdToST
+  , assEndOfLife
+  , rspInResponseTo
+  , getUserRef
+  , nelConcat
+  , (<$$>)
+  ) where
 
 import Control.Lens
 import Control.Monad.Except
@@ -25,8 +157,35 @@ import URI.ByteString  -- FUTUREWORK: should saml2-web-sso also use the URI from
 import qualified Data.List as L
 import qualified Data.Text as ST
 import qualified Data.X509 as X509
+import qualified Foundation.Network.IPv4 as IPv4
+import qualified Foundation.Network.IPv6 as IPv6
+import qualified Foundation.Parser as IP
+import qualified Network.DNS.Utils as DNS
 import qualified Servant
+import qualified Text.Email.Validate as Email
 
+
+-- | Text that needs to be escaped when rendered into XML.  See 'mkXmlText', 'escapeXmlText'.
+-- 'XmlText' must be preferred over 'ST' within this module.  'unsafeFromXmlText' is exported
+-- for use cases like storing texts in a database.
+newtype XmlText = XmlText { unsafeFromXmlText :: ST }
+  deriving (Eq, Ord, Show, Generic)
+
+-- | Construct an 'XmlText'
+mkXmlText :: ST -> XmlText
+mkXmlText = XmlText
+
+-- | Take an 'XmlText' and return a 'Text' that is safe to inject into serialized XML.
+escapeXmlText :: XmlText -> ST
+escapeXmlText (XmlText txt) = go txt
+  where
+    go = ST.concatMap $ \case
+      '<'  -> "&lt;"
+      '>'  -> "&gt;"
+      '&'  -> "&amp;"
+      '\'' -> "&apos;"
+      '"'  -> "&quot;"
+      c    -> ST.singleton c
 
 ----------------------------------------------------------------------
 -- high-level
@@ -87,8 +246,8 @@ data SPMetadata = SPMetadata
   { _spID             :: ID SPMetadata
   , _spValidUntil     :: UTCTime          -- FUTUREWORK: Time
   , _spCacheDuration  :: NominalDiffTime  -- FUTUREWORK: Duration
-  , _spOrgName        :: ST
-  , _spOrgDisplayName :: ST
+  , _spOrgName        :: XmlText
+  , _spOrgDisplayName :: XmlText
   , _spOrgURL         :: URI
   , _spResponseURL    :: URI
   , _spContacts       :: NonEmpty ContactPerson
@@ -98,11 +257,11 @@ data SPMetadata = SPMetadata
 -- | [4/2.3.2.2].  Zero or more persons are required in metainfo document [4/2.4.1].
 data ContactPerson = ContactPerson
   { _cntType      :: ContactType
-  , _cntCompany   :: Maybe ST
-  , _cntGivenName :: Maybe ST
-  , _cntSurname   :: Maybe ST
+  , _cntCompany   :: Maybe XmlText
+  , _cntGivenName :: Maybe XmlText
+  , _cntSurname   :: Maybe XmlText
   , _cntEmail     :: Maybe URI
-  , _cntPhone     :: Maybe ST
+  , _cntPhone     :: Maybe XmlText
   }
   deriving (Eq, Show, Generic)
 
@@ -181,14 +340,14 @@ data Comparison = Exact | Minimum | Maximum | Better
   deriving (Eq, Show, Generic)
 
 data RequestedAuthnContext = RequestedAuthnContext
-  { _rqacAuthnContexts :: [ST] -- ^ either classRef or declRef
+  { _rqacAuthnContexts :: [XmlText] -- ^ either classRef or declRef
   , _rqacComparison    :: Comparison
   } deriving (Eq, Show, Generic)
 
 -- | [1/3.4.1.1]
 data NameIdPolicy = NameIdPolicy
   { _nidFormat          :: NameIDFormat
-  , _nidSpNameQualifier :: Maybe ST
+  , _nidSpNameQualifier :: Maybe XmlText
   , _nidAllowCreate     :: Bool  -- ^ default: 'False'
   } deriving (Eq, Show, Generic)
 
@@ -230,59 +389,30 @@ addTime n (Time t) = Time $ addUTCTime n t
 
 -- | IDs must be globally unique between all communication parties and adversaries with a negligible
 -- failure probability.  We should probably just use UUIDv4, but we may not have any choice.  [1/1.3.4]
-newtype ID m = ID { renderID :: ST }
+newtype ID m = ID { fromID :: XmlText }
   deriving (Eq, Ord, Show, Generic)
+
+mkID :: ST -> ID m
+mkID = ID . mkXmlText
 
 -- | [1/2.2.1]
 data BaseID = BaseID
-  { _baseID        :: ST
-  , _baseIDNameQ   :: Maybe ST
-  , _baseIDSPNameQ :: Maybe ST
+  { _baseID        :: XmlText
+  , _baseIDNameQ   :: Maybe XmlText
+  , _baseIDSPNameQ :: Maybe XmlText
   }
   deriving (Eq, Show, Generic)
+
+mkBaseID :: ST -> Maybe ST -> Maybe ST -> BaseID
+mkBaseID i n s = BaseID (mkXmlText i) (mkXmlText <$> n) (mkXmlText <$> s)
 
 -- | [1/2.2.2], [1/2.2.3], [1/3.4.1.1], see 'mkNameID' implementation for constraints on this type.
 data NameID = NameID
   { _nameID             :: UnqualifiedNameID
-  , _nameIDNameQ        :: Maybe ST
-  , _nameIDSPNameQ      :: Maybe ST
-  , _nameIDSPProvidedID :: Maybe ST
+  , _nameIDNameQ        :: Maybe XmlText
+  , _nameIDSPNameQ      :: Maybe XmlText
+  , _nameIDSPProvidedID :: Maybe XmlText
   }
-  deriving (Eq, Ord, Show, Generic)
-
--- | [1/8.3]
-data NameIDFormat
-  = NameIDFUnspecified  -- ^ 'nameIDNameQ', 'nameIDSPNameQ' SHOULD be omitted.
-  | NameIDFEmail
-  | NameIDFX509
-  | NameIDFWindows
-  | NameIDFKerberos
-  | NameIDFEntity
-  | NameIDFPersistent   -- ^ use UUIDv4 where we have the choice.
-  | NameIDFTransient
-  deriving (Eq, Ord, Enum, Bounded, Show, Generic)
-
--- | [1/8.3]
-type family NameIDReprFormat (t :: NameIDFormat) where
-  NameIDReprFormat 'NameIDFUnspecified = ST
-  NameIDReprFormat 'NameIDFEmail       = ST
-  NameIDReprFormat 'NameIDFX509        = ST
-  NameIDReprFormat 'NameIDFWindows     = ST
-  NameIDReprFormat 'NameIDFKerberos    = ST
-  NameIDReprFormat 'NameIDFEntity      = URI
-  NameIDReprFormat 'NameIDFPersistent  = ST
-  NameIDReprFormat 'NameIDFTransient   = ST
-
--- | [1/8.3]  (FUTUREWORK: there may be a way to make this nicer by using 'NameIDFormat', 'NameIDReprFormat'.
-data UnqualifiedNameID
-  = UNameIDUnspecified ST  -- ^ 'nameIDNameQ', 'nameIDSPNameQ' SHOULD be omitted.
-  | UNameIDEmail       ST
-  | UNameIDX509        ST
-  | UNameIDWindows     ST
-  | UNameIDKerberos    ST
-  | UNameIDEntity      URI
-  | UNameIDPersistent  ST  -- ^ use UUIDv4 where we have the choice.
-  | UNameIDTransient   ST
   deriving (Eq, Ord, Show, Generic)
 
 mkNameID :: MonadError String m => UnqualifiedNameID -> Maybe ST -> Maybe ST -> Maybe ST -> m NameID
@@ -300,18 +430,75 @@ mkNameID nid@(UNameIDEntity uri) m1 m2 m3 = do
 mkNameID nid@(UNameIDPersistent txt) m1 m2 m3 = do
   mapM_ throwError $
     [ "mkNameID: persistent text too long: "
-      <> show (nid, ST.length txt)
-    | ST.length txt > 1024
+      <> show (nid, ST.length (unsafeFromXmlText txt))
+    | ST.length (unsafeFromXmlText txt) > 1024
     ]
-  pure $ NameID nid m1 m2 m3
+  pure $ NameID nid (mkXmlText <$> m1) (mkXmlText <$> m2) (mkXmlText <$> m3)
 mkNameID nid m1 m2 m3 = do
-  pure $ NameID nid m1 m2 m3
+  pure $ NameID nid (mkXmlText <$> m1) (mkXmlText <$> m2) (mkXmlText <$> m3)
 
-opaqueNameID :: ST -> NameID
-opaqueNameID raw = NameID (UNameIDUnspecified raw) Nothing Nothing Nothing
+unspecifiedNameID :: ST -> NameID
+unspecifiedNameID raw = NameID (mkUNameIDUnspecified raw) Nothing Nothing Nothing
+
+emailNameID :: MonadError String m => ST -> m NameID
+emailNameID raw = do
+  email <- mkUNameIDEmail raw
+  pure $ NameID email Nothing Nothing Nothing
 
 entityNameID :: URI -> NameID
-entityNameID uri = NameID (UNameIDEntity uri) Nothing Nothing Nothing
+entityNameID uri = NameID (mkUNameIDEntity uri) Nothing Nothing Nothing
+
+-- | [1/8.3]
+data NameIDFormat
+  = NameIDFUnspecified  -- ^ 'nameIDNameQ', 'nameIDSPNameQ' SHOULD be omitted.
+  | NameIDFEmail
+  | NameIDFX509
+  | NameIDFWindows
+  | NameIDFKerberos
+  | NameIDFEntity
+  | NameIDFPersistent   -- ^ use UUIDv4 where we have the choice.
+  | NameIDFTransient
+  deriving (Eq, Ord, Enum, Bounded, Show, Generic)
+
+-- | [1/8.3]  (FUTUREWORK: there may be a way to make this nicer by using 'NameIDFormat', 'NameIDReprFormat'.
+data UnqualifiedNameID
+  = UNameIDUnspecified XmlText  -- ^ 'nameIDNameQ', 'nameIDSPNameQ' SHOULD be omitted.
+  | UNameIDEmail       Email
+  | UNameIDX509        XmlText
+  | UNameIDWindows     XmlText
+  | UNameIDKerberos    XmlText
+  | UNameIDEntity      URI
+  | UNameIDPersistent  XmlText  -- ^ use UUIDv4 where we have the choice.
+  | UNameIDTransient   XmlText
+  deriving (Eq, Ord, Show, Generic)
+
+newtype Email = Email { fromEmail :: Email.EmailAddress }
+  deriving (Eq, Ord, Show)
+
+mkUNameIDUnspecified :: ST -> UnqualifiedNameID
+mkUNameIDUnspecified = UNameIDUnspecified . mkXmlText
+
+mkUNameIDEmail :: MonadError String m => ST -> m UnqualifiedNameID
+mkUNameIDEmail = either throwError (pure . UNameIDEmail . Email) . Email.validate . cs
+
+mkUNameIDX509 :: ST -> UnqualifiedNameID
+mkUNameIDX509 = UNameIDX509 . mkXmlText
+
+mkUNameIDWindows :: ST -> UnqualifiedNameID
+mkUNameIDWindows = UNameIDWindows . mkXmlText
+
+mkUNameIDKerberos :: ST -> UnqualifiedNameID
+mkUNameIDKerberos = UNameIDKerberos . mkXmlText
+
+mkUNameIDEntity :: URI -> UnqualifiedNameID
+mkUNameIDEntity = UNameIDEntity
+
+mkUNameIDPersistent :: ST -> UnqualifiedNameID
+mkUNameIDPersistent = UNameIDPersistent . mkXmlText
+
+mkUNameIDTransient :: ST -> UnqualifiedNameID
+mkUNameIDTransient = UNameIDTransient . mkXmlText
+
 
 nameIDFormat :: HasCallStack => NameIDFormat -> String
 nameIDFormat = \case
@@ -335,19 +522,26 @@ unameIDFormat = \case
   UNameIDPersistent _  -> "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
   UNameIDTransient _   -> "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"
 
+nameIDToST :: NameID -> ST
+nameIDToST (NameID (UNameIDUnspecified txt) Nothing Nothing Nothing) = escapeXmlText txt
+nameIDToST (NameID (UNameIDEmail (Email txt)) Nothing Nothing Nothing) = cs $ Email.toByteString txt
+nameIDToST (NameID (UNameIDEntity uri) Nothing Nothing Nothing) = renderURI uri
+nameIDToST other = cs $ show other  -- (some of the others may also have obvious
+                                    -- serializations, but we don't need them for now.)
+
 -- | Extract the 'UnqualifiedNameID' part from the input and render it to a 'ST'.  If there are any
 -- qualifiers, return 'Nothing' to prevent name clashes (where two inputs are different, but produce
 -- the same output).
 shortShowNameID :: NameID -> Maybe ST
 shortShowNameID (NameID uqn Nothing Nothing Nothing) = case uqn of
-  UNameIDUnspecified st  -> Just st
-  UNameIDEmail       st  -> Just st
-  UNameIDX509        st  -> Just st
-  UNameIDWindows     st  -> Just st
-  UNameIDKerberos    st  -> Just st
+  UNameIDUnspecified st  -> Just $ escapeXmlText st
+  UNameIDEmail       em  -> Just . cs . Email.toByteString . fromEmail $ em
+  UNameIDX509        st  -> Just $ escapeXmlText st
+  UNameIDWindows     st  -> Just $ escapeXmlText st
+  UNameIDKerberos    st  -> Just $ escapeXmlText st
   UNameIDEntity      uri -> Just $ renderURI uri
-  UNameIDPersistent  st  -> Just st
-  UNameIDTransient   st  -> Just st
+  UNameIDPersistent  st  -> Just $ escapeXmlText st
+  UNameIDTransient   st  -> Just $ escapeXmlText st
 shortShowNameID _ = Nothing
 
 
@@ -422,24 +616,50 @@ data SubjectConfirmationData = SubjectConfirmationData
   }
   deriving (Eq, Show, Generic)
 
-newtype IP = IP ST
+
+data IP
+  = IPv4 IPv4.IPv4
+  | IPv6 IPv6.IPv6
   deriving (Eq, Show, Generic)
+
+mkIP :: MonadError String m => ST -> m IP
+mkIP raw = do
+  let mv4 = IP.parseOnly IPv4.ipv4Parser (cs @_ @String raw)
+      mv6 = IP.parseOnly IPv6.ipv6Parser (cs @_ @String raw)
+  case (mv4, mv6) of
+    (Right v4, _) -> pure $ IPv4 v4
+    (_, Right v6) -> pure $ IPv6 v6
+    bad           -> throwError $ "could not parse IP address: " <> show bad
+
+ipToST :: IP -> ST
+ipToST (IPv4 ip) = cs $ show ip
+ipToST (IPv6 ip) = cs $ show ip
+
+
+newtype DNSName = DNSName { fromDNSName :: XmlText }
+  deriving (Eq, Show, Generic)
+
+mkDNSName :: ST -> DNSName
+mkDNSName = DNSName . mkXmlText . cs . DNS.normalize  . cs
 
 -- | The core content of the 'Assertion'.  [1/2.7]
 data Statement
   = AuthnStatement  -- [1/2.7.2]
     { _astAuthnInstant        :: Time
-    , _astSessionIndex        :: Maybe ST  -- safe to ignore
+    , _astSessionIndex        :: Maybe XmlText  -- ^ safe to ignore
     , _astSessionNotOnOrAfter :: Maybe Time
     , _astSubjectLocality     :: Maybe Locality
     }
   deriving (Eq, Show, Generic)
 
+-- | (just in case we add other constructors in the future.)
+isAuthnStatement :: Statement -> Bool
+isAuthnStatement AuthnStatement{} = True
 
 -- | [1/2.7.2.1]
 data Locality = Locality
   { _localityAddress :: Maybe IP
-  , _localityDNSName :: Maybe ST
+  , _localityDNSName :: Maybe DNSName
   }
   deriving (Eq, Show, Generic)
 
@@ -479,13 +699,21 @@ makeLenses ''Subject
 makeLenses ''SubjectAndStatements
 makeLenses ''SubjectConfirmation
 makeLenses ''SubjectConfirmationData
-makeLenses ''Time
 makeLenses ''UnqualifiedNameID
 makeLenses ''UserRef
 
 makePrisms ''AccessVerdict
 makePrisms ''Statement
 makePrisms ''UnqualifiedNameID
+
+
+instance FromJSON XmlText where
+  parseJSON = withText "XmlText" $ pure . mkXmlText
+
+-- | (Escaping is not always necessary here, but it helps against mistakes where the json
+-- contents is used without escaping to construct xml content somewhere else.)
+instance ToJSON XmlText where
+  toJSON = String . escapeXmlText
 
 deriveJSON deriveJSONOptions ''IdPMetadata
 deriveJSON deriveJSONOptions ''IdPConfig
@@ -512,10 +740,10 @@ deriveJSON deriveJSONOptions ''ContactPerson
 deriveJSON deriveJSONOptions ''ContactType
 
 instance Servant.FromHttpApiData (ID a) where
-  parseUrlPiece = fmap ID . Servant.parseUrlPiece
+  parseUrlPiece = fmap (ID . mkXmlText) . Servant.parseUrlPiece
 
 instance Servant.ToHttpApiData (ID a) where
-  toUrlPiece = Servant.toUrlPiece . renderID
+  toUrlPiece = Servant.toUrlPiece . escapeXmlText . fromID
 
 instance Servant.FromHttpApiData Time where
   parseUrlPiece st =
@@ -552,8 +780,14 @@ instance ToJSON SubjectConfirmationMethod
 instance FromJSON SubjectConfirmationData
 instance ToJSON SubjectConfirmationData
 
-instance FromJSON IP
-instance ToJSON IP
+instance FromJSON IP where
+  parseJSON = withText "IP address" $ either fail pure . mkIP
+
+instance ToJSON IP where
+  toJSON = String . ipToST
+
+instance FromJSON DNSName
+instance ToJSON DNSName
 
 instance FromJSON Statement
 instance ToJSON Statement
@@ -566,6 +800,12 @@ instance ToJSON (ID a)
 
 instance FromJSON NameID
 instance ToJSON NameID
+
+instance FromJSON Email where
+  parseJSON = withText "email address" $ either fail (pure . Email) . Email.validate . cs
+
+instance ToJSON Email where
+  toJSON = String . cs . Email.toByteString . fromEmail
 
 instance FromJSON UnqualifiedNameID
 instance ToJSON UnqualifiedNameID

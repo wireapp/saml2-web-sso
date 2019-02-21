@@ -24,7 +24,7 @@ mkAuthnResponse
   :: (HasCallStack, HasMonadSign m, HasLogger m, HasCreateUUID m, HasNow m)
   => SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> m SignedAuthnResponse
 mkAuthnResponse creds idp spmeta areq grant = do
-  subj <- opaqueNameID . UUID.toText <$> createUUID
+  subj <- unspecifiedNameID . UUID.toText <$> createUUID
   mkAuthnResponseWithSubj subj creds idp spmeta areq grant
 
 -- | Replace the 'NameID' child of the 'Subject' with a given one.
@@ -77,7 +77,7 @@ mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp sp authnreq g
       idpissuer :: ST = idp ^. idpMetadata . edIssuer . fromIssuer . to renderURI
       recipient :: ST = sp ^. spResponseURL . to renderURI
       spissuer  :: ST = authnreq ^. rqIssuer . fromIssuer . to renderURI
-      inResponseTo    = renderID $ authnreq ^. rqID
+      inResponseTo    = escapeXmlText . fromID $ authnreq ^. rqID
       status
         | grantAccess = "urn:oasis:names:tc:SAML:2.0:status:Success"
         | otherwise   = "urn:oasis:names:tc:SAML:2.0:status:Requester"
