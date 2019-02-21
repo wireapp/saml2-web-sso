@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes       #-}
 
 {-# OPTIONS_GHC -Wno-unused-binds -Wno-incomplete-patterns -Wno-incomplete-uni-patterns #-}
 
@@ -9,6 +10,7 @@ import Data.String.Conversions
 import SAML2.Util
 import SAML2.WebSSO
 import Test.Hspec
+import URI.ByteString.QQ (uri)
 
 import qualified Data.Text.Lazy as LT
 import qualified SAML2.Core as HS
@@ -16,14 +18,17 @@ import qualified SAML2.XML as HS
 
 -- | embed an email into a valid NameID context
 xmlWithName :: Maybe LT -> LT -> LT
-xmlWithName mformat email = "<NameID " <> namespaces <> format <> ">" <> email <> "</NameID>"
+xmlWithName mformat txt =
+  "<NameID " <> namespaces <> format <> " " <> namespaces2 <> ">" <> txt <> "</NameID>"
   where
     namespaces = LT.unwords
       [ "xmlns:samlp=\"urn:oasis:names:tc:SAML:2.0:protocol\""
       , "xmlns:samla=\"urn:oasis:names:tc:SAML:2.0:assertion\""
       , "xmlns:samlm=\"urn:oasis:names:tc:SAML:2.0:metadata\""
       , "xmlns:ds=\"http://www.w3.org/2000/09/xmldsig#\""
-      , "xmlns=\"urn:oasis:names:tc:SAML:2.0:assertion\""
+      ]
+    namespaces2 = LT.unwords
+      [ "xmlns=\"urn:oasis:names:tc:SAML:2.0:assertion\""
       ]
     format = maybe "" (\f -> " Format=\"" <> f <> "\"") mformat
 
@@ -46,7 +51,8 @@ spec = describe "XML Sanitization" $ do
 
     it "should fail to decode an invalid email" $ do
       decodeElem @NameID (xmlWithName (Just emailFormat) "&lt;somebody@example.org&gt;")
-        `shouldSatisfy` isLeft
+        `shouldBe` Left "HasXML: could not parse NameID: \"\\\": Failed reading: satisfyWith\""
+        -- the "\": Failed reading: satisfyWith" part is from 'Text.Email.Validate.validate'
 
     it "should decode an escaped name if format is unspecified" $ do
       decodeElem (xmlWithName (Just unspecifiedFormat) "&lt;somebody@example.org&gt;")
@@ -80,6 +86,14 @@ spec = describe "XML Sanitization" $ do
       encodeElem (unspecifiedNameID "<something>")
         `shouldBe` (xmlWithName Nothing "&lt;something&gt;")
 
+    it "rendering escapes emails correctly" $ do
+      encodeElem (fromRight (error "bad test case") $ emailNameID "a&@b.c")
+        `shouldBe` (xmlWithName (Just emailFormat) "a&amp;@b.c")
+
+    it "rendering escapes urls correctly" $ do
+      encodeElem (entityNameID [uri|http://example.com/?<&>|])
+        `shouldBe` (xmlWithName (Just entityFormat) "http://example.com/?%3C=&amp;%3E=")
+
     it "sadly, hsaml2 does not escape unsafe strings" $ do
       -- this test case reproduces an issue with hsaml2 that motivates us manually escaping
       -- the 'XmlText's in the serialization functions here in saml2-web-sso.
@@ -87,3 +101,11 @@ spec = describe "XML Sanitization" $ do
       HS.samlToXML (HS.simpleNameID HS.NameIDFormatUnspecified "<something>")
         `shouldBe` "<NameID xmlns=\"urn:oasis:names:tc:SAML:2.0:assertion\"><something></NameID>"
         -- it really shouldn't, though!
+
+      HS.xmlToSAML @HS.NameID "<NameID xmlns=\"urn:oasis:names:tc:SAML:2.0:assertion\"><something></NameID>"
+        `shouldSatisfy` isLeft
+        -- this is good!
+
+      HS.xmlToSAML @HS.NameID "<NameID xmlns=\"urn:oasis:names:tc:SAML:2.0:assertion\">&lt;something&gt;</NameID>"
+        `shouldBe` Right (HS.simpleNameID HS.NameIDFormatUnspecified "<something>")
+        -- this is good!

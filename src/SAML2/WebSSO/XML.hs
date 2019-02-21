@@ -566,11 +566,13 @@ exportNameID name = HS.NameID
 
     unform :: UnqualifiedNameID -> (HS.IdentifiedURI HS.NameIDFormat, ST)
     unform (UNameIDUnspecified n) = (HS.Identified HS.NameIDFormatUnspecified, escapeXmlText n)
-    unform (UNameIDEmail       n) = (HS.Identified HS.NameIDFormatEmail, cs . Email.toByteString $ fromEmail n)
+    unform (UNameIDEmail       n) = (HS.Identified HS.NameIDFormatEmail,
+                                     escapeXmlText . mkXmlText . cs . Email.toByteString $ fromEmail n)
     unform (UNameIDX509        n) = (HS.Identified HS.NameIDFormatX509, escapeXmlText n)
     unform (UNameIDWindows     n) = (HS.Identified HS.NameIDFormatWindows, escapeXmlText n)
     unform (UNameIDKerberos    n) = (HS.Identified HS.NameIDFormatKerberos, escapeXmlText n)
-    unform (UNameIDEntity      n) = (HS.Identified HS.NameIDFormatEntity, renderURI n)
+    unform (UNameIDEntity      n) = (HS.Identified HS.NameIDFormatEntity,
+                                     escapeXmlText . mkXmlText . cs $ renderURI n)
     unform (UNameIDPersistent  n) = (HS.Identified HS.NameIDFormatPersistent, escapeXmlText n)
     unform (UNameIDTransient   n) = (HS.Identified HS.NameIDFormatTransient, escapeXmlText n)
 
