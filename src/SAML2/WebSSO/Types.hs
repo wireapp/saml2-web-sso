@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings   #-}
 
 module SAML2.WebSSO.Types
-  ( XmlText, mkXmlText, escapeXmlText
+  ( XmlText, mkXmlText, escapeXmlText, unsafeFromXmlText
   , AccessVerdict(..)
   , _AccessDenied
   , _AccessGranted
@@ -166,8 +166,9 @@ import qualified Text.Email.Validate as Email
 
 
 -- | Text that needs to be escaped when rendered into XML.  See 'mkXmlText', 'escapeXmlText'.
--- XmlText must be preferred over 'ST' within this module
-newtype XmlText = XmlText { fromXmlText :: ST }
+-- 'XmlText' must be preferred over 'ST' within this module.  'unsafeFromXmlText' is exported
+-- for use cases like storing texts in a database.
+newtype XmlText = XmlText { unsafeFromXmlText :: ST }
   deriving (Eq, Ord, Show, Generic)
 
 -- | Construct an 'XmlText'
@@ -429,8 +430,8 @@ mkNameID nid@(UNameIDEntity uri) m1 m2 m3 = do
 mkNameID nid@(UNameIDPersistent txt) m1 m2 m3 = do
   mapM_ throwError $
     [ "mkNameID: persistent text too long: "
-      <> show (nid, ST.length (fromXmlText txt))
-    | ST.length (fromXmlText txt) > 1024
+      <> show (nid, ST.length (unsafeFromXmlText txt))
+    | ST.length (unsafeFromXmlText txt) > 1024
     ]
   pure $ NameID nid (mkXmlText <$> m1) (mkXmlText <$> m2) (mkXmlText <$> m3)
 mkNameID nid m1 m2 m3 = do
