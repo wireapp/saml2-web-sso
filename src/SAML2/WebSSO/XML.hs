@@ -508,7 +508,7 @@ importStatement bad = die (Proxy @Statement) bad
 
 exportStatement :: (HasCallStack) => Statement -> HS.Statement
 exportStatement stm = HS.StatementAuthn HS.AuthnStatement
-  { HS.authnStatementInstant             = fromTime $ stm ^. astAuthnInstant
+  { HS.authnStatementInstant             = exportTime $ stm ^. astAuthnInstant
   , HS.authnStatementSessionIndex        = cs . escapeXmlText <$> (stm ^. astSessionIndex)
   , HS.authnStatementSessionNotOnOrAfter = exportTime <$> (stm ^. astSessionNotOnOrAfter)
   , HS.authnStatementSubjectLocality     = exportLocality <$> (stm ^. astSubjectLocality)
