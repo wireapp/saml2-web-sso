@@ -230,7 +230,7 @@ instance HasXMLRoot xml => Servant.MimeUnrender HTML (FormRedirect xml) where
 -- handlers
 
 meta
-  :: forall m err. (SPHandler (Error err) m, HasConfig m)
+  :: forall m err. (SPStore m, MonadError err m, HasConfig m)
   => ST -> m Issuer -> m URI -> m SPMetadata
 meta appName getRequestIssuer getResponseURI = do
   enterH "meta"
@@ -242,7 +242,7 @@ meta appName getRequestIssuer getResponseURI = do
 -- | Create authnreq, store it for comparison against assertions later, and return it in an HTTP
 -- redirect together with the IdP's URI.
 authreq
-  :: (SPHandler (Error err) m)
+  :: (SPStore m, SPStoreIdP err m, MonadError err m)
   => NominalDiffTime -> m Issuer
   -> IdPId -> m (FormRedirect AuthnRequest)
 authreq lifeExpectancySecs getIssuer idpid = do
@@ -255,7 +255,7 @@ authreq lifeExpectancySecs getIssuer idpid = do
 
 -- | 'authreq' with request life expectancy defaulting to 8 hours.
 authreq'
-  :: (SPHandler (Error err) m)
+  :: (SPStore m, SPStoreIdP err m, MonadError err m)
   => m Issuer
   -> IdPId -> m (FormRedirect AuthnRequest)
 authreq' = authreq defReqTTL
@@ -267,7 +267,7 @@ defReqTTL = 15 * 60  -- seconds
 -- handler takes a response and a verdict (provided by this package), and can cause any effects in
 -- 'm' and return anything it likes.
 authresp
-  :: SPHandler (Error err) m
+  :: (SP m, SPStoreIdP (Error err) m, SPStoreID Assertion m, SPStoreID AuthnRequest m)
   => m Issuer -> m URI -> (AuthnResponse -> AccessVerdict -> m resp)
   -> AuthnResponseBody -> m resp
 authresp getSPIssuer getResponseURI handleVerdictAction body = do
@@ -281,7 +281,7 @@ authresp getSPIssuer getResponseURI handleVerdictAction body = do
 
 -- | a variant of 'authresp' with a less general verdict handler.
 authresp'
-  :: SPHandler (Error err) m
+  :: (SP m, SPStoreIdP (Error err) m, SPStoreID Assertion m, SPStoreID AuthnRequest m)
   => m Issuer -> m URI -> HandleVerdict m
   -> AuthnResponseBody -> m (WithCookieAndLocation ST)
 authresp' getRequestIssuerURI getResponseURI handleVerdict body = do
@@ -297,7 +297,9 @@ type WithCookieAndLocation = Headers '[Servant.Header "Set-Cookie" Cky, Servant.
 type Cky = Cky.SimpleSetCookie CookieName
 type CookieName = "saml2-web-sso"
 
-simpleOnSuccess :: SPHandler (Error err) m => OnSuccessRedirect m
+simpleOnSuccess
+  :: SP m
+  => OnSuccessRedirect m
 simpleOnSuccess uid = do
   cky    <- Cky.toggleCookie "/" $ Just (userRefToST uid, defReqTTL)
   appuri <- (^. cfgSPAppURI) <$> getConfig
@@ -312,7 +314,9 @@ data HandleVerdict m
 
 type ResponseVerdict = ServantErr
 
-simpleHandleVerdict :: (SP m, SPHandler (Error err) m) => OnSuccessRedirect m -> AccessVerdict -> m (WithCookieAndLocation ST)
+simpleHandleVerdict
+  :: (SP m, MonadError (Error err) m)
+  => OnSuccessRedirect m -> AccessVerdict -> m (WithCookieAndLocation ST)
 simpleHandleVerdict onsuccess = \case
     AccessDenied reasons
       -> logger Debug (show reasons) >> (throwError . Forbidden . cs $ ST.intercalate "; " (explainDeniedReason <$> reasons))
