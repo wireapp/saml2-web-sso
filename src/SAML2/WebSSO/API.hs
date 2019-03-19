@@ -21,6 +21,7 @@ module SAML2.WebSSO.API
 
 import Control.Lens hiding (element)
 import Control.Monad.Except hiding (ap)
+import Data.Either (isRight)
 import Data.EitherR
 import Data.List.NonEmpty (NonEmpty)
 import Data.Maybe (catMaybes)
@@ -46,6 +47,7 @@ import Text.XML.DSig
 import URI.ByteString
 
 import qualified Data.ByteString.Base64.Lazy as EL (encode, decodeLenient)
+import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Map as Map
 import qualified Data.Text as ST
 import qualified SAML2.WebSSO.Cookie as Cky
@@ -153,9 +155,36 @@ simpleVerifyAuthnResponse creds raw = do
             $ Map.lookup "ID" attrs
       assertionID `mapM` assertions
 
-    do
-      let err = throwError . BadSamlResponseInvalidSignature . cs
-      either err pure $ verify creds raw `mapM_` nodeids
+    allVerifies creds raw nodeids
+
+-- | Call verify and, if that fails, any work-arounds we have.  Discard all errors from
+-- work-arounds, and throw the error from the regular verification.
+allVerifies :: forall m err. MonadError (Error err) m => NonEmpty SignCreds -> LBS -> [String] -> m ()
+allVerifies creds raw nodeids = do
+  let workArounds :: [Either String ()]
+      workArounds =
+        [ verifyADFS creds raw nodeids
+        ]
+
+  case verify creds raw `mapM_` nodeids of
+    Right () -> pure ()
+    Left err -> do
+      if any isRight workArounds
+        then pure ()
+        else throwError . BadSamlResponseInvalidSignature $ cs err
+
+-- | ADFS illegally breaks whitespace after signing documents; here we try to fix that.
+-- https://github.com/wireapp/wire-server/issues/656
+verifyADFS :: MonadError String m => NonEmpty SignCreds -> LBS -> [String] -> m ()
+verifyADFS creds raw nodeids = verify creds raw' `mapM_` nodeids
+  where
+    raw' = go raw
+      where
+        go :: LBS -> LBS
+        go ""  = ""
+        go rw = case (LBS.splitAt 3 rw, LBS.splitAt 1 rw) of
+                  (("> <", tl), _)        -> "><" <> go tl
+                  (_,           (hd, tl)) -> hd <> go tl
 
 
 ----------------------------------------------------------------------
