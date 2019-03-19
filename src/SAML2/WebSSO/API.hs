@@ -70,7 +70,8 @@ type API = APIMeta'
       :<|> APIAuthReq'
       :<|> APIAuthResp'
 
-api :: forall err m. SPHandler (Error err) m => ST -> HandleVerdict m -> ServerT API m
+api :: forall err m
+     . SPHandler (Error 'True err) m => ST -> HandleVerdict 'True m -> ServerT API m
 api appName handleVerdict =
        meta appName defSPIssuer defResponseURI
   :<|> authreq' defSPIssuer
@@ -91,13 +92,13 @@ defResponseURI = getSsoURI (Proxy @API) (Proxy @APIAuthResp')
 -- | An 'AuthnResponseBody' contains a 'AuthnResponse', but you need to give it a trust base forn
 -- signature verification first, and you may get an error when you're looking at it.
 newtype AuthnResponseBody = AuthnResponseBody
-  { fromAuthnResponseBody :: forall m err. SPStoreIdP (Error err) m => m AuthnResponse }
+  { fromAuthnResponseBody :: forall m (with :: Bool) err. SPStoreIdP (Error with err) m => m AuthnResponse }
 
 renderAuthnResponseBody :: AuthnResponse -> LBS
 renderAuthnResponseBody = EL.encode . cs . encode
 
 -- | Implies verification, hence the constraint.
-parseAuthnResponseBody :: forall m err. SPStoreIdP (Error err) m => LBS -> m AuthnResponse
+parseAuthnResponseBody :: forall m with err. SPStoreIdP (Error with err) m => LBS -> m AuthnResponse
 parseAuthnResponseBody base64 = do
   -- https://www.ietf.org/rfc/rfc4648.txt states that all "noise" characters should be rejected
   -- unless another standard says they should be ignored.  'EL.decodeLenient' chooses the radical
@@ -118,13 +119,13 @@ authnResponseBodyToMultipart resp = MultipartData [Input "SAMLResponse" (cs $ re
 instance FromMultipart Mem AuthnResponseBody where
   fromMultipart resp = Just (AuthnResponseBody eval)
     where
-      eval :: forall m err. SPStoreIdP (Error err) m => m AuthnResponse
+      eval :: forall m with err. SPStoreIdP (Error with err) m => m AuthnResponse
       eval = do
         base64 <- maybe (throwError BadSamlResponseFormFieldMissing) pure $
                   lookupInput "SAMLResponse" resp
         parseAuthnResponseBody (cs base64)
 
-issuerToCreds :: forall m err. SPStoreIdP (Error err) m => Maybe Issuer -> m (NonEmpty SignCreds)
+issuerToCreds :: forall m with err. SPStoreIdP (Error with err) m => Maybe Issuer -> m (NonEmpty SignCreds)
 issuerToCreds Nothing = throwError BadSamlResponseIssuerMissing
 issuerToCreds (Just issuer) = do
     certs <- (^. idpMetadata . edCertAuthnResponse) <$> getIdPConfigByIssuer issuer
@@ -134,7 +135,7 @@ issuerToCreds (Just issuer) = do
 -- | Pull assertions sub-forest and pass unparsed xml input to 'verify' with a reference to
 -- each assertion individually.  The input must be a valid 'AuthnResponse'.  All assertions
 -- need to be signed by the issuer given in the arguments using the same key.
-simpleVerifyAuthnResponse :: forall m err. MonadError (Error err) m => NonEmpty SignCreds -> LBS -> m ()
+simpleVerifyAuthnResponse :: forall m with err. MonadError (Error with err) m => NonEmpty SignCreds -> LBS -> m ()
 simpleVerifyAuthnResponse creds raw = do
     doc :: Cursor <- do
       let err = throwError . BadSamlResponseSamlError . cs . show
@@ -159,7 +160,7 @@ simpleVerifyAuthnResponse creds raw = do
 
 -- | Call verify and, if that fails, any work-arounds we have.  Discard all errors from
 -- work-arounds, and throw the error from the regular verification.
-allVerifies :: forall m err. MonadError (Error err) m => NonEmpty SignCreds -> LBS -> [String] -> m ()
+allVerifies :: forall m with err. MonadError (Error with err) m => NonEmpty SignCreds -> LBS -> [String] -> m ()
 allVerifies creds raw nodeids = do
   let workArounds :: [Either String ()]
       workArounds =
@@ -267,7 +268,7 @@ defReqTTL = 15 * 60  -- seconds
 -- handler takes a response and a verdict (provided by this package), and can cause any effects in
 -- 'm' and return anything it likes.
 authresp
-  :: (SP m, SPStoreIdP (Error err) m, SPStoreID Assertion m, SPStoreID AuthnRequest m)
+  :: (SP m, SPStoreIdP (Error with err) m, SPStoreID Assertion m, SPStoreID AuthnRequest m)
   => m Issuer -> m URI -> (AuthnResponse -> AccessVerdict -> m resp)
   -> AuthnResponseBody -> m resp
 authresp getSPIssuer getResponseURI handleVerdictAction body = do
@@ -281,13 +282,13 @@ authresp getSPIssuer getResponseURI handleVerdictAction body = do
 
 -- | a variant of 'authresp' with a less general verdict handler.
 authresp'
-  :: (SP m, SPStoreIdP (Error err) m, SPStoreID Assertion m, SPStoreID AuthnRequest m)
-  => m Issuer -> m URI -> HandleVerdict m
+  :: (SP m, SPStoreIdP (Error 'True err) m, SPStoreID Assertion m, SPStoreID AuthnRequest m)
+  => m Issuer -> m URI -> HandleVerdict 'True m
   -> AuthnResponseBody -> m (WithCookieAndLocation ST)
 authresp' getRequestIssuerURI getResponseURI handleVerdict body = do
   let handleVerdictAction resp verdict = case handleVerdict of
         HandleVerdictRedirect onsuccess -> simpleHandleVerdict onsuccess verdict
-        HandleVerdictRaw action -> throwError . CustomServant =<< action resp verdict
+        HandleVerdictRaw action -> throwError . CustomVerdict =<< action resp verdict
   authresp getRequestIssuerURI getResponseURI handleVerdictAction body
 
 
@@ -308,14 +309,12 @@ simpleOnSuccess uid = do
 -- | We support two cases: redirect with a cookie, and a generic response with arbitrary status,
 -- headers, and body.  The latter case fits the 'ServantErr' type well, but we give it a more
 -- suitable name here.
-data HandleVerdict m
-  = HandleVerdictRedirect (OnSuccessRedirect m)
-  | HandleVerdictRaw (AuthnResponse -> AccessVerdict -> m ResponseVerdict)
-
-type ResponseVerdict = ServantErr
+data HandleVerdict (withRaw :: Bool) m where
+  HandleVerdictRedirect :: OnSuccessRedirect m -> HandleVerdict withRaw m
+  HandleVerdictRaw      :: (AuthnResponse -> AccessVerdict -> m RawResponseVerdict) -> HandleVerdict 'True m
 
 simpleHandleVerdict
-  :: (SP m, MonadError (Error err) m)
+  :: (SP m, MonadError (Error with err) m)
   => OnSuccessRedirect m -> AccessVerdict -> m (WithCookieAndLocation ST)
 simpleHandleVerdict onsuccess = \case
     AccessDenied reasons
@@ -329,7 +328,7 @@ simpleHandleVerdict onsuccess = \case
 -- handler combinators
 
 -- | Write error info to log, and apologise to client.
-crash :: (SP m, MonadError (Error err) m) => String -> m a
+crash :: (SP m, MonadError (Error with err) m) => String -> m a
 crash msg = logger Fatal msg >> throwError UnknownError
 
 enterH :: SP m => String -> m ()

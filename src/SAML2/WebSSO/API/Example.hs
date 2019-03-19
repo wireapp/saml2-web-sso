@@ -122,7 +122,7 @@ instance SPStoreIdP SimpleError SimpleSP where
   getIdPConfigByIssuer = simpleGetIdPConfigBy (asks (^. spctxIdP)) (^. idpMetadata . edIssuer)
 
 simpleGetIdPConfigBy
-  :: (MonadError (Error err) m, HasConfig m, Show a, Ord a)
+  :: (MonadError (Error 'True err) m, HasConfig m, Show a, Ord a)
   => m [IdPConfig_] -> (IdPConfig_ -> a) -> a -> m IdPConfig_
 simpleGetIdPConfigBy getIdps mkkey idpname = do
   idps <- getIdps
