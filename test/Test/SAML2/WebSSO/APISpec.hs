@@ -132,7 +132,9 @@ spec = describe "API" $ do
                 missuer = (^. idpMetadata . edIssuer) <$> midpcfg
 
                 go :: TestSP ()
-                go = simpleVerifyAuthnResponse missuer resp
+                go = do
+                  creds <- issuerToCreds missuer
+                  simpleVerifyAuthnResponse creds resp
 
             if expectOutcome
               then run go `shouldReturn` ()
@@ -250,7 +252,8 @@ spec = describe "API" $ do
             SignedAuthnResponse authnrespDoc
               <- liftIO . ioFromTestSP ctx $ mkAuthnResponse sampleIdPPrivkey idpcfg spmeta authnreq True
             let authnrespLBS = renderLBS def authnrespDoc
-            simpleVerifyAuthnResponse (Just idpissuer) authnrespLBS
+            creds <- issuerToCreds (Just idpissuer)
+            simpleVerifyAuthnResponse creds authnrespLBS
           result `shouldSatisfy` expectation
 
     it "Produces output that passes 'simpleVerifyAuthnResponse'" $ do

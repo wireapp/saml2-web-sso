@@ -106,7 +106,8 @@ parseAuthnResponseBody base64 = do
   resp <-
     either (throwError . BadSamlResponseXmlError . cs) pure $
     decode (cs xmltxt)
-  simpleVerifyAuthnResponse (resp ^. rspIssuer) xmltxt
+  creds <- issuerToCreds (resp ^. rspIssuer)
+  simpleVerifyAuthnResponse creds xmltxt
   pure resp
 
 authnResponseBodyToMultipart :: AuthnResponse -> MultipartData tag
@@ -121,18 +122,18 @@ instance FromMultipart Mem AuthnResponseBody where
                   lookupInput "SAMLResponse" resp
         parseAuthnResponseBody (cs base64)
 
+issuerToCreds :: forall m err. SPStoreIdP (Error err) m => Maybe Issuer -> m (NonEmpty SignCreds)
+issuerToCreds Nothing = throwError BadSamlResponseIssuerMissing
+issuerToCreds (Just issuer) = do
+    certs <- (^. idpMetadata . edCertAuthnResponse) <$> getIdPConfigByIssuer issuer
+    let err = throwError . InvalidCert . ((encodeElem issuer <> ": ") <>) . cs
+    forM certs $ either err pure . certToCreds
 
 -- | Pull assertions sub-forest and pass unparsed xml input to 'verify' with a reference to
 -- each assertion individually.  The input must be a valid 'AuthnResponse'.  All assertions
 -- need to be signed by the issuer given in the arguments using the same key.
-simpleVerifyAuthnResponse :: forall m err. SPStoreIdP (Error err) m => Maybe Issuer -> LBS -> m ()
-simpleVerifyAuthnResponse Nothing _ = throwError BadSamlResponseIssuerMissing
-simpleVerifyAuthnResponse (Just issuer) raw = do
-    creds :: NonEmpty SignCreds <- do
-      certs <- (^. idpMetadata . edCertAuthnResponse) <$> getIdPConfigByIssuer issuer
-      let err = throwError . InvalidCert . ((encodeElem issuer <> ": ") <>) . cs
-      forM certs $ either err pure . certToCreds
-
+simpleVerifyAuthnResponse :: forall m err. MonadError (Error err) m => NonEmpty SignCreds -> LBS -> m ()
+simpleVerifyAuthnResponse creds raw = do
     doc :: Cursor <- do
       let err = throwError . BadSamlResponseSamlError . cs . show
       either err (pure . fromDocument) (parseLBS def raw)
