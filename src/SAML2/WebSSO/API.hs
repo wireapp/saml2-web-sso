@@ -21,6 +21,7 @@ module SAML2.WebSSO.API
 
 import Control.Lens hiding (element)
 import Control.Monad.Except hiding (ap)
+import Data.Either (isRight)
 import Data.EitherR
 import Data.List.NonEmpty (NonEmpty)
 import Data.Maybe (catMaybes)
@@ -46,6 +47,7 @@ import Text.XML.DSig
 import URI.ByteString
 
 import qualified Data.ByteString.Base64.Lazy as EL (encode, decodeLenient)
+import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Map as Map
 import qualified Data.Text as ST
 import qualified SAML2.WebSSO.Cookie as Cky
@@ -106,7 +108,8 @@ parseAuthnResponseBody base64 = do
   resp <-
     either (throwError . BadSamlResponseXmlError . cs) pure $
     decode (cs xmltxt)
-  simpleVerifyAuthnResponse (resp ^. rspIssuer) xmltxt
+  creds <- issuerToCreds (resp ^. rspIssuer)
+  simpleVerifyAuthnResponse creds xmltxt
   pure resp
 
 authnResponseBodyToMultipart :: AuthnResponse -> MultipartData tag
@@ -121,18 +124,18 @@ instance FromMultipart Mem AuthnResponseBody where
                   lookupInput "SAMLResponse" resp
         parseAuthnResponseBody (cs base64)
 
+issuerToCreds :: forall m err. SPStoreIdP (Error err) m => Maybe Issuer -> m (NonEmpty SignCreds)
+issuerToCreds Nothing = throwError BadSamlResponseIssuerMissing
+issuerToCreds (Just issuer) = do
+    certs <- (^. idpMetadata . edCertAuthnResponse) <$> getIdPConfigByIssuer issuer
+    let err = throwError . InvalidCert . ((encodeElem issuer <> ": ") <>) . cs
+    forM certs $ either err pure . certToCreds
 
 -- | Pull assertions sub-forest and pass unparsed xml input to 'verify' with a reference to
 -- each assertion individually.  The input must be a valid 'AuthnResponse'.  All assertions
 -- need to be signed by the issuer given in the arguments using the same key.
-simpleVerifyAuthnResponse :: forall m err. SPStoreIdP (Error err) m => Maybe Issuer -> LBS -> m ()
-simpleVerifyAuthnResponse Nothing _ = throwError BadSamlResponseIssuerMissing
-simpleVerifyAuthnResponse (Just issuer) raw = do
-    creds :: NonEmpty SignCreds <- do
-      certs <- (^. idpMetadata . edCertAuthnResponse) <$> getIdPConfigByIssuer issuer
-      let err = throwError . InvalidCert . ((encodeElem issuer <> ": ") <>) . cs
-      forM certs $ either err pure . certToCreds
-
+simpleVerifyAuthnResponse :: forall m err. MonadError (Error err) m => NonEmpty SignCreds -> LBS -> m ()
+simpleVerifyAuthnResponse creds raw = do
     doc :: Cursor <- do
       let err = throwError . BadSamlResponseSamlError . cs . show
       either err (pure . fromDocument) (parseLBS def raw)
@@ -152,9 +155,36 @@ simpleVerifyAuthnResponse (Just issuer) raw = do
             $ Map.lookup "ID" attrs
       assertionID `mapM` assertions
 
-    do
-      let err = throwError . BadSamlResponseInvalidSignature . cs
-      either err pure $ verify creds raw `mapM_` nodeids
+    allVerifies creds raw nodeids
+
+-- | Call verify and, if that fails, any work-arounds we have.  Discard all errors from
+-- work-arounds, and throw the error from the regular verification.
+allVerifies :: forall m err. MonadError (Error err) m => NonEmpty SignCreds -> LBS -> [String] -> m ()
+allVerifies creds raw nodeids = do
+  let workArounds :: [Either String ()]
+      workArounds =
+        [ verifyADFS creds raw nodeids
+        ]
+
+  case verify creds raw `mapM_` nodeids of
+    Right () -> pure ()
+    Left err -> do
+      if any isRight workArounds
+        then pure ()
+        else throwError . BadSamlResponseInvalidSignature $ cs err
+
+-- | ADFS illegally breaks whitespace after signing documents; here we try to fix that.
+-- https://github.com/wireapp/wire-server/issues/656
+verifyADFS :: MonadError String m => NonEmpty SignCreds -> LBS -> [String] -> m ()
+verifyADFS creds raw nodeids = verify creds raw' `mapM_` nodeids
+  where
+    raw' = go raw
+      where
+        go :: LBS -> LBS
+        go ""  = ""
+        go rw = case (LBS.splitAt 3 rw, LBS.splitAt 1 rw) of
+                  (("> <", tl), _)        -> "><" <> go tl
+                  (_,           (hd, tl)) -> hd <> go tl
 
 
 ----------------------------------------------------------------------
@@ -200,7 +230,7 @@ instance HasXMLRoot xml => Servant.MimeUnrender HTML (FormRedirect xml) where
 -- handlers
 
 meta
-  :: forall m err. (SPHandler (Error err) m, HasConfig m)
+  :: forall m err. (SPStore m, MonadError err m, HasConfig m)
   => ST -> m Issuer -> m URI -> m SPMetadata
 meta appName getRequestIssuer getResponseURI = do
   enterH "meta"
@@ -212,7 +242,7 @@ meta appName getRequestIssuer getResponseURI = do
 -- | Create authnreq, store it for comparison against assertions later, and return it in an HTTP
 -- redirect together with the IdP's URI.
 authreq
-  :: (SPHandler (Error err) m)
+  :: (SPStore m, SPStoreIdP err m, MonadError err m)
   => NominalDiffTime -> m Issuer
   -> IdPId -> m (FormRedirect AuthnRequest)
 authreq lifeExpectancySecs getIssuer idpid = do
@@ -225,7 +255,7 @@ authreq lifeExpectancySecs getIssuer idpid = do
 
 -- | 'authreq' with request life expectancy defaulting to 8 hours.
 authreq'
-  :: (SPHandler (Error err) m)
+  :: (SPStore m, SPStoreIdP err m, MonadError err m)
   => m Issuer
   -> IdPId -> m (FormRedirect AuthnRequest)
 authreq' = authreq defReqTTL
@@ -237,7 +267,7 @@ defReqTTL = 15 * 60  -- seconds
 -- handler takes a response and a verdict (provided by this package), and can cause any effects in
 -- 'm' and return anything it likes.
 authresp
-  :: SPHandler (Error err) m
+  :: (SP m, SPStoreIdP (Error err) m, SPStoreID Assertion m, SPStoreID AuthnRequest m)
   => m Issuer -> m URI -> (AuthnResponse -> AccessVerdict -> m resp)
   -> AuthnResponseBody -> m resp
 authresp getSPIssuer getResponseURI handleVerdictAction body = do
@@ -251,7 +281,7 @@ authresp getSPIssuer getResponseURI handleVerdictAction body = do
 
 -- | a variant of 'authresp' with a less general verdict handler.
 authresp'
-  :: SPHandler (Error err) m
+  :: (SP m, SPStoreIdP (Error err) m, SPStoreID Assertion m, SPStoreID AuthnRequest m)
   => m Issuer -> m URI -> HandleVerdict m
   -> AuthnResponseBody -> m (WithCookieAndLocation ST)
 authresp' getRequestIssuerURI getResponseURI handleVerdict body = do
@@ -267,7 +297,9 @@ type WithCookieAndLocation = Headers '[Servant.Header "Set-Cookie" Cky, Servant.
 type Cky = Cky.SimpleSetCookie CookieName
 type CookieName = "saml2-web-sso"
 
-simpleOnSuccess :: SPHandler (Error err) m => OnSuccessRedirect m
+simpleOnSuccess
+  :: SP m
+  => OnSuccessRedirect m
 simpleOnSuccess uid = do
   cky    <- Cky.toggleCookie "/" $ Just (userRefToST uid, defReqTTL)
   appuri <- (^. cfgSPAppURI) <$> getConfig
@@ -282,7 +314,9 @@ data HandleVerdict m
 
 type ResponseVerdict = ServantErr
 
-simpleHandleVerdict :: (SP m, SPHandler (Error err) m) => OnSuccessRedirect m -> AccessVerdict -> m (WithCookieAndLocation ST)
+simpleHandleVerdict
+  :: (SP m, MonadError (Error err) m)
+  => OnSuccessRedirect m -> AccessVerdict -> m (WithCookieAndLocation ST)
 simpleHandleVerdict onsuccess = \case
     AccessDenied reasons
       -> logger Debug (show reasons) >> (throwError . Forbidden . cs $ ST.intercalate "; " (explainDeniedReason <$> reasons))
