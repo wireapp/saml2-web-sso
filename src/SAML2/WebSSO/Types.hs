@@ -76,6 +76,7 @@ module SAML2.WebSSO.Types
   , nameIDSPProvidedID
   , nameIDToST
   , shortShowNameID
+  , unsafeShowNameID
   , NameIDFormat(..), nameIDFormat
   , Email(..)
   , UnqualifiedNameID(..)
@@ -533,16 +534,24 @@ nameIDToST other = cs $ show other  -- (some of the others may also have obvious
 -- qualifiers, return 'Nothing' to prevent name clashes (where two inputs are different, but produce
 -- the same output).
 shortShowNameID :: NameID -> Maybe ST
-shortShowNameID (NameID uqn Nothing Nothing Nothing) = case uqn of
-  UNameIDUnspecified st  -> Just $ escapeXmlText st
-  UNameIDEmail       em  -> Just . cs . Email.toByteString . fromEmail $ em
-  UNameIDX509        st  -> Just $ escapeXmlText st
-  UNameIDWindows     st  -> Just $ escapeXmlText st
-  UNameIDKerberos    st  -> Just $ escapeXmlText st
-  UNameIDEntity      uri -> Just $ renderURI uri
-  UNameIDPersistent  st  -> Just $ escapeXmlText st
-  UNameIDTransient   st  -> Just $ escapeXmlText st
-shortShowNameID _ = Nothing
+shortShowNameID uqn@(NameID _ Nothing Nothing Nothing) = Just $ unsafeShowNameID uqn
+shortShowNameID _                                      = Nothing
+
+-- | Extract the 'UnqualifiedNameID' part from the input and render it to a 'ST'.  Qualifiers
+-- are ignored.
+--
+-- WARNING: This may lead to name clashes where two inputs are different, but produce the same
+-- output.
+unsafeShowNameID :: NameID -> ST
+unsafeShowNameID (NameID uqn _ _ _) = case uqn of
+  UNameIDUnspecified st  -> escapeXmlText st
+  UNameIDEmail       em  -> cs . Email.toByteString . fromEmail $ em
+  UNameIDX509        st  -> escapeXmlText st
+  UNameIDWindows     st  -> escapeXmlText st
+  UNameIDKerberos    st  -> escapeXmlText st
+  UNameIDEntity      uri -> renderURI uri
+  UNameIDPersistent  st  -> escapeXmlText st
+  UNameIDTransient   st  -> escapeXmlText st
 
 
 -- | [1/3.2.2.1;3.2.2.2] This is a simple custom boolean type.  We really don't need any more
