@@ -126,6 +126,24 @@ createAuthnRequest lifeExpectancySecs getIssuer = do
   storeID _rqID (addTime lifeExpectancySecs _rqIssueInstant)
   pure AuthnRequest{..}
 
+-- TODO: make this configurable
+tolerance :: NominalDiffTime
+tolerance = 60  -- seconds; must be positive
+
+-- | First arg must be comfortably earlier than the latter: if 'tolerance' is one minute, then
+-- @("4:32:14" `earlier` "4:31:15") == True@.
+--
+-- If this returns 'False' you should be *more* inclined to throw an error, so a good calling
+-- pattern is @unless (a `earlier` b) throwSomething@, which is very different from @when (b
+-- `earlier` a) throwSomething@.
+earlier :: Time -> Time -> Bool
+earlier early late = early < addTime tolerance late
+
+-- | Even though this makes little sense, the standard requires to distinguish between "less"
+-- and "less or equal".  For all practical purposes, you may consider @noLater == earlier@.
+noLater :: Time -> Time -> Bool
+noLater early late = early <= addTime tolerance late
+
 
 ----------------------------------------------------------------------
 -- paths
@@ -272,7 +290,7 @@ checkInResponseTo loc req = do
 checkIsInPast :: (SP m, MonadJudge m) => (Time -> Time -> DeniedReason) -> Time -> m ()
 checkIsInPast err tim = do
   now <- getNow
-  unless (tim < now) . deny $ err tim now
+  unless (tim `earlier` now) . deny $ err tim now
 
 -- | Check that the response is intended for us (based on config's finalize-login uri stored in
 -- 'JudgeCtx').
@@ -311,7 +329,7 @@ checkStatement stm =
     checkIsInPast DeniedAuthnStatementIssueInstantNotInPast issued
     forM_ mtimeout $ \endoflife -> do
       now <- getNow
-      when (endoflife <= now) . deny $ DeniedAuthnStatmentExpiredAt endoflife
+      unless (now `earlier` endoflife) . deny $ DeniedAuthnStatmentExpiredAt endoflife
 
 -- | Check all 'SubjectConfirmation's and 'Subject's in all 'Assertion'.  Deny if not at least one
 -- confirmation has method "bearer".
@@ -355,10 +373,10 @@ checkSubjectConfirmationData confdat = do
   checkDestination DeniedBadRecipient $ confdat ^. scdRecipient
 
   now <- getNow
-  when (now >= confdat ^. scdNotOnOrAfter) . deny $
+  unless (now `earlier` (confdat ^. scdNotOnOrAfter)) . deny $
     DeniedNotOnOrAfterSubjectConfirmation (confdat ^. scdNotOnOrAfter)
   case confdat ^. scdNotBefore of
-    Just notbef | now < notbef -> deny $ DeniedNotBeforeSubjectConfirmation notbef
+    Just notbef -> unless (notbef `noLater` now) . deny $ DeniedNotBeforeSubjectConfirmation notbef
     _ -> pure ()
 
   -- double-check the result of the call to 'rspInResponseTo' in 'judge'' above.
@@ -368,11 +386,11 @@ checkConditions :: forall m. (HasCallStack, MonadJudge m, SP m) => Conditions ->
 checkConditions (Conditions lowlimit uplimit _onetimeuse audiences) = do
   now <- getNow
   case lowlimit of
-    Just lim | now < lim -> deny $ DeniedNotBeforeCondition lim
+    Just lim -> unless (lim `noLater` now) . deny $ DeniedNotBeforeCondition lim
     _ -> pure ()
 
   case uplimit of
-    Just lim | now >= lim -> deny $ DeniedNotOnOrAfterCondition lim
+    Just lim -> unless (now `earlier` lim) . deny $ DeniedNotOnOrAfterCondition lim
     _ -> pure ()
 
   Issuer us <- (^. judgeCtxAudience) <$> getJudgeCtx
