@@ -126,7 +126,9 @@ createAuthnRequest lifeExpectancySecs getIssuer = do
   storeID _rqID (addTime lifeExpectancySecs _rqIssueInstant)
   pure AuthnRequest{..}
 
--- TODO: make this configurable
+-- | The clock drift between IdP and us that we allow for.
+--
+-- FUTUREWORK: make this configurable
 tolerance :: NominalDiffTime
 tolerance = 60  -- seconds; must be positive
 
