@@ -275,6 +275,17 @@ specJudgeT = do
 
       denies id `mapM_` (($ authnresp) <$> violations)
 
+    context "time constraint violation within tolerance" $ do
+      let okviolations :: [AuthnResponse -> AuthnResponse]
+          okviolations =
+            [ conditionsL . condNotBefore .~ Just (addTime (1 - tolerance) timeNow)
+            , conditionsL . condNotOnOrAfter .~ Just (addTime (tolerance - 1) timeNow)
+            , scdataL . scdNotBefore .~ Just (addTime (1 - tolerance) timeNow)
+            , scdataL . scdNotOnOrAfter .~ (addTime (tolerance - 1) timeNow)
+            ]
+
+      grants id `mapM_` (($ authnresp) <$> okviolations)
+
     context "response, assertion issuer" $ do
       let good :: [AuthnResponse -> AuthnResponse]
           good =
