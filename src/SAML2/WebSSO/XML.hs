@@ -112,7 +112,7 @@ class HasXML a where
   default render :: HasXMLRoot a => a -> [Node]
   render = (:[]) . NodeElement . renderRoot
 
-  parse  :: MonadError String m => [Node] -> m a
+  parse :: MonadError String m => [Node] -> m a
 
 class HasXML a => HasXMLRoot a where
   renderRoot :: a -> Element
