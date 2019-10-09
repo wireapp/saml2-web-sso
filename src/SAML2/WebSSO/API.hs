@@ -210,7 +210,7 @@ instance HasXMLRoot xml => MimeRender HTML (FormRedirect xml) where
                        <strong>
                          Note:
                        Since your browser does not support JavaScript, you must press the Continue button once to proceed.
-                   <form action=#{uri} method="post">
+                   <form action=#{uri} method="post" accept-charset="utf-8">
                      <input type="hidden" name="SAMLRequest" value=#{value}>
                      <noscript>
                        <input type="submit" value="Continue">
