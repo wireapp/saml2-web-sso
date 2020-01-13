@@ -104,7 +104,7 @@ readIdPs :: TestSP [IdPConfig_]
 readIdPs = ((^. ctxIdPs) <$> (ask >>= liftIO . readMVar))
 
 handlerFromTestSP :: CtxV -> TestSP a -> Handler a
-handlerFromTestSP ctx (TestSP m) = Handler . ExceptT . fmap (fmapL toServantErr) . runExceptT $ m `runReaderT` ctx
+handlerFromTestSP ctx (TestSP m) = Handler . ExceptT . fmap (fmapL toServerError) . runExceptT $ m `runReaderT` ctx
 
 ioFromTestSP :: CtxV -> TestSP a -> IO a
 ioFromTestSP ctx m = either (throwIO . ErrorCall . show) pure =<< (runExceptT . runHandler' $ handlerFromTestSP ctx m)

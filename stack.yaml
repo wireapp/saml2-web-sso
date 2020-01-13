@@ -1,14 +1,12 @@
-resolver: lts-12.10
+resolver: lts-14.12
 
 packages:
 - .
 
 extra-deps:
 - git: https://github.com/wireapp/hsaml2
-  commit: 678997815033584e023205fe774d16201ccf8f62
+  commit: e395cd1477630d6f8385c44b9010f68b8a1ede06
 - git: https://github.com/wireapp/hspec-wai
   commit: ca10d13deab929f1cc3a569abea2e7fbe35fdbe3  # https://github.com/hspec/hspec-wai/pull/49
 - invertible-hxt-0.1  # for hsaml2
-- servant-multipart-0.11.2
-- yaml-0.9.0
-- hedgehog-quickcheck-0.1
+- hedgehog-quickcheck-0.1.1

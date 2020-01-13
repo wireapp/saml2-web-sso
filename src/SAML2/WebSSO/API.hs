@@ -306,13 +306,13 @@ simpleOnSuccess uid = do
   pure (cky, appuri)
 
 -- | We support two cases: redirect with a cookie, and a generic response with arbitrary status,
--- headers, and body.  The latter case fits the 'ServantErr' type well, but we give it a more
+-- headers, and body.  The latter case fits the 'ServerError' type well, but we give it a more
 -- suitable name here.
 data HandleVerdict m
   = HandleVerdictRedirect (OnSuccessRedirect m)
   | HandleVerdictRaw (AuthnResponse -> AccessVerdict -> m ResponseVerdict)
 
-type ResponseVerdict = ServantErr
+type ResponseVerdict = ServerError
 
 simpleHandleVerdict
   :: (SP m, MonadError (Error err) m)
