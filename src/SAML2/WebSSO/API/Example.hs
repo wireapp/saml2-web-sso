@@ -52,7 +52,7 @@ type MonadApp m = (GetAllIdPs SimpleError m, SPHandler SimpleError m)
 -- safe disk load and redundant debug logs.
 instance SPHandler SimpleError SimpleSP where
   type NTCTX SimpleSP = SimpleSPCtx
-  nt ctx (SimpleSP m) = Handler . ExceptT . fmap (fmapL toServantErr) . runExceptT $ m `runReaderT` ctx
+  nt ctx (SimpleSP m) = Handler . ExceptT . fmap (fmapL toServerError) . runExceptT $ m `runReaderT` ctx
 
 runSimpleSP :: SimpleSPCtx -> SimpleSP a -> IO (Either SimpleError a)
 runSimpleSP ctx (SimpleSP action) = runExceptT $ action `runReaderT` ctx
