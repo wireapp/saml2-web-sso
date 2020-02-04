@@ -10,3 +10,9 @@ extra-deps:
   commit: ca10d13deab929f1cc3a569abea2e7fbe35fdbe3  # https://github.com/hspec/hspec-wai/pull/49
 - invertible-hxt-0.1  # for hsaml2
 - hedgehog-quickcheck-0.1.1
+
+nix:
+  packages:
+  - zlib
+  - pkgconfig
+  - libxml2
