@@ -99,14 +99,14 @@ renderAuthnResponseBody :: AuthnResponse -> LBS
 renderAuthnResponseBody = EL.encode . cs . encode
 
 -- | Implies verification, hence the constraint.
-parseAuthnResponseBody :: forall m err. SPStoreIdP (Error err) m => LBS -> m AuthnResponse
+parseAuthnResponseBody :: forall m err. SPStoreIdP (Error err) m => ST -> m AuthnResponse
 parseAuthnResponseBody base64 = do
   -- https://www.ietf.org/rfc/rfc4648.txt states that all "noise" characters should be rejected
   -- unless another standard says they should be ignored.  'EL.decodeLenient' chooses the radical
   -- approach and ignores all "noise" characters.  since we have to deal with at least %0a, %0d%0a,
   -- '=', and probably other noise, this seems the safe thing to do.  It is no less secure than
   -- rejecting some noise characters and ignoring others.
-  let xmltxt = EL.decodeLenient base64
+  let xmltxt :: LBS = EL.decodeLenient (cs base64 :: LBS)
   resp <-
     either (throwError . BadSamlResponseXmlError . cs) pure $
     decode (cs xmltxt)
@@ -124,7 +124,7 @@ instance FromMultipart Mem AuthnResponseBody where
       eval = do
         base64 <- maybe (throwError BadSamlResponseFormFieldMissing) pure $
                   lookupInput "SAMLResponse" resp
-        parseAuthnResponseBody (cs base64)
+        parseAuthnResponseBody base64
 
 issuerToCreds :: forall m err. SPStoreIdP (Error err) m => Maybe Issuer -> m (NonEmpty SignCreds)
 issuerToCreds Nothing = throwError BadSamlResponseIssuerMissing
