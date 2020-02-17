@@ -88,7 +88,7 @@ defResponseURI = getSsoURI (Proxy @API) (Proxy @APIAuthResp')
 ----------------------------------------------------------------------
 -- authentication response body processing
 
--- | An 'AuthnResponseBody' contains a 'AuthnResponse', but you need to give it a trust base forn
+-- | An 'AuthnResponseBody' contains a 'AuthnResponse', but you need to give it a trust base for
 -- signature verification first, and you may get an error when you're looking at it.
 newtype AuthnResponseBody = AuthnResponseBody
   { fromAuthnResponseBody :: forall m err. SPStoreIdP (Error err) m => m AuthnResponse }
