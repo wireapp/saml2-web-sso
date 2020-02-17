@@ -14,6 +14,7 @@ import GHC.Stack
 import GHC.TypeLits
 import Hedgehog
 import SAML2.WebSSO
+import Servant.Multipart
 import Test.QuickCheck (Arbitrary(arbitrary, shrink))
 import Test.QuickCheck.Instances ()
 import Text.XML
@@ -387,13 +388,23 @@ genSimpleSetCookie = do
 genAuthnResponseBody :: Gen AuthnResponseBody
 genAuthnResponseBody = do
   aresp <- genAuthnResponse
-  pure (AuthnResponseBody (pure aresp))
+  raw <- genRawAuthnResponseBody
+  pure (AuthnResponseBody (pure aresp) raw)
+
+genRawAuthnResponseBody :: Gen (MultipartData Mem)
+genRawAuthnResponseBody = do
+  raw <- Gen.text (Range.linear 50 100) Gen.ascii
+  pure MultipartData { files = [], inputs = [Input {iName = "SAMLResponse", iValue = raw}] }
+
 
 -- FUTUREWORK: the following could be TH-generated entirely (take all declarations matching '^gen' and
 -- turn the resp. types into Arbitrary instances).
 
 instance Arbitrary UserRef where
   arbitrary = UserRef <$> arbitrary <*> arbitrary
+
+instance Arbitrary (MultipartData Mem) where
+  arbitrary = TQH.hedgehog genRawAuthnResponseBody
 
 instance Arbitrary Assertion where
   arbitrary = TQH.hedgehog genAssertion

@@ -90,8 +90,10 @@ defResponseURI = getSsoURI (Proxy @API) (Proxy @APIAuthResp')
 
 -- | An 'AuthnResponseBody' contains a 'AuthnResponse', but you need to give it a trust base for
 -- signature verification first, and you may get an error when you're looking at it.
-newtype AuthnResponseBody = AuthnResponseBody
-  { fromAuthnResponseBody :: forall m err. SPStoreIdP (Error err) m => m AuthnResponse }
+data AuthnResponseBody = AuthnResponseBody
+  { authnResponseBodyAction :: forall m err. SPStoreIdP (Error err) m => m AuthnResponse
+  , authnResponseBodyRaw    :: MultipartData Mem
+  }
 
 renderAuthnResponseBody :: AuthnResponse -> LBS
 renderAuthnResponseBody = EL.encode . cs . encode
@@ -116,7 +118,7 @@ authnResponseBodyToMultipart :: AuthnResponse -> MultipartData tag
 authnResponseBodyToMultipart resp = MultipartData [Input "SAMLResponse" (cs $ renderAuthnResponseBody resp)] []
 
 instance FromMultipart Mem AuthnResponseBody where
-  fromMultipart resp = Just (AuthnResponseBody eval)
+  fromMultipart resp = Just (AuthnResponseBody eval resp)
     where
       eval :: forall m err. SPStoreIdP (Error err) m => m AuthnResponse
       eval = do
@@ -273,7 +275,7 @@ authresp
 authresp getSPIssuer getResponseURI handleVerdictAction body = do
   enterH "authresp: entering"
   jctx :: JudgeCtx      <- JudgeCtx <$> getSPIssuer <*> getResponseURI
-  resp :: AuthnResponse <- fromAuthnResponseBody body
+  resp :: AuthnResponse <- authnResponseBodyAction body
   logger Debug $ "authresp: " <> ppShow resp
   verdict <- judge resp jctx
   logger Debug $ "authresp: " <> show verdict
