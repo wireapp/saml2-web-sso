@@ -88,23 +88,25 @@ defResponseURI = getSsoURI (Proxy @API) (Proxy @APIAuthResp')
 ----------------------------------------------------------------------
 -- authentication response body processing
 
--- | An 'AuthnResponseBody' contains a 'AuthnResponse', but you need to give it a trust base forn
+-- | An 'AuthnResponseBody' contains a 'AuthnResponse', but you need to give it a trust base for
 -- signature verification first, and you may get an error when you're looking at it.
-newtype AuthnResponseBody = AuthnResponseBody
-  { fromAuthnResponseBody :: forall m err. SPStoreIdP (Error err) m => m AuthnResponse }
+data AuthnResponseBody = AuthnResponseBody
+  { authnResponseBodyAction :: forall m err. SPStoreIdP (Error err) m => m AuthnResponse
+  , authnResponseBodyRaw    :: MultipartData Mem
+  }
 
 renderAuthnResponseBody :: AuthnResponse -> LBS
 renderAuthnResponseBody = EL.encode . cs . encode
 
 -- | Implies verification, hence the constraint.
-parseAuthnResponseBody :: forall m err. SPStoreIdP (Error err) m => LBS -> m AuthnResponse
+parseAuthnResponseBody :: forall m err. SPStoreIdP (Error err) m => ST -> m AuthnResponse
 parseAuthnResponseBody base64 = do
   -- https://www.ietf.org/rfc/rfc4648.txt states that all "noise" characters should be rejected
   -- unless another standard says they should be ignored.  'EL.decodeLenient' chooses the radical
   -- approach and ignores all "noise" characters.  since we have to deal with at least %0a, %0d%0a,
   -- '=', and probably other noise, this seems the safe thing to do.  It is no less secure than
   -- rejecting some noise characters and ignoring others.
-  let xmltxt = EL.decodeLenient base64
+  let xmltxt :: LBS = EL.decodeLenient (cs base64 :: LBS)
   resp <-
     either (throwError . BadSamlResponseXmlError . cs) pure $
     decode (cs xmltxt)
@@ -116,13 +118,13 @@ authnResponseBodyToMultipart :: AuthnResponse -> MultipartData tag
 authnResponseBodyToMultipart resp = MultipartData [Input "SAMLResponse" (cs $ renderAuthnResponseBody resp)] []
 
 instance FromMultipart Mem AuthnResponseBody where
-  fromMultipart resp = Just (AuthnResponseBody eval)
+  fromMultipart resp = Just (AuthnResponseBody eval resp)
     where
       eval :: forall m err. SPStoreIdP (Error err) m => m AuthnResponse
       eval = do
         base64 <- maybe (throwError BadSamlResponseFormFieldMissing) pure $
                   lookupInput "SAMLResponse" resp
-        parseAuthnResponseBody (cs base64)
+        parseAuthnResponseBody base64
 
 issuerToCreds :: forall m err. SPStoreIdP (Error err) m => Maybe Issuer -> m (NonEmpty SignCreds)
 issuerToCreds Nothing = throwError BadSamlResponseIssuerMissing
@@ -273,7 +275,7 @@ authresp
 authresp getSPIssuer getResponseURI handleVerdictAction body = do
   enterH "authresp: entering"
   jctx :: JudgeCtx      <- JudgeCtx <$> getSPIssuer <*> getResponseURI
-  resp :: AuthnResponse <- fromAuthnResponseBody body
+  resp :: AuthnResponse <- authnResponseBodyAction body
   logger Debug $ "authresp: " <> ppShow resp
   verdict <- judge resp jctx
   logger Debug $ "authresp: " <> show verdict
