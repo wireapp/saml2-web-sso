@@ -15,14 +15,18 @@ import Text.Hamlet.XML (xml)
 import Text.XML
 import Text.XML.DSig
 
-
-newtype SignedAuthnResponse = SignedAuthnResponse { fromSignedAuthnResponse :: Document }
+newtype SignedAuthnResponse = SignedAuthnResponse {fromSignedAuthnResponse :: Document}
   deriving (Eq, Show)
 
 -- | See tests on how this is used.
-mkAuthnResponse
-  :: (HasCallStack, HasMonadSign m, HasLogger m, HasCreateUUID m, HasNow m)
-  => SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> m SignedAuthnResponse
+mkAuthnResponse ::
+  (HasCallStack, HasMonadSign m, HasLogger m, HasCreateUUID m, HasNow m) =>
+  SignPrivCreds ->
+  IdPConfig extra ->
+  SPMetadata ->
+  AuthnRequest ->
+  Bool ->
+  m SignedAuthnResponse
 mkAuthnResponse creds idp spmeta areq grant = do
   subj <- unspecifiedNameID . UUID.toText <$> createUUID
   mkAuthnResponseWithSubj subj creds idp spmeta areq grant
@@ -31,59 +35,77 @@ mkAuthnResponse creds idp spmeta areq grant = do
 --
 -- (There is some code sharing between this and 'mkAuthnResponseWithRawSubj', but reducing it would
 -- make both functions more complex.)
-mkAuthnResponseWithSubj
-  :: forall extra m. (HasCallStack, HasMonadSign m, HasCreateUUID m, HasNow m)
-  => NameID
-  -> SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> m SignedAuthnResponse
+mkAuthnResponseWithSubj ::
+  forall extra m.
+  (HasCallStack, HasMonadSign m, HasCreateUUID m, HasNow m) =>
+  NameID ->
+  SignPrivCreds ->
+  IdPConfig extra ->
+  SPMetadata ->
+  AuthnRequest ->
+  Bool ->
+  m SignedAuthnResponse
 mkAuthnResponseWithSubj subj = mkAuthnResponseWithModif modif id
   where
-    modif = transformBis
-      [ [ transformer $ \case
-            el@(Element "{urn:oasis:names:tc:SAML:2.0:assertion}Subject" _ _)
-              -> case parse [NodeElement el] of
-                   Right (Subject _ sc) -> nodesToElem . render $ Subject subj sc
-                   Left bad -> error $ show bad
-            other -> other
+    modif =
+      transformBis
+        [ [ transformer $ \case
+              el@(Element "{urn:oasis:names:tc:SAML:2.0:assertion}Subject" _ _) ->
+                case parse [NodeElement el] of
+                  Right (Subject _ sc) -> nodesToElem . render $ Subject subj sc
+                  Left bad -> error $ show bad
+              other -> other
+          ]
         ]
-      ]
 
 -- | Delete all children of 'Subject' and insert some new ones.
-mkAuthnResponseWithRawSubj
-  :: forall extra m. (HasCallStack, HasMonadSign m, HasCreateUUID m, HasNow m)
-  => [Node]
-  -> SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> m SignedAuthnResponse
+mkAuthnResponseWithRawSubj ::
+  forall extra m.
+  (HasCallStack, HasMonadSign m, HasCreateUUID m, HasNow m) =>
+  [Node] ->
+  SignPrivCreds ->
+  IdPConfig extra ->
+  SPMetadata ->
+  AuthnRequest ->
+  Bool ->
+  m SignedAuthnResponse
 mkAuthnResponseWithRawSubj subj = mkAuthnResponseWithModif modif id
   where
-    modif = transformBis
-      [ [ transformer $ \case
-            (Element tag@"{urn:oasis:names:tc:SAML:2.0:assertion}Subject" attrs _)
-              -> Element tag attrs subj
-            other -> other
+    modif =
+      transformBis
+        [ [ transformer $ \case
+              (Element tag@"{urn:oasis:names:tc:SAML:2.0:assertion}Subject" attrs _) ->
+                Element tag attrs subj
+              other -> other
+          ]
         ]
-      ]
 
-mkAuthnResponseWithModif
-  :: (HasCallStack, HasMonadSign m, HasCreateUUID m, HasNow m)
-  => ([Node] -> [Node]) -> ([Node] -> [Node])
-  -> SignPrivCreds -> IdPConfig extra -> SPMetadata -> AuthnRequest -> Bool -> m SignedAuthnResponse
+mkAuthnResponseWithModif ::
+  (HasCallStack, HasMonadSign m, HasCreateUUID m, HasNow m) =>
+  ([Node] -> [Node]) ->
+  ([Node] -> [Node]) ->
+  SignPrivCreds ->
+  IdPConfig extra ->
+  SPMetadata ->
+  AuthnRequest ->
+  Bool ->
+  m SignedAuthnResponse
 mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp sp authnreq grantAccess = do
   let freshNCName = ("_" <>) . UUID.toText <$> createUUID
   assertionUuid <- freshNCName
-  respUuid      <- freshNCName
-  now           <- getNow
-
-  let issueInstant    = renderTime now
-      expires         = renderTime $ 3600 `addTime` now
+  respUuid <- freshNCName
+  now <- getNow
+  let issueInstant = renderTime now
+      expires = renderTime $ 3600 `addTime` now
       idpissuer :: ST = idp ^. idpMetadata . edIssuer . fromIssuer . to renderURI
       recipient :: ST = sp ^. spResponseURL . to renderURI
-      spissuer  :: ST = authnreq ^. rqIssuer . fromIssuer . to renderURI
-      inResponseTo    = escapeXmlText . fromID $ authnreq ^. rqID
+      spissuer :: ST = authnreq ^. rqIssuer . fromIssuer . to renderURI
+      inResponseTo = escapeXmlText . fromID $ authnreq ^. rqID
       status
         | grantAccess = "urn:oasis:names:tc:SAML:2.0:status:Success"
-        | otherwise   = "urn:oasis:names:tc:SAML:2.0:status:Requester"
-
-  assertion :: [Node]
-    <- liftIO $ signElementIOAt 1 creds . modifUnsignedAssertion . repairNamespaces $
+        | otherwise = "urn:oasis:names:tc:SAML:2.0:status:Requester"
+  assertion :: [Node] <-
+    liftIO $ signElementIOAt 1 creds . modifUnsignedAssertion . repairNamespaces $
       [xml|
         <Assertion
           xmlns="urn:oasis:names:tc:SAML:2.0:assertion"
@@ -109,10 +131,10 @@ mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp sp authnreq g
                     <AuthnContextClassRef>
                         urn:oasis:names:tc:SAML:2.0:ac:classes:Password
       |]
-
   let authnResponse :: Element
-      [NodeElement authnResponse] = modifAll . repairNamespaces $
-        [xml|
+      [NodeElement authnResponse] =
+        modifAll . repairNamespaces $
+          [xml|
           <samlp:Response
             xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"
             ID="#{respUuid}"
@@ -126,5 +148,4 @@ mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp sp authnreq g
                   <samlp:StatusCode Value="#{status}">
               ^{assertion}
         |]
-
   pure . SignedAuthnResponse $ mkDocument authnResponse

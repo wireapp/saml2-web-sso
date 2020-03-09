@@ -1,5 +1,4 @@
-{-# LANGUAGE CPP               #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE CPP #-}
 
 module SAML2.WebSSO.Servant.CPP where
 

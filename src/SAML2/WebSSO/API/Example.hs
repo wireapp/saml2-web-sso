@@ -1,5 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 -- | This is a sample application composed of the end-points in "SAML.WebSSO.API" plus a minimum of
 -- functionality to make a running web application.  Some parts of this module could be handy to
@@ -20,12 +20,11 @@ import GHC.Stack
 import Network.Wai hiding (Response)
 import SAML2.Util
 import SAML2.WebSSO
-import Servant.API hiding (URI(..))
+import Servant.API hiding (URI (..))
 import Servant.Server
 import Text.Hamlet.XML
 import Text.XML
 import URI.ByteString
-
 
 ----------------------------------------------------------------------
 -- a simple concrete monad
@@ -33,20 +32,21 @@ import URI.ByteString
 newtype SimpleSP a = SimpleSP (ReaderT SimpleSPCtx (ExceptT SimpleError IO) a)
   deriving (Functor, Applicative, Monad, MonadIO, MonadReader SimpleSPCtx, MonadError SimpleError)
 
-data SimpleSPCtx = SimpleSPCtx
-  { _spctxConfig :: Config
-  , _spctxIdP    :: [IdPConfig_]
-  , _spctxReq    :: MVar RequestStore
-  , _spctxAss    :: MVar AssertionStore
-  }
+data SimpleSPCtx
+  = SimpleSPCtx
+      { _spctxConfig :: Config,
+        _spctxIdP :: [IdPConfig_],
+        _spctxReq :: MVar RequestStore,
+        _spctxAss :: MVar AssertionStore
+      }
 
 type RequestStore = Map.Map (ID AuthnRequest) Time
+
 type AssertionStore = Map.Map (ID Assertion) Time
 
 makeLenses ''SimpleSPCtx
 
 type MonadApp m = (GetAllIdPs SimpleError m, SPHandler SimpleError m)
-
 
 -- | If you read the 'Config' initially in 'IO' and then pass it into the monad via 'Reader', you
 -- safe disk load and redundant debug logs.
@@ -64,14 +64,17 @@ instance HasLogger SimpleSP where
   logger level msg = getConfig >>= \cfg -> SimpleSP (loggerIO (cfg ^. cfgLogLevel) level msg)
 
 instance HasCreateUUID SimpleSP where
-  createUUID       = SimpleSP $ createUUIDIO
+  createUUID = SimpleSP $ createUUIDIO
 
 instance HasNow SimpleSP where
-  getNow           = SimpleSP $ getNowIO
+  getNow = SimpleSP $ getNowIO
 
-simpleStoreID
-  :: (MonadIO m, MonadReader ctx m)
-  => Lens' ctx (MVar (Map (ID a) Time)) -> ID a -> Time -> m ()
+simpleStoreID ::
+  (MonadIO m, MonadReader ctx m) =>
+  Lens' ctx (MVar (Map (ID a) Time)) ->
+  ID a ->
+  Time ->
+  m ()
 simpleStoreID sel item endOfLife = do
   store <- asks (^. sel)
   liftIO $ modifyMVar_ store (pure . simpleStoreID' item endOfLife)
@@ -79,9 +82,11 @@ simpleStoreID sel item endOfLife = do
 simpleStoreID' :: ID a -> Time -> Map (ID a) Time -> Map (ID a) Time
 simpleStoreID' = Map.insert
 
-simpleUnStoreID
-  :: (MonadIO m, MonadReader ctx m)
-  => Lens' ctx (MVar (Map (ID a) Time)) -> (ID a) -> m ()
+simpleUnStoreID ::
+  (MonadIO m, MonadReader ctx m) =>
+  Lens' ctx (MVar (Map (ID a) Time)) ->
+  (ID a) ->
+  m ()
 simpleUnStoreID sel item = do
   store <- asks (^. sel)
   liftIO $ modifyMVar_ store (pure . simpleUnStoreID' item)
@@ -89,9 +94,11 @@ simpleUnStoreID sel item = do
 simpleUnStoreID' :: ID a -> Map (ID a) Time -> Map (ID a) Time
 simpleUnStoreID' = Map.delete
 
-simpleIsAliveID
-  :: (MonadIO m, MonadReader ctx m, SP m)
-  => Lens' ctx (MVar (Map (ID a) Time)) -> ID a -> m Bool
+simpleIsAliveID ::
+  (MonadIO m, MonadReader ctx m, SP m) =>
+  Lens' ctx (MVar (Map (ID a) Time)) ->
+  ID a ->
+  m Bool
 simpleIsAliveID sel item = do
   now <- getNow
   store <- asks (^. sel)
@@ -101,14 +108,13 @@ simpleIsAliveID sel item = do
 simpleIsAliveID' :: Time -> ID a -> Map (ID a) Time -> Bool
 simpleIsAliveID' now item items = maybe False (>= now) (Map.lookup item items)
 
-
 instance SPStoreID AuthnRequest SimpleSP where
-  storeID   = simpleStoreID   spctxReq
+  storeID = simpleStoreID spctxReq
   unStoreID = simpleUnStoreID spctxReq
   isAliveID = simpleIsAliveID spctxReq
 
 instance SPStoreID Assertion SimpleSP where
-  storeID   = simpleStoreID   spctxAss
+  storeID = simpleStoreID spctxAss
   unStoreID = simpleUnStoreID spctxAss
   isAliveID = simpleIsAliveID spctxAss
 
@@ -117,13 +123,16 @@ instance HasConfig SimpleSP where
 
 instance SPStoreIdP SimpleError SimpleSP where
   type IdPConfigExtra SimpleSP = ()
-  storeIdPConfig _     = error "instance SPStoreIdP SimpleError SimpleSP: storeIdPConfig not implemented."
-  getIdPConfig         = simpleGetIdPConfigBy (asks (^. spctxIdP)) (^. idpId)
+  storeIdPConfig _ = error "instance SPStoreIdP SimpleError SimpleSP: storeIdPConfig not implemented."
+  getIdPConfig = simpleGetIdPConfigBy (asks (^. spctxIdP)) (^. idpId)
   getIdPConfigByIssuer = simpleGetIdPConfigBy (asks (^. spctxIdP)) (^. idpMetadata . edIssuer)
 
-simpleGetIdPConfigBy
-  :: (MonadError (Error err) m, HasConfig m, Show a, Ord a)
-  => m [IdPConfig_] -> (IdPConfig_ -> a) -> a -> m IdPConfig_
+simpleGetIdPConfigBy ::
+  (MonadError (Error err) m, HasConfig m, Show a, Ord a) =>
+  m [IdPConfig_] ->
+  (IdPConfig_ -> a) ->
+  a ->
+  m IdPConfig_
 simpleGetIdPConfigBy getIdps mkkey idpname = do
   idps <- getIdps
   maybe crash' pure . Map.lookup idpname $ mkmap idps
@@ -137,7 +146,6 @@ class SPStoreIdP err m => GetAllIdPs err m where
 instance GetAllIdPs SimpleError SimpleSP where
   getAllIdPs = asks (^. spctxIdP)
 
-
 ----------------------------------------------------------------------
 -- the app
 
@@ -145,23 +153,28 @@ instance GetAllIdPs SimpleError SimpleSP where
 app :: Config -> [IdPConfig_] -> IO Application
 app cfg idps = app' (Proxy @SimpleSP) =<< mkSimpleSPCtx cfg idps
 
-app'
-  :: forall (m :: * -> *). (SP m, MonadApp m)
-  => Proxy m -> NTCTX m -> IO Application
+app' ::
+  forall (m :: * -> *).
+  (SP m, MonadApp m) =>
+  Proxy m ->
+  NTCTX m ->
+  IO Application
 app' Proxy ctx = do
   let served :: Application
-      served = serve (Proxy @APPAPI)
-                   (hoistServer (Proxy @APPAPI) (nt @SimpleError @m ctx) appapi :: Server APPAPI)
+      served =
+        serve
+          (Proxy @APPAPI)
+          (hoistServer (Proxy @APPAPI) (nt @SimpleError @m ctx) appapi :: Server APPAPI)
   pure . setHttpCachePolicy $ served
 
 type SPAPI =
-       Header "Cookie" Cky :> Get '[HTML] LoginStatus
-  :<|> "logout" :> "local" :> GetRedir '[HTML] (WithCookieAndLocation ST)
-  :<|> "logout" :> "single" :> GetRedir '[HTML] (WithCookieAndLocation ST)
+  Header "Cookie" Cky :> Get '[HTML] LoginStatus
+    :<|> "logout" :> "local" :> GetRedir '[HTML] (WithCookieAndLocation ST)
+    :<|> "logout" :> "single" :> GetRedir '[HTML] (WithCookieAndLocation ST)
 
 type APPAPI =
-       "sp"  :> SPAPI
-  :<|> "sso" :> API
+  "sp" :> SPAPI
+    :<|> "sso" :> API
 
 spapi :: (MonadApp m) => ServerT SPAPI m
 spapi = loginStatus :<|> localLogout :<|> singleLogout
@@ -171,8 +184,8 @@ appapi = spapi :<|> api "toy-sp" (HandleVerdictRedirect simpleOnSuccess)
 
 loginStatus :: (GetAllIdPs err m, SP m) => Maybe Cky -> m LoginStatus
 loginStatus cookie = do
-  idpids     <- getAllIdPs
-  loginOpts  <- mkLoginOption `mapM` idpids
+  idpids <- getAllIdPs
+  loginOpts <- mkLoginOption `mapM` idpids
   logoutPath <- getPath' SpPathLocalLogout
   pure $ maybe (NotLoggedIn loginOpts) (LoggedInAs logoutPath . cs . setSimpleCookieValue) cookie
 
@@ -191,29 +204,28 @@ singleLogout :: (HasCallStack, SP m) => m (WithCookieAndLocation ST)
 singleLogout = error "not implemented."
 
 data LoginStatus
-  = NotLoggedIn [(ST{- issuer -}, ST{- authreq path -})]
+  = NotLoggedIn [(ST {- issuer -}, ST {- authreq path -})]
   | LoggedInAs ST ST
   deriving (Eq, Show)
 
 instance MimeRender HTML LoginStatus where
-  mimeRender Proxy (NotLoggedIn loginOpts)
-    = mkHtml
+  mimeRender Proxy (NotLoggedIn loginOpts) =
+    mkHtml
       [xml|
         <body>
           [not logged in]
           $forall loginOpt <- loginOpts
             ^{mkform loginOpt}
       |]
-      where
-        mkform :: (ST, ST) -> [Node]
-        mkform (issuer, path) =
-          [xml|
+    where
+      mkform :: (ST, ST) -> [Node]
+      mkform (issuer, path) =
+        [xml|
             <form action=#{path} method="get">
               <input type="submit" value="log in via #{issuer}">
           |]
-
-  mimeRender Proxy (LoggedInAs logoutPath name)
-    = mkHtml
+  mimeRender Proxy (LoggedInAs logoutPath name) =
+    mkHtml
       [xml|
         <body>
         [logged in as #{name}]
@@ -223,14 +235,17 @@ instance MimeRender HTML LoginStatus where
             (this is local logout; logout via IdP is not implemented.)
       |]
 
-
 ----------------------------------------------------------------------
 -- uri paths
 
-data Path = SpPathHome | SpPathLocalLogout | SpPathSingleLogout
-          | SsoPathMeta IdPId | SsoPathAuthnReq IdPId | SsoPathAuthnResp IdPId
+data Path
+  = SpPathHome
+  | SpPathLocalLogout
+  | SpPathSingleLogout
+  | SsoPathMeta IdPId
+  | SsoPathAuthnReq IdPId
+  | SsoPathAuthnResp IdPId
   deriving (Eq, Show)
-
 
 getPath' :: forall m. (HasConfig m) => Path -> m ST
 getPath' = fmap renderURI . getPath
@@ -238,18 +253,15 @@ getPath' = fmap renderURI . getPath
 getPath :: forall m. (HasConfig m) => Path -> m URI
 getPath path = do
   cfg <- getConfig
-
   let sp, sso :: ST -> URI
       sp = ((cfg ^. cfgSPAppURI) =/)
       sso = ((cfg ^. cfgSPSsoURI) =/)
-
       withidp :: IdPId -> URI -> URI
       withidp (IdPId uuid) = (=/ UUID.toText uuid)
-
   pure $ case path of
-    SpPathHome          -> sp  ""
-    SpPathLocalLogout   -> sp  "/logout/local"
-    SpPathSingleLogout  -> sp  "/logout/single"
-    SsoPathMeta ip      -> withidp ip $ sso "/meta"
-    SsoPathAuthnReq ip  -> withidp ip $ sso "/authreq"
+    SpPathHome -> sp ""
+    SpPathLocalLogout -> sp "/logout/local"
+    SpPathSingleLogout -> sp "/logout/single"
+    SsoPathMeta ip -> withidp ip $ sso "/meta"
+    SsoPathAuthnReq ip -> withidp ip $ sso "/authreq"
     SsoPathAuthnResp ip -> withidp ip $ sso "/authresp"

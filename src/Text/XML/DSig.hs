@@ -1,5 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 -- | Partial implementation of <https://www.w3.org/TR/xmldsig-core/>.  We use hsaml2, hxt, x509 and
 -- other dubious packages internally, but expose xml-types and cryptonite.
@@ -9,62 +9,73 @@
 -- https://github.com/yaronn/xml-crypto (js)
 module Text.XML.DSig
   ( -- * types
-    SignCreds(..), SignDigest(..), SignKey(..)
-  , SignPrivCreds(..), SignPrivKey(..)
+    SignCreds (..),
+    SignDigest (..),
+    SignKey (..),
+    SignPrivCreds (..),
+    SignPrivKey (..),
 
     -- * credential handling
-  , verifySelfSignature
-  , parseKeyInfo, renderKeyInfo
-  , certToCreds, certToPublicKey
-  , mkSignCreds, mkSignCredsWithCert
+    verifySelfSignature,
+    parseKeyInfo,
+    renderKeyInfo,
+    certToCreds,
+    certToPublicKey,
+    mkSignCreds,
+    mkSignCredsWithCert,
 
     -- * signature verification
-  , verify, verifyRoot, verifyIO
+    verify,
+    verifyRoot,
+    verifyIO,
 
     -- * signature creation
-  , signRoot, signRootAt
+    signRoot,
+    signRootAt,
 
     -- * testing
-  , HasMonadSign, MonadSign(MonadSign), runMonadSign, signElementIO, signElementIOAt
+    HasMonadSign,
+    MonadSign (MonadSign),
+    runMonadSign,
+    signElementIO,
+    signElementIOAt,
   )
 where
 
-import Control.Exception (throwIO, try, ErrorCall(ErrorCall), SomeException)
+import Control.Exception (ErrorCall (ErrorCall), SomeException, throwIO, try)
 import Control.Lens
 import Control.Monad.Except
-import Data.Either (isRight)
-import Data.EitherR (fmapL)
-import Data.Foldable (toList)
-import Data.List (foldl')
-import Data.List.NonEmpty (NonEmpty((:|)))
-import Data.Monoid ((<>))
-import Data.String.Conversions
-import Data.UUID as UUID
-import GHC.Stack
-import Network.URI (URI, parseRelativeReference)
-import System.IO.Silently (hCapture)
-import System.IO (stdout, stderr)
-import System.IO.Unsafe (unsafePerformIO)
-import System.Random (random, mkStdGen)
-import Text.XML as XML
-import Text.XML.Util
-
 import qualified Crypto.Hash as Crypto
 import qualified Crypto.PubKey.RSA as RSA
 import qualified Crypto.PubKey.RSA.PKCS15 as RSA
 import qualified Crypto.PubKey.RSA.Types as RSA
 import qualified Crypto.Random.Types as Crypto
 import qualified Data.ByteArray as ByteArray
+import Data.Either (isRight)
+import Data.EitherR (fmapL)
+import Data.Foldable (toList)
 import qualified Data.Hourglass as Hourglass
+import Data.List (foldl')
+import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NL
 import qualified Data.Map as Map
+import Data.Monoid ((<>))
+import Data.String.Conversions
+import Data.UUID as UUID
 import qualified Data.X509 as X509
-import qualified SAML2.XML as HS hiding (URI, Node)
+import GHC.Stack
+import Network.URI (URI, parseRelativeReference)
+import qualified SAML2.XML as HS hiding (Node, URI)
 import qualified SAML2.XML.Canonical as HS
 import qualified SAML2.XML.Signature as HS
+import System.IO (stderr, stdout)
+import System.IO.Silently (hCapture)
+import System.IO.Unsafe (unsafePerformIO)
+import System.Random (mkStdGen, random)
+import Text.XML as XML
 import qualified Text.XML.HXT.DOM.XmlNode as HXT
+import Text.XML.Util
 import qualified Time.System as Hourglass
-
 
 ----------------------------------------------------------------------
 -- types
@@ -84,7 +95,6 @@ data SignPrivCreds = SignPrivCreds SignDigest SignPrivKey
 data SignPrivKey = SignPrivKeyRSA RSA.KeyPair
   deriving (Eq, Show)
 
-
 ----------------------------------------------------------------------
 -- credential handling
 
@@ -92,7 +102,7 @@ verifySelfSignature :: (HasCallStack, MonadError String m) => X509.SignedCertifi
 verifySelfSignature cert = do
   certToCreds cert >>= \case
     SignCreds SignDigestSha256 (SignKeyRSA pubkey) -> do
-      let signedMessage  = X509.getSignedData cert
+      let signedMessage = X509.getSignedData cert
           signatureValue = X509.signedSignature $ X509.getSigned cert
       unless (RSA.verify (Just Crypto.SHA256) pubkey signedMessage signatureValue) $
         throwError "verifySelfSignature: invalid signature."
@@ -106,22 +116,21 @@ verifySelfSignature cert = do
 parseKeyInfo :: (HasCallStack, MonadError String m) => Bool -> LT -> m X509.SignedCertificate
 parseKeyInfo doVerify (cs @LT @LBS -> lbs) = case HS.xmlToSAML @HS.KeyInfo =<< stripWhitespaceLBS lbs of
   Right keyinf -> case filter (not . ignorable) . toList $ HS.keyInfoElements keyinf of
-    [HS.X509Data dt]
-      -> parseX509Data dt
-    []
-      -> throwError $ "KeyInfo element must contain X509Data"
-    unsupported
-      -> throwError $ "unsupported children in KeyInfo element: " <> show unsupported
-  Left errmsg
-    -> throwError $ "expected exactly one KeyInfo element: " <> errmsg
+    [HS.X509Data dt] ->
+      parseX509Data dt
+    [] ->
+      throwError $ "KeyInfo element must contain X509Data"
+    unsupported ->
+      throwError $ "unsupported children in KeyInfo element: " <> show unsupported
+  Left errmsg ->
+    throwError $ "expected exactly one KeyInfo element: " <> errmsg
   where
     ignorable (HS.KeyName _) = True
     ignorable _ = False
-
-    parseX509Data (HS.X509Certificate cert :| [])
-      = when doVerify (verifySelfSignature cert) >> pure cert
-    parseX509Data bad
-      = throwError $ "data with more than one child: " <> show (toList bad)
+    parseX509Data (HS.X509Certificate cert :| []) =
+      when doVerify (verifySelfSignature cert) >> pure cert
+    parseX509Data bad =
+      throwError $ "data with more than one child: " <> show (toList bad)
 
 -- | Call 'stripWhitespaceDoc' on a rendered bytestring.
 stripWhitespaceLBS :: m ~ Either String => LBS -> m LBS
@@ -146,44 +155,47 @@ certToPublicKey cert = certToCreds cert <&> \(SignCreds _ (SignKeyRSA key)) -> k
 publicKeyToCert :: (HasCallStack) => RSA.PublicKey -> X509.SignedCertificate
 publicKeyToCert = undefined
 
-
 mkSignCreds :: (Crypto.MonadRandom m, MonadIO m) => Int -> m (SignPrivCreds, SignCreds)
 mkSignCreds size = mkSignCredsWithCert Nothing size <&> \(priv, pub, _) -> (priv, pub)
 
 -- | If first argument @validSince@ is @Nothing@, use cucrent system time.
-mkSignCredsWithCert :: forall m. (Crypto.MonadRandom m, MonadIO m)
-                    => Maybe Hourglass.DateTime -> Int -> m (SignPrivCreds, SignCreds, X509.SignedCertificate)
+mkSignCredsWithCert ::
+  forall m.
+  (Crypto.MonadRandom m, MonadIO m) =>
+  Maybe Hourglass.DateTime ->
+  Int ->
+  m (SignPrivCreds, SignCreds, X509.SignedCertificate)
 mkSignCredsWithCert mValidSince size = do
   let rsaexp = 17
   (pubkey, privkey) <- RSA.generate size rsaexp
-
   validSince :: Hourglass.DateTime <- maybe (liftIO Hourglass.dateCurrent) pure mValidSince
-  let validUntil = validSince `Hourglass.timeAdd` mempty { Hourglass.durationHours = 24 * 365 * 20 }
-
+  let validUntil = validSince `Hourglass.timeAdd` mempty {Hourglass.durationHours = 24 * 365 * 20}
       signcert :: SBS -> m (SBS, X509.SignatureALG)
-      signcert sbs = (, sigalg) <$> sigval
+      signcert sbs = (,sigalg) <$> sigval
         where
           sigalg = X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_RSA
-          sigval :: m SBS = liftIO $
-            RSA.signSafer (Just Crypto.SHA256) privkey sbs
-              >>= either (throwIO . ErrorCall . show) pure
-
-  cert <- X509.objectToSignedExactF signcert X509.Certificate
-        { X509.certVersion = 2 :: Int
-        , X509.certSerial = 387928798798718181888591698169861 :: Integer
-        , X509.certSignatureAlg = X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_RSA
-        , X509.certIssuerDN = X509.DistinguishedName []
-        , X509.certValidity = (validSince, validUntil)
-        , X509.certSubjectDN = X509.DistinguishedName []
-        , X509.certPubKey = X509.PubKeyRSA pubkey
-        , X509.certExtensions = X509.Extensions Nothing
+          sigval :: m SBS =
+            liftIO $
+              RSA.signSafer (Just Crypto.SHA256) privkey sbs
+                >>= either (throwIO . ErrorCall . show) pure
+  cert <-
+    X509.objectToSignedExactF
+      signcert
+      X509.Certificate
+        { X509.certVersion = 2 :: Int,
+          X509.certSerial = 387928798798718181888591698169861 :: Integer,
+          X509.certSignatureAlg = X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_RSA,
+          X509.certIssuerDN = X509.DistinguishedName [],
+          X509.certValidity = (validSince, validUntil),
+          X509.certSubjectDN = X509.DistinguishedName [],
+          X509.certPubKey = X509.PubKeyRSA pubkey,
+          X509.certExtensions = X509.Extensions Nothing
         }
-
-  pure ( SignPrivCreds SignDigestSha256 . SignPrivKeyRSA $ RSA.KeyPair privkey
-       , SignCreds     SignDigestSha256 . SignKeyRSA     $ pubkey
-       , cert
-       )
-
+  pure
+    ( SignPrivCreds SignDigestSha256 . SignPrivKeyRSA $ RSA.KeyPair privkey,
+      SignCreds SignDigestSha256 . SignKeyRSA $ pubkey,
+      cert
+    )
 
 ----------------------------------------------------------------------
 -- signature verification
@@ -203,20 +215,22 @@ mkSignCredsWithCert mValidSince size = do
 {-# NOINLINE verify #-}
 verify :: forall m. (MonadError String m) => NonEmpty SignCreds -> LBS -> String -> m ()
 verify creds el signedID = case unsafePerformIO (try @SomeException $ verifyIO creds el signedID) of
-  Right []   -> pure ()
+  Right [] -> pure ()
   Right errs -> throwError $ show (snd <$> errs)
-  Left exc   -> throwError $ show exc
+  Left exc -> throwError $ show exc
 
 verifyRoot :: forall m. (MonadError String m) => NonEmpty SignCreds -> LBS -> m ()
 verifyRoot creds el = do
   signedID <- do
-    XML.Document _ (XML.Element _ attrs _) _
-      <- either (throwError . ("Could not parse signed document: " <>) . cs . show)
-                pure
-                (XML.parseLBS XML.def el)
-    maybe (throwError $ "Could not parse signed document: no ID attribute in root element." <> show el)
-          (pure . cs)
-          (Map.lookup "ID" attrs)
+    XML.Document _ (XML.Element _ attrs _) _ <-
+      either
+        (throwError . ("Could not parse signed document: " <>) . cs . show)
+        pure
+        (XML.parseLBS XML.def el)
+    maybe
+      (throwError $ "Could not parse signed document: no ID attribute in root element." <> show el)
+      (pure . cs)
+      (Map.lookup "ID" attrs)
   verify creds el signedID
 
 -- | Try a list of creds against a document.  If all fail, return a list of errors for each cert; if
@@ -225,8 +239,8 @@ verifyIO :: NonEmpty SignCreds -> LBS -> String -> IO [(SignCreds, Either HS.Sig
 verifyIO creds el signedID = capture' $ do
   results <- NL.zip creds <$> forM creds (\cred -> verifyIO' cred el signedID)
   case NL.filter (isRight . snd) results of
-    (_:_) -> pure []
-    []    -> pure $ NL.toList results
+    (_ : _) -> pure []
+    [] -> pure $ NL.toList results
   where
     capture' :: IO a -> IO a
     capture' action = hCapture [stdout, stderr] action >>= \case
@@ -237,7 +251,6 @@ verifyIO' :: SignCreds -> LBS -> String -> IO (Either HS.SignatureError ())
 verifyIO' (SignCreds SignDigestSha256 (SignKeyRSA key)) el signedID = runExceptT $ do
   el' <- either (throwError . HS.SignatureParseError) pure $ HS.xmlToDocE el
   ExceptT $ HS.verifySignature (HS.PublicKeys Nothing . Just $ key) signedID el'
-
 
 ----------------------------------------------------------------------
 -- signature creation
@@ -250,69 +263,69 @@ signRoot = signRootAt 0
 -- | Like 'signRoot', but insert signature at any given position in the children list.  If the list
 -- is too short for this position, throw an error.
 signRootAt :: (Crypto.MonadRandom m, MonadError String m) => Int -> SignPrivCreds -> XML.Document -> m XML.Document
-signRootAt sigPos (SignPrivCreds hashAlg (SignPrivKeyRSA keypair)) doc
-  = do
+signRootAt sigPos (SignPrivCreds hashAlg (SignPrivKeyRSA keypair)) doc =
+  do
     (docWithID :: XML.Document, reference) <- addRootIDIfMissing doc
     docInHXT <- conduitToHxt docWithID
-
     let canoAlg = HS.CanonicalXMLExcl10 True
-        transforms = Just . HS.Transforms $
-                       HS.Transform { HS.transformAlgorithm = HS.Identified HS.TransformEnvelopedSignature
-                                    , HS.transformInclusiveNamespaces = Nothing
-                                    , HS.transform = []
-                                    }
-                  :| [ HS.Transform { HS.transformAlgorithm = HS.Identified (HS.TransformCanonicalization canoAlg)
-                                    , HS.transformInclusiveNamespaces = Nothing
-                                    , HS.transform = []
-                                    }
-                     ]
-
-    docCanonic :: SBS
-           <- either (throwError . show) (pure . cs) . unsafePerformIO . try @SomeException $
-              HS.applyTransforms transforms (HXT.mkRoot [] [docInHXT])
-
+        transforms =
+          Just . HS.Transforms $
+            HS.Transform
+              { HS.transformAlgorithm = HS.Identified HS.TransformEnvelopedSignature,
+                HS.transformInclusiveNamespaces = Nothing,
+                HS.transform = []
+              }
+              :| [ HS.Transform
+                     { HS.transformAlgorithm = HS.Identified (HS.TransformCanonicalization canoAlg),
+                       HS.transformInclusiveNamespaces = Nothing,
+                       HS.transform = []
+                     }
+                 ]
+    docCanonic :: SBS <-
+      either (throwError . show) (pure . cs) . unsafePerformIO . try @SomeException $
+        HS.applyTransforms transforms (HXT.mkRoot [] [docInHXT])
     let digest :: SBS
         digest = case hashAlg of
           SignDigestSha256 -> ByteArray.convert $ Crypto.hash @SBS @Crypto.SHA256 docCanonic
+    let signedInfo =
+          HS.SignedInfo
+            { signedInfoId = Nothing :: Maybe HS.ID,
+              signedInfoCanonicalizationMethod = HS.CanonicalizationMethod (HS.Identified canoAlg) Nothing [],
+              signedInfoSignatureMethod = HS.SignatureMethod (HS.Identified HS.SignatureRSA_SHA256) Nothing [],
+              signedInfoReference =
+                HS.Reference
+                  { referenceId = Nothing,
+                    referenceURI = Just reference,
+                    referenceType = Nothing,
+                    referenceTransforms = transforms,
+                    referenceDigestMethod = HS.DigestMethod (HS.Identified HS.DigestSHA256) [],
+                    referenceDigestValue = digest
+                  }
+                  :| []
+            }
+    -- (note that there are two rounds of SHA256 application, hence two mentions of the has alg here)
 
-    let signedInfo = HS.SignedInfo
-          { signedInfoId = Nothing :: Maybe HS.ID
-          , signedInfoCanonicalizationMethod = HS.CanonicalizationMethod (HS.Identified canoAlg) Nothing []
-          , signedInfoSignatureMethod = HS.SignatureMethod (HS.Identified HS.SignatureRSA_SHA256) Nothing []
-          , signedInfoReference = HS.Reference
-            { referenceId = Nothing
-            , referenceURI = Just reference
-            , referenceType = Nothing
-            , referenceTransforms = transforms
-            , referenceDigestMethod = HS.DigestMethod (HS.Identified HS.DigestSHA256) []
-            , referenceDigestValue = digest
-            } :| []
-          }
-          -- (note that there are two rounds of SHA256 application, hence two mentions of the has alg here)
-
-    signedInfoSBS :: SBS
-      <- either (throwError . show) (pure . cs) . unsafePerformIO . try @SomeException $
-           HS.applyCanonicalization (HS.signedInfoCanonicalizationMethod signedInfo) Nothing $
-             HS.samlToDoc signedInfo
-
-    sigval :: SBS
-           <- either (throwError . show @RSA.Error) pure
-              =<< RSA.signSafer (Just Crypto.SHA256)
-                                (RSA.toPrivateKey keypair)
-                                signedInfoSBS
-
+    signedInfoSBS :: SBS <-
+      either (throwError . show) (pure . cs) . unsafePerformIO . try @SomeException
+        $ HS.applyCanonicalization (HS.signedInfoCanonicalizationMethod signedInfo) Nothing
+        $ HS.samlToDoc signedInfo
+    sigval :: SBS <-
+      either (throwError . show @RSA.Error) pure
+        =<< RSA.signSafer
+          (Just Crypto.SHA256)
+          (RSA.toPrivateKey keypair)
+          signedInfoSBS
     let _cert = publicKeyToCert $ RSA.toPublicKey keypair
-        sig = HS.Signature
-          { signatureId = Nothing :: Maybe HS.ID
-          , signatureSignedInfo = signedInfo :: HS.SignedInfo
-          , signatureSignatureValue = HS.SignatureValue Nothing sigval :: HS.SignatureValue
-          , signatureKeyInfo = Nothing :: Maybe HS.KeyInfo  -- @Just _cert@ would be nice, but we'd have to implement that.
-          , signatureObject = []
-          }
-
+        sig =
+          HS.Signature
+            { signatureId = Nothing :: Maybe HS.ID,
+              signatureSignedInfo = signedInfo :: HS.SignedInfo,
+              signatureSignatureValue = HS.SignatureValue Nothing sigval :: HS.SignatureValue,
+              signatureKeyInfo = Nothing :: Maybe HS.KeyInfo, -- @Just _cert@ would be nice, but we'd have to implement that.
+              signatureObject = []
+            }
     unless (RSA.verify (Just Crypto.SHA256) (RSA.toPublicKey keypair) signedInfoSBS sigval) $
       throwError "signRoot: internal error: failed to verify my own signature!"
-
     injectSignedInfoAtRoot sigPos sig =<< hxtToConduit docInHXT
 
 addRootIDIfMissing :: forall m. (MonadError String m, Crypto.MonadRandom m) => XML.Document -> m (XML.Document, URI)
@@ -324,7 +337,6 @@ addRootIDIfMissing (XML.Document prol (Element tag attrs nodes) epil) = do
   where
     makeID :: m (Bool, ST)
     makeID = (True,) . UUID.toText <$> randomUUID
-
     keepID :: ST -> m (Bool, ST)
     keepID = pure . (False,)
 
@@ -333,10 +345,11 @@ randomUUID = fst . random . mkStdGen . fromIntegral <$> randomInteger
 
 -- | (uses 64 bits of entropy)
 randomInteger :: Crypto.MonadRandom m => m Integer
-randomInteger = Crypto.getRandomBytes 8
-            <&> ByteArray.unpack @ByteArray.Bytes
-            <&> fmap fromIntegral
-            <&> foldl' (*) 1
+randomInteger =
+  Crypto.getRandomBytes 8
+    <&> ByteArray.unpack @ByteArray.Bytes
+    <&> fmap fromIntegral
+    <&> foldl' (*) 1
 
 injectSignedInfoAtRoot :: MonadError String m => Int -> HS.Signature -> XML.Document -> m XML.Document
 injectSignedInfoAtRoot sigPos signedInfo (XML.Document prol (Element tag attrs nodes) epil) = do
@@ -348,11 +361,10 @@ injectSignedInfoAtRoot sigPos signedInfo (XML.Document prol (Element tag attrs n
     insertAt :: Int -> a -> [a] -> [a]
     insertAt pos el els = case Prelude.splitAt pos els of (prefix, suffix) -> prefix <> [el] <> suffix
 
-
 ----------------------------------------------------------------------
 -- testing
 
-newtype MonadSign a = MonadSign { runMonadSign' :: ExceptT String IO a }
+newtype MonadSign a = MonadSign {runMonadSign' :: ExceptT String IO a}
   deriving (Functor, Applicative, Monad)
 
 runMonadSign :: MonadSign a -> IO (Either String a)
@@ -372,7 +384,7 @@ signElementIO = signElementIOAt 0
 
 signElementIOAt :: (HasCallStack, HasMonadSign m) => Int -> SignPrivCreds -> [Node] -> m [Node]
 signElementIOAt sigPos creds [NodeElement el] = do
-  eNodes :: Either String [Node]
-    <- liftIO . runMonadSign . fmap docToNodes . signRootAt sigPos creds . mkDocument $ el
+  eNodes :: Either String [Node] <-
+    liftIO . runMonadSign . fmap docToNodes . signRootAt sigPos creds . mkDocument $ el
   either error pure eNodes
 signElementIOAt _ _ bad = liftIO . throwIO . ErrorCall . show $ bad
