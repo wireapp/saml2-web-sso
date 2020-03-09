@@ -96,5 +96,6 @@ This should start the `toy-sp` app.  Now you can connect to
 
 # Contributing
 
-Make sure to run `make format` before submitting a PR.
-This will use [ormolu](https://github.com/tweag/ormolu) to format the code.
+Before submitting a PR, make sure to install [ormolu](https://github.com/tweag/ormolu)
+by doing `stack install ormolu` (we pin the version in our `stack.yaml` file)
+and run `make format`.
