@@ -11,7 +11,6 @@ import Data.List.NonEmpty as NL
 import SAML2.WebSSO
 import Test.QuickCheck.Instances ()
 
-
 _nlhead :: Lens' (NonEmpty a) a
 _nlhead f (a :| as) = (:| as) <$> f a
 
@@ -32,6 +31,6 @@ statementL = assertionL . assContents . sasStatements . _nlhead
 
 userRefL :: Getter AuthnResponse UserRef
 userRefL = to $ \aresp ->
-  let tenant  = aresp ^. assertionL . assIssuer
+  let tenant = aresp ^. assertionL . assIssuer
       subject = aresp ^. subjL . subjectID
-  in UserRef tenant subject
+   in UserRef tenant subject

@@ -7,7 +7,6 @@ import Crypto.PubKey.RSA as RSA
 import SAML2.WebSSO
 import URI.ByteString.QQ
 
-
 -- source: https://docs.microsoft.com/en-us/azure/active-directory/develop/active-directory-single-sign-on-protocol-reference
 microsoft_authnrequest_1 :: AuthnRequest
 microsoft_authnrequest_1 = AuthnRequest {_rqID = ID {fromID = mkXmlText "id6c1c178c166d486687be4aaf5e482730"}, _rqIssueInstant = unsafeReadTime "2013-03-18T03:28:54.1839884Z", _rqIssuer = Issuer [uri|https://www.contoso.com|], _rqNameIDPolicy = Nothing}

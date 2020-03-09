@@ -1,8 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
-
 {-# OPTIONS_GHC -Wno-unused-binds -Wno-orphans #-}
 
-module Test.SAML2.WebSSO.API.ExampleSpec (spec) where
+module Test.SAML2.WebSSO.API.ExampleSpec
+  ( spec,
+  )
+where
 
 import Data.Typeable
 import SAML2.WebSSO.API.Example (app')

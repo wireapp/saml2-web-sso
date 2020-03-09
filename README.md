@@ -93,3 +93,9 @@ This should start the `toy-sp` app.  Now you can connect to
 
 `<your-idp>` has to be the path value of one of the IdPs registered in
 `server.yaml`.
+
+# Contributing
+
+Before submitting a PR, make sure to install [ormolu](https://github.com/tweag/ormolu)
+by doing `stack install ormolu` (we pin the version in our `stack.yaml` file)
+and run `make format`.
