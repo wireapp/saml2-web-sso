@@ -17,6 +17,5 @@
 /.stack-work
 *.tix
 *.pem
-/saml2-web-sso.cabal
 /server.yaml
 TAGS
