@@ -15,9 +15,9 @@ import qualified Data.Yaml as Yaml
 import Hedgehog
 import SAML2.WebSSO
 import SAML2.WebSSO.Test.Arbitrary
+import SAML2.WebSSO.Test.Util
 import Test.Hspec
 import URI.ByteString.QQ
-import Util
 
 spec :: Spec
 spec = describe "Config" $ do

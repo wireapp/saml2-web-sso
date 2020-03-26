@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Util.Misc where
+module SAML2.WebSSO.Test.Util.Misc where
 
 import Control.Exception (ErrorCall (ErrorCall), throwIO)
 import Control.Monad

@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-unused-binds -Wno-incomplete-patterns -Wno-incomplete-uni-patterns -Wno-orphans #-}
 
-module Util.VendorCompatibility
+module SAML2.WebSSO.Test.Util.VendorCompatibility
   ( vendorCompatibility,
   )
 where
@@ -17,14 +17,14 @@ import qualified Data.UUID as UUID
 import Network.HTTP.Types.Status (statusCode)
 import Network.Wai.Test
 import SAML2.WebSSO
+import SAML2.WebSSO.Test.Util.Misc
+import SAML2.WebSSO.Test.Util.TestSP
+import SAML2.WebSSO.Test.Util.Types
 import Servant
 import Test.Hspec hiding (pending)
 import Test.Hspec.Wai
 import Text.Show.Pretty (ppShow)
 import URI.ByteString as URI
-import Util.Misc
-import Util.TestSP
-import Util.Types
 
 testAuthRespApp :: HasCallStack => URI.URI -> SpecWith (CtxV, Application) -> Spec
 testAuthRespApp ssoURI =

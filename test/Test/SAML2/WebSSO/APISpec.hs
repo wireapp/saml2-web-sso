@@ -23,13 +23,13 @@ import SAML2.Util
 import SAML2.WebSSO
 import SAML2.WebSSO.Test.Credentials
 import SAML2.WebSSO.Test.MockResponse
+import SAML2.WebSSO.Test.Util
 import Servant
 import Test.Hspec hiding (pending)
 import Test.Hspec.Wai
 import Test.Hspec.Wai.Matcher
 import Text.XML as XML
 import URI.ByteString.QQ
-import Util
 
 spec :: Spec
 spec = describe "API" $ do

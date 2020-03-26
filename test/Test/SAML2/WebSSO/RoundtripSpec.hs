@@ -16,9 +16,9 @@ import Hedgehog.Gen as Gen
 import qualified SAML2.Core as HS
 import SAML2.WebSSO
 import SAML2.WebSSO.Test.Arbitrary
+import SAML2.WebSSO.Test.Util
 import Servant
 import Test.Hspec
-import Util
 
 spec :: Spec
 spec = hedgehog . checkParallel $ Group "hedgehog roundtrips" tests
