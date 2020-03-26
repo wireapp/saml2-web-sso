@@ -22,6 +22,7 @@ import SAML2.WebSSO
 import SAML2.WebSSO.Test.Credentials
 import SAML2.WebSSO.Test.Lenses
 import SAML2.WebSSO.Test.MockResponse
+import SAML2.WebSSO.Test.Util
 import qualified Samples
 import System.Environment (setEnv)
 import System.IO.Unsafe (unsafePerformIO)
@@ -30,7 +31,6 @@ import Text.Show.Pretty (ppShow)
 import Text.XML
 import Text.XML.DSig as DSig
 import URI.ByteString
-import Util
 
 spec :: Spec
 spec = describe "XML serialization" $ do

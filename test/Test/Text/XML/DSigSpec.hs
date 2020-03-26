@@ -13,12 +13,12 @@ import qualified Data.Map as Map
 import Data.String.Conversions
 import qualified Data.UUID as UUID
 import SAML2.WebSSO.Test.Credentials
+import SAML2.WebSSO.Test.Util
 import qualified Samples
 import Test.Hspec
 import Text.Hamlet.XML (xml)
 import Text.XML
 import Text.XML.DSig
-import Util
 
 spec :: Spec
 spec = describe "xml:dsig" $ do

@@ -1,4 +1,4 @@
-module Util.Types where
+module SAML2.WebSSO.Test.Util.Types where
 
 import Control.Concurrent.MVar
 import Control.Lens

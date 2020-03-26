@@ -10,10 +10,10 @@ import Data.EitherR
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.String.Conversions
 import SAML2.WebSSO
+import SAML2.WebSSO.Test.Util
 import Test.Hspec
 import Text.XML
 import URI.ByteString.QQ
-import Util
 
 spec :: Spec
 spec = do

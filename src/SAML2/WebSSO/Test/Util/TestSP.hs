@@ -1,7 +1,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Util.TestSP where
+module SAML2.WebSSO.Test.Util.TestSP where
 
 import Control.Concurrent.MVar
 import Control.Exception (ErrorCall (..), throwIO)
@@ -19,6 +19,7 @@ import Network.Wai.Test (runSession)
 import SAML2.WebSSO
 import SAML2.WebSSO.API.Example (GetAllIdPs (..), simpleGetIdPConfigBy, simpleIsAliveID', simpleStoreID', simpleUnStoreID')
 import SAML2.WebSSO.Test.Credentials
+import SAML2.WebSSO.Test.Util.Types
 import Servant
 import System.IO
 import System.IO.Silently (hCapture)
@@ -26,7 +27,6 @@ import Test.Hspec
 import Test.Hspec.Wai
 import Test.Hspec.Wai.Internal (unWaiSession)
 import URI.ByteString.QQ
-import Util.Types
 
 -- | FUTUREWORK: we already have 'SimpleSP'; is there a good reason why we need both types?
 newtype TestSP a = TestSP {runTestSP :: ReaderT CtxV (ExceptT SimpleError IO) a}

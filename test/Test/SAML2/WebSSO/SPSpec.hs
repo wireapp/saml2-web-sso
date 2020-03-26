@@ -13,9 +13,9 @@ import qualified Data.Map as Map
 import SAML2.WebSSO
 import SAML2.WebSSO.API.Example (AssertionStore)
 import SAML2.WebSSO.Test.Lenses
+import SAML2.WebSSO.Test.Util
 import Test.Hspec
 import URI.ByteString.QQ
-import Util
 
 instance HasConfig IO where
   getConfig = configIO

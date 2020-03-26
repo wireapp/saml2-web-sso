@@ -8,9 +8,9 @@ where
 
 import Data.Typeable
 import SAML2.WebSSO.API.Example (app')
+import SAML2.WebSSO.Test.Util (TestSP, mkTestCtxSimple)
 import Test.Hspec hiding (pending)
 import Test.Hspec.Wai
-import Util (TestSP, mkTestCtxSimple)
 
 spec :: Spec
 spec = describe "API.Example" $ do
