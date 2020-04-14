@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.32.0.
+-- This file has been generated from package.yaml by hpack version 0.31.2.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 6d57eb8ca10b1a078d0a5d45f7a96965bc9e4bb29dcd8c21387ea66afb01d21e
+-- hash: 1e9ffaefbc7a3fd3c91e106c2f0703fadb9b34744fe2372b5fc29f786c733ad9
 
 name:           saml2-web-sso
 version:        0.18
@@ -35,6 +35,11 @@ library
       SAML2.WebSSO.Test.Credentials
       SAML2.WebSSO.Test.Lenses
       SAML2.WebSSO.Test.MockResponse
+      SAML2.WebSSO.Test.Util
+      SAML2.WebSSO.Test.Util.Misc
+      SAML2.WebSSO.Test.Util.TestSP
+      SAML2.WebSSO.Test.Util.Types
+      SAML2.WebSSO.Test.Util.VendorCompatibility
       SAML2.WebSSO.Types
       SAML2.WebSSO.Types.TH
       SAML2.WebSSO.XML
@@ -72,6 +77,8 @@ library
     , hedgehog-quickcheck >=0.1.1
     , hourglass >=0.2.12
     , hsaml2 >=0.1
+    , hspec >=2.7.1
+    , hspec-wai >=0.9.0
     , http-media >=0.8.0.0
     , http-types >=0.12.3
     , hxt >=9.3.1.18
@@ -81,13 +88,16 @@ library
     , mtl >=2.2.2
     , network-uri >=2.6.1.0
     , pretty-show >=1.9.5
+    , process >=1.6.5.0
     , quickcheck-instances >=0.3.22
     , random >=1.1
     , servant >=0.16.2
     , servant-multipart >=0.11.4
     , servant-server >=0.16.2
+    , shelly >=1.8.1
     , silently >=1.2.5.1
     , string-conversions >=0.4.0.1
+    , temporary >=1.3
     , text >=1.2.3.1
     , time >=1.8.0.2
     , transformers >=0.5.6.2
@@ -95,6 +105,7 @@ library
     , uri-bytestring >=0.3.2.2
     , uuid >=1.3.13
     , wai >=3.2.2.1
+    , wai-extra >=3.0.28
     , warp >=3.2.28
     , x509 >=1.7.5
     , xml-conduit >=1.8.0.1
@@ -138,6 +149,8 @@ executable toy-sp
     , hedgehog-quickcheck >=0.1.1
     , hourglass >=0.2.12
     , hsaml2 >=0.1
+    , hspec >=2.7.1
+    , hspec-wai >=0.9.0
     , http-media >=0.8.0.0
     , http-types >=0.12.3
     , hxt >=9.3.1.18
@@ -147,14 +160,17 @@ executable toy-sp
     , mtl >=2.2.2
     , network-uri >=2.6.1.0
     , pretty-show >=1.9.5
+    , process >=1.6.5.0
     , quickcheck-instances >=0.3.22
     , random >=1.1
     , saml2-web-sso
     , servant >=0.16.2
     , servant-multipart >=0.11.4
     , servant-server >=0.16.2
+    , shelly >=1.8.1
     , silently >=1.2.5.1
     , string-conversions >=0.4.0.1
+    , temporary >=1.3
     , text >=1.2.3.1
     , time >=1.8.0.2
     , transformers >=0.5.6.2
@@ -162,6 +178,7 @@ executable toy-sp
     , uri-bytestring >=0.3.2.2
     , uuid >=1.3.13
     , wai >=3.2.2.1
+    , wai-extra >=3.0.28
     , warp >=3.2.28
     , x509 >=1.7.5
     , xml-conduit >=1.8.0.1
@@ -187,11 +204,6 @@ test-suite spec
       Test.SAML2.WebSSO.XMLSpec
       Test.Text.XML.DSigSpec
       Test.Text.XML.UtilSpec
-      Util
-      Util.Misc
-      Util.TestSP
-      Util.Types
-      Util.VendorCompatibility
       Paths_saml2_web_sso
   hs-source-dirs:
       test
@@ -223,10 +235,10 @@ test-suite spec
     , hedgehog-quickcheck >=0.1.1
     , hourglass >=0.2.12
     , hsaml2 >=0.1
-    , hspec
+    , hspec >=2.7.1
     , hspec-core
     , hspec-discover
-    , hspec-wai
+    , hspec-wai >=0.9.0
     , http-media >=0.8.0.0
     , http-types >=0.12.3
     , hxt >=9.3.1.18
@@ -236,17 +248,17 @@ test-suite spec
     , mtl >=2.2.2
     , network-uri >=2.6.1.0
     , pretty-show
-    , process
+    , process >=1.6.5.0
     , quickcheck-instances >=0.3.22
     , random >=1.1
     , saml2-web-sso
     , servant >=0.16.2
     , servant-multipart >=0.11.4
     , servant-server >=0.16.2
-    , shelly
+    , shelly >=1.8.1
     , silently >=1.2.5.1
     , string-conversions >=0.4.0.1
-    , temporary
+    , temporary >=1.3
     , text >=1.2.3.1
     , time >=1.8.0.2
     , transformers >=0.5.6.2
@@ -254,7 +266,7 @@ test-suite spec
     , uri-bytestring >=0.3.2.2
     , uuid >=1.3.13
     , wai >=3.2.2.1
-    , wai-extra
+    , wai-extra >=3.0.28
     , warp >=3.2.28
     , x509 >=1.7.5
     , xml-conduit >=1.8.0.1
