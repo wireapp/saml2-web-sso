@@ -165,7 +165,14 @@ mkSignCredsWithCert ::
 mkSignCredsWithCert mValidSince size = do
   let rsaexp = 17
   (pubkey, privkey) <- RSA.generate size rsaexp
-  validSince :: Hourglass.DateTime <- maybe (liftIO Hourglass.dateCurrent) pure mValidSince
+  let -- TODO: i think 'renderKeyInfo' is rounding time stamps to seconds (or perhaps it's
+      -- 'parseKeyInfo').  this is happening either because the standard says so (in which
+      -- case the X509 types are not restrictive enough, and shouldn't use the hourglass
+      -- DateTime type), or in x509, or in hsaml2, or in saml2-web-sso.
+      -- https://github.com/vincenthz/hs-certificate/issues/72
+      cropToSecs :: Hourglass.DateTime -> Hourglass.DateTime
+      cropToSecs dt = dt {Hourglass.dtTime = (Hourglass.dtTime dt) {Hourglass.todNSec = 0}}
+  validSince :: Hourglass.DateTime <- cropToSecs <$> maybe (liftIO Hourglass.dateCurrent) pure mValidSince
   let validUntil = validSince `Hourglass.timeAdd` mempty {Hourglass.durationHours = 24 * 365 * 20}
       signcert :: SBS -> m (SBS, X509.SignatureALG)
       signcert sbs = (,sigalg) <$> sigval
