@@ -152,9 +152,6 @@ certToCreds cert = do
 certToPublicKey :: (HasCallStack, MonadError String m) => X509.SignedCertificate -> m RSA.PublicKey
 certToPublicKey cert = certToCreds cert <&> \(SignCreds _ (SignKeyRSA key)) -> key
 
-publicKeyToCert :: (HasCallStack) => RSA.PublicKey -> X509.SignedCertificate
-publicKeyToCert = undefined
-
 mkSignCreds :: (Crypto.MonadRandom m, MonadIO m) => Int -> m (SignPrivCreds, SignCreds)
 mkSignCreds size = mkSignCredsWithCert Nothing size <&> \(priv, pub, _) -> (priv, pub)
 
@@ -168,7 +165,10 @@ mkSignCredsWithCert ::
 mkSignCredsWithCert mValidSince size = do
   let rsaexp = 17
   (pubkey, privkey) <- RSA.generate size rsaexp
-  validSince :: Hourglass.DateTime <- maybe (liftIO Hourglass.dateCurrent) pure mValidSince
+  let -- https://github.com/vincenthz/hs-certificate/issues/119
+      cropToSecs :: Hourglass.DateTime -> Hourglass.DateTime
+      cropToSecs dt = dt {Hourglass.dtTime = (Hourglass.dtTime dt) {Hourglass.todNSec = 0}}
+  validSince :: Hourglass.DateTime <- cropToSecs <$> maybe (liftIO Hourglass.dateCurrent) pure mValidSince
   let validUntil = validSince `Hourglass.timeAdd` mempty {Hourglass.durationHours = 24 * 365 * 20}
       signcert :: SBS -> m (SBS, X509.SignatureALG)
       signcert sbs = (,sigalg) <$> sigval
@@ -315,13 +315,12 @@ signRootAt sigPos (SignPrivCreds hashAlg (SignPrivKeyRSA keypair)) doc =
           (Just Crypto.SHA256)
           (RSA.toPrivateKey keypair)
           signedInfoSBS
-    let _cert = publicKeyToCert $ RSA.toPublicKey keypair
-        sig =
+    let sig =
           HS.Signature
             { signatureId = Nothing :: Maybe HS.ID,
               signatureSignedInfo = signedInfo :: HS.SignedInfo,
               signatureSignatureValue = HS.SignatureValue Nothing sigval :: HS.SignatureValue,
-              signatureKeyInfo = Nothing :: Maybe HS.KeyInfo, -- @Just _cert@ would be nice, but we'd have to implement that.
+              signatureKeyInfo = Nothing :: Maybe HS.KeyInfo,
               signatureObject = []
             }
     unless (RSA.verify (Just Crypto.SHA256) (RSA.toPublicKey keypair) signedInfoSBS sigval) $

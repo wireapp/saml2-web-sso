@@ -6,12 +6,13 @@ module Test.Text.XML.DSigSpec
   )
 where
 
-import Control.Monad ((>=>))
+import Control.Monad ((>=>), replicateM_)
 import Data.Either
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.Map as Map
 import Data.String.Conversions
 import qualified Data.UUID as UUID
+import qualified Data.X509 as X509
 import SAML2.WebSSO.Test.Credentials
 import SAML2.WebSSO.Test.Util
 import qualified Samples
@@ -35,6 +36,17 @@ spec = describe "xml:dsig" $ do
       (_privcreds, creds, cert) <- mkSignCredsWithCert Nothing 192
       verifySelfSignature cert `shouldBe` Right ()
       certToCreds cert `shouldBe` Right creds
+  describe "parseKeyInfo / renderKeyInfo roundtrip" $ do
+    let check :: HasCallStack => Int -> Expectation
+        check size = do
+          (_, _, x :: X509.SignedCertificate) <- mkSignCredsWithCert Nothing size
+          let y :: LT = renderKeyInfo x
+          let z :: X509.SignedCertificate = either error id $ parseKeyInfo True y
+          x `shouldBe` z
+    it "works (96 bytes)" $ replicateM_ 10 (check 96)
+    it "works (128 bytes)" $ check 128
+    it "works (256 bytes)" $ check 256
+    it "works (512 bytes)" $ check 512
   describe "verify" $ do
     it "works" $ do
       Right keyinfo <- (parseKeyInfo True >=> certToCreds) <$> readSampleIO "microsoft-idp-keyinfo.xml"
