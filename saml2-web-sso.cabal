@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 1e9ffaefbc7a3fd3c91e106c2f0703fadb9b34744fe2372b5fc29f786c733ad9
+-- hash: c11d0db3c29b8e7b9e2f65bd886ece63bf344f6f4dd9d4510c0d6e166b1ef825
 
 name:           saml2-web-sso
 version:        0.18
@@ -32,7 +32,6 @@ library
       SAML2.WebSSO.Servant.CPP
       SAML2.WebSSO.SP
       SAML2.WebSSO.Test.Arbitrary
-      SAML2.WebSSO.Test.Credentials
       SAML2.WebSSO.Test.Lenses
       SAML2.WebSSO.Test.MockResponse
       SAML2.WebSSO.Test.Util

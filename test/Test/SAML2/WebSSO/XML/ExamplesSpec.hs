@@ -19,7 +19,6 @@ import qualified Data.Map as Map
 import Data.String.Conversions
 import SAML2.Util
 import SAML2.WebSSO
-import SAML2.WebSSO.Test.Credentials
 import SAML2.WebSSO.Test.Lenses
 import SAML2.WebSSO.Test.MockResponse
 import SAML2.WebSSO.Test.Util
@@ -79,6 +78,7 @@ spec = describe "XML serialization" $ do
         check msg nameId expectedsubj = it msg $ do
           ctx :: CtxV <- mkTestCtxSimple
           spmeta :: SPMetadata <- ioFromTestSP ctx mkTestSPMetadata
+          (testIdPConfig, SampleIdP _ sampleIdPPrivkey _ _) <- makeTestIdPConfig
           authnreq :: AuthnRequest <- ioFromTestSP ctx $ createAuthnRequest 3600 defSPIssuer
           SignedAuthnResponse doc <-
             ioFromTestSP ctx $

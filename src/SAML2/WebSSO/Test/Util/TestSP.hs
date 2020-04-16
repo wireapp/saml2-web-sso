@@ -7,18 +7,20 @@ import Control.Concurrent.MVar
 import Control.Exception (ErrorCall (..), throwIO)
 import Control.Lens
 import Control.Monad.Except
+import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Reader
+import Crypto.Random.Types (MonadRandom (..))
 import Data.EitherR
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Time
-import Data.UUID as UUID
-import GHC.Stack
+import qualified Data.UUID as UUID
+import qualified Data.UUID.V4 as UUID
+import GHC.Stack (HasCallStack)
 import Network.Wai.Test (runSession)
-import SAML2.WebSSO
+import SAML2.WebSSO as SAML
 import SAML2.WebSSO.API.Example (GetAllIdPs (..), simpleGetIdPConfigBy, simpleIsAliveID', simpleStoreID', simpleUnStoreID')
-import SAML2.WebSSO.Test.Credentials
 import SAML2.WebSSO.Test.Util.Types
 import Servant
 import System.IO
@@ -26,7 +28,10 @@ import System.IO.Silently (hCapture)
 import Test.Hspec
 import Test.Hspec.Wai
 import Test.Hspec.Wai.Internal (unWaiSession)
-import URI.ByteString.QQ
+import Text.XML.DSig as SAML
+import URI.ByteString (pathL)
+import URI.ByteString.QQ (uri)
+import Prelude hiding (head)
 
 -- | FUTUREWORK: we already have 'SimpleSP'; is there a good reason why we need both types?
 newtype TestSP a = TestSP {runTestSP :: ReaderT CtxV (ExceptT SimpleError IO) a}
@@ -96,7 +101,7 @@ instance SPStoreIdP SimpleError TestSP where
   getIdPConfigByIssuer = simpleGetIdPConfigBy readIdPs (^. idpMetadata . edIssuer)
 
 instance GetAllIdPs SimpleError TestSP where
-  getAllIdPs = (^. ctxIdPs) <$> (ask >>= liftIO . readMVar)
+  getAllIdPs = fmap fst . (^. ctxIdPs) <$> (ask >>= liftIO . readMVar)
 
 instance SPHandler SimpleError TestSP where
   type NTCTX TestSP = CtxV
@@ -105,7 +110,7 @@ instance SPHandler SimpleError TestSP where
   nt = handlerFromTestSP
 
 readIdPs :: TestSP [IdPConfig_]
-readIdPs = ((^. ctxIdPs) <$> (ask >>= liftIO . readMVar))
+readIdPs = (fmap fst . (^. ctxIdPs) <$> (ask >>= liftIO . readMVar))
 
 handlerFromTestSP :: CtxV -> TestSP a -> Handler a
 handlerFromTestSP ctx (TestSP m) = Handler . ExceptT . fmap (fmapL toServerError) . runExceptT $ m `runReaderT` ctx
@@ -151,18 +156,38 @@ mkTestCtxSimple = liftIO $ do
 mkTestCtxWithIdP :: MonadIO m => m CtxV
 mkTestCtxWithIdP = liftIO $ do
   ctxmv <- mkTestCtxSimple
-  liftIO $ modifyMVar_ ctxmv (pure . (ctxIdPs .~ [testIdPConfig]))
+  testcfg <- makeTestIdPConfig
+  liftIO $ modifyMVar_ ctxmv (pure . (ctxIdPs .~ [testcfg]))
   pure ctxmv
 
-testIdPConfig :: IdPConfig_
-testIdPConfig = IdPConfig {..}
-  where
-    _idpId = IdPId . fromJust . UUID.fromText $ "035ed888-c196-11e8-8278-7b25a2639572"
-    _idpMetadata = IdPMetadata {..}
-    _edIssuer = Issuer [uri|http://sample-idp.com/issuer|]
-    _edRequestURI = [uri|http://sample-idp.com/request|]
-    _edCertAuthnResponse = sampleIdPCert :| []
-    _idpExtraInfo = ()
+-- | construct a hypothetical idp configuration from sample metadata and credentials, without
+-- actually registering it.
+makeTestIdPConfig :: (MonadIO m, MonadRandom m) => m (IdPConfig (), SampleIdP)
+makeTestIdPConfig = do
+  _idpId <- IdPId <$> liftIO UUID.nextRandom
+  sampleIdP@(SampleIdP _idpMetadata _ _ _) <- makeSampleIdPMetadata
+  let _edIssuer = _idpMetadata ^. edIssuer
+      _edRequestURI = _idpMetadata ^. edRequestURI
+      _edCertAuthnResponse = _idpMetadata ^. edCertAuthnResponse
+      _idpExtraInfo = ()
+  pure (IdPConfig {..}, sampleIdP)
+
+makeSampleIdPMetadata :: HasCallStack => (MonadIO m, MonadRandom m) => m SampleIdP
+makeSampleIdPMetadata = do
+  issuer <- makeIssuer
+  requri <- do
+    uuid <- UUID.toASCIIBytes <$> liftIO UUID.nextRandom
+    pure $ [uri|https://requri.net/|] & pathL .~ ("/" <> uuid)
+  (privcreds, creds, cert) <- SAML.mkSignCredsWithCert Nothing 96
+  pure $ SampleIdP (IdPMetadata issuer requri (cert :| [])) privcreds creds cert
+
+makeIssuer :: MonadIO m => m Issuer
+makeIssuer = do
+  uuid <- liftIO UUID.nextRandom
+  either
+    (liftIO . throwIO . ErrorCall . show)
+    (pure . Issuer)
+    (SAML.parseURI' ("https://issuer.net/_" <> UUID.toText uuid))
 
 mkTestSPMetadata :: HasConfig m => m SPMetadata
 mkTestSPMetadata = do

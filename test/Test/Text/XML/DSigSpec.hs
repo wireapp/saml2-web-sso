@@ -13,7 +13,6 @@ import qualified Data.Map as Map
 import Data.String.Conversions
 import qualified Data.UUID as UUID
 import qualified Data.X509 as X509
-import SAML2.WebSSO.Test.Credentials
 import SAML2.WebSSO.Test.Util
 import qualified Samples
 import Test.Hspec
@@ -53,9 +52,10 @@ spec = describe "xml:dsig" $ do
       raw <- cs <$> readSampleIO "microsoft-authnresponse-2.xml"
       verify (keyinfo :| []) raw "_c79c3ec8-1c26-4752-9443-1f76eb7d5dd6" `shouldBe` Right ()
     it "works with more than one key" $ do
+      SampleIdP _ _ cert _ <- makeSampleIdPMetadata
       Right keyinfo <- (parseKeyInfo True >=> certToCreds) <$> readSampleIO "microsoft-idp-keyinfo.xml"
       raw <- cs <$> readSampleIO "microsoft-authnresponse-2.xml"
-      verify (keyinfo :| [sampleIdPPubkey]) raw "_c79c3ec8-1c26-4752-9443-1f76eb7d5dd6" `shouldBe` Right ()
+      verify (keyinfo :| [cert]) raw "_c79c3ec8-1c26-4752-9443-1f76eb7d5dd6" `shouldBe` Right ()
   describe "verifyRoot" $ do
     it "works" $ do
       Right keyinfo <- (parseKeyInfo True >=> certToCreds) <$> readSampleIO "microsoft-idp-keyinfo.xml"
@@ -68,15 +68,11 @@ spec = describe "xml:dsig" $ do
             (privCreds, pubCreds) <- mkcrds withMatchingCreds
             signature <- runMonadSign $ renderLBS def <$> signRoot privCreds (doc withID)
             (verifyRoot (pubCreds :| []) =<< signature) `shouldSatisfy` expected
-        mkcrds, _mkcrdsReal, _mkcrdsCached :: Bool -> IO (SignPrivCreds, SignCreds)
-        mkcrds = _mkcrdsCached
-        _mkcrdsReal = \case
+        mkcrds :: Bool -> IO (SignPrivCreds, SignCreds)
+        mkcrds = \case
           True -> mkSignCreds keysize
           False -> (,) <$> (fst <$> mkSignCreds keysize) <*> (snd <$> mkSignCreds keysize)
         keysize = 192 -- not long enough for security, but hopefully long enough for swift testing
-        _mkcrdsCached = pure . \case
-          True -> (sampleIdPPrivkey, sampleIdPPubkey)
-          False -> (sampleIdPPrivkey, sampleIdPPubkey2)
         someID withID = Map.fromList [("ID", UUID.toText UUID.nil) | withID]
         doc withID = Document (Prologue [] Nothing []) (Element "root" (someID withID) root) []
         root =

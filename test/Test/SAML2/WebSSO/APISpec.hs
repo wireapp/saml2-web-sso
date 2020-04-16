@@ -16,12 +16,10 @@ import Data.EitherR
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Maybe (maybeToList)
 import Data.String.Conversions
-import qualified Data.X509 as X509
 import qualified Data.Yaml as Yaml
 import Network.Wai.Test
 import SAML2.Util
 import SAML2.WebSSO
-import SAML2.WebSSO.Test.Credentials
 import SAML2.WebSSO.Test.MockResponse
 import SAML2.WebSSO.Test.Util
 import Servant
@@ -102,7 +100,7 @@ spec = describe "API" $ do
                     else "microsoft-authnresponse-2-badsig.xml"
             resp :: LBS <-
               cs <$> readSampleIO respfile
-            midpcfg :: Maybe IdPConfig_ <-
+            midpcfg :: Maybe (IdPConfig_, SampleIdP) <-
               case mgoodkey of
                 Nothing -> pure Nothing
                 Just goodkey -> do
@@ -110,14 +108,14 @@ spec = describe "API" $ do
                         if goodkey
                           then "microsoft-idp-config.yaml"
                           else "microsoft-idp-config-badkey.yaml"
-                  either (error . show) (pure . Just)
+                  either (error . show) (pure . Just . (,SampleIdP undefined undefined undefined undefined))
                     =<< (Yaml.decodeEither' . cs <$> readSampleIO cfgfile)
             let run :: TestSP a -> IO a
                 run action = do
                   ctx <- mkTestCtxSimple
                   modifyMVar_ ctx (pure . (ctxIdPs .~ maybeToList midpcfg))
                   ioFromTestSP ctx action
-                missuer = (^. idpMetadata . edIssuer) <$> midpcfg
+                missuer = (^. _1 . idpMetadata . edIssuer) <$> midpcfg
                 go :: TestSP ()
                 go = do
                   creds <- issuerToCreds missuer
@@ -159,11 +157,15 @@ spec = describe "API" $ do
       it "responds with 404" . runtest' $ do
         get "/authreq/6bf0dfb0-754f-11e8-b71d-00163e5e6c14" `shouldRespondWith` 404
     context "known idp" . withapp (Proxy @APIAuthReq') (authreq' defSPIssuer) mkTestCtxWithIdP $ do
-      it "responds with 200" . runtest' $ do
+      it "responds with 200" . runtest $ \ctxv -> do
+        ctx <- liftIO $ readMVar ctxv
         let idpid = testIdPConfig ^. idpId . to (cs . idPIdToST)
+            [(testIdPConfig, _)] = ctx ^. ctxIdPs
         get ("/authreq/" <> idpid) `shouldRespondWith` 200
-      it "responds with a body that contains the IdPs response URL" . runtest' $ do
+      it "responds with a body that contains the IdPs response URL" . runtest $ \ctxv -> do
+        ctx <- liftIO $ readMVar ctxv
         let idpid = testIdPConfig ^. idpId . to (cs . idPIdToST)
+            [(testIdPConfig, _)] = ctx ^. ctxIdPs
         get ("/authreq/" <> idpid)
           `shouldRespondWith` 200
             { matchBody = bodyContains . cs . renderURI $ testIdPConfig ^. idpMetadata . edRequestURI
@@ -172,63 +174,73 @@ spec = describe "API" $ do
     let -- Create an AuthnRequest in the SP, then call 'mkAuthnResponse' to make an 'AuthnResponse'
         -- in the IdP, then post the 'AuthnResponse' to the appropriate SP end-point.  @spmeta@ is
         -- needed for making the 'AuthnResponse'.
-        postTestAuthnResp :: HasCallStack => CtxV -> Bool -> WaiSession SResponse
-        postTestAuthnResp ctx badTimeStamp = do
-          aresp <- liftIO . ioFromTestSP ctx $ do
+        postTestAuthnResp :: HasCallStack => CtxV -> Bool -> Bool -> WaiSession SResponse
+        postTestAuthnResp ctxv badIdP badTimeStamp = do
+          aresp <- liftIO . ioFromTestSP ctxv $ do
+            (testIdPConfig, SampleIdP _ privkey _ _) <- do
+              idpctx <- liftIO $ makeTestIdPConfig
+              unless badIdP $ do
+                liftIO $ modifyMVar_ ctxv (pure . (ctxIdPs %~ (idpctx :)))
+              pure idpctx
             spmeta :: SPMetadata <- mkTestSPMetadata
             authnreq :: AuthnRequest <- createAuthnRequest 3600 defSPIssuer
-            SignedAuthnResponse aresp_ <-
-              (if badTimeStamp then timeTravel 1800 else id) $
-                mkAuthnResponse sampleIdPPrivkey testIdPConfig spmeta authnreq True
-            pure aresp_
+            fromSignedAuthnResponse
+              <$> ( (if badTimeStamp then timeTravel 1800 else id) $
+                      mkAuthnResponse privkey testIdPConfig spmeta authnreq True
+                  )
           postHtmlForm "/authresp" [("SAMLResponse", cs . EL.encode . renderLBS def $ aresp)]
-        testAuthRespApp :: IO CtxV -> SpecWith (CtxV, Application) -> Spec
+
+    let testAuthRespApp :: IO CtxV -> SpecWith (CtxV, Application) -> Spec
         testAuthRespApp =
           withapp
             (Proxy @APIAuthResp')
             (authresp' defSPIssuer defResponseURI (HandleVerdictRedirect simpleOnSuccess))
+
     context "unknown idp" . testAuthRespApp mkTestCtxSimple $ do
-      let errmsg = "Unknown IdP: Issuer"
       it "responds with 404" . runtest $ \ctx -> do
-        postTestAuthnResp ctx False
+        postTestAuthnResp ctx True False
           `shouldRespondWith` 404
     context "known idp, bad timestamp" . testAuthRespApp mkTestCtxWithIdP $ do
       it "responds with 403" . runtest $ \ctx -> do
-        postTestAuthnResp ctx True
+        postTestAuthnResp ctx False True
           `shouldRespondWith` 403 {matchBody = bodyContains "IssueInstant"}
     context "known idp, good timestamp" . testAuthRespApp mkTestCtxWithIdP $ do
       it "responds with 303" . runtest $ \ctx -> do
-        postTestAuthnResp ctx False
+        postTestAuthnResp ctx False False
           `shouldRespondWith` 303 {matchBody = bodyContains "<body><p>SSO successful, redirecting to"}
   describe "mkAuthnResponse (this is testing the test helpers)" $ do
     it "Produces output that decodes into 'AuthnResponse'" $ do
       ctx <- mkTestCtxWithIdP
       spmeta <- ioFromTestSP ctx mkTestSPMetadata
+      (testIdPConfig, SampleIdP _ privcert _ _) <- makeTestIdPConfig
       Right authnreq :: Either SomeException AuthnRequest <-
         try . ioFromTestSP ctx $ createAuthnRequest 3600 defSPIssuer
       SignedAuthnResponse authnrespDoc <-
-        ioFromTestSP ctx $ mkAuthnResponse sampleIdPPrivkey testIdPConfig spmeta authnreq True
+        ioFromTestSP ctx $ mkAuthnResponse privcert testIdPConfig spmeta authnreq True
       parseFromDocument @AuthnResponse authnrespDoc `shouldSatisfy` isRight
-    let check :: X509.SignedCertificate -> (Either SomeException () -> Bool) -> IO ()
-        check cert expectation = do
-          let idpcfg = testIdPConfig & idpMetadata . edCertAuthnResponse .~ (cert :| [])
+    let check :: Bool -> (Either SomeException () -> Bool) -> IO ()
+        check certIsGood expectation = do
+          testIdPConfig@(_, SampleIdP _ privkey _ goodCert) <- makeTestIdPConfig
+          (_, SampleIdP _ _ _ badCert) <- makeTestIdPConfig
+          let idpcfg = testIdPConfig & _1 . idpMetadata . edCertAuthnResponse .~ (cert :| [])
+              cert = if certIsGood then goodCert else badCert
           ctx <- mkTestCtxSimple
           modifyMVar_ ctx $ pure . (ctxIdPs .~ [idpcfg])
           spmeta <- ioFromTestSP ctx mkTestSPMetadata
-          let idpissuer :: Issuer = idpcfg ^. idpMetadata . edIssuer
+          let idpissuer :: Issuer = idpcfg ^. _1 . idpMetadata . edIssuer
               spissuer :: TestSP Issuer = defSPIssuer
           result :: Either SomeException () <- try . ioFromTestSP ctx $ do
             authnreq <- createAuthnRequest 3600 spissuer
             SignedAuthnResponse authnrespDoc <-
-              liftIO . ioFromTestSP ctx $ mkAuthnResponse sampleIdPPrivkey idpcfg spmeta authnreq True
+              liftIO . ioFromTestSP ctx $ mkAuthnResponse privkey (idpcfg ^. _1) spmeta authnreq True
             let authnrespLBS = renderLBS def authnrespDoc
             creds <- issuerToCreds (Just idpissuer)
             simpleVerifyAuthnResponse creds authnrespLBS
           result `shouldSatisfy` expectation
     it "Produces output that passes 'simpleVerifyAuthnResponse'" $ do
-      check sampleIdPCert isRight
+      check True isRight
     it "Produces output that is rejected by 'simpleVerifyAuthnResponse' if the signature is wrong" $ do
-      check sampleIdPCert2 isLeft
+      check False isLeft
   describe "vendor compatibility tests" $ do
     vendorCompatibility "okta.com" [uri|https://staging-nginz-https.zinfra.io/sso/finalize-login|]
     -- https://developer.okta.com/signup/
@@ -237,6 +249,7 @@ spec = describe "API" $ do
     -- https://azure.microsoft.com/en-us/
 
     vendorCompatibility "centrify.com" [uri|https://prod-nginz-https.wire.com/sso/finalize-login|]
+
 -- TODO:
 --  * onelogin
 --  * jives [https://community.jivesoftware.com/docs/DOC-240217#jive_content_id_IdP_Metadata]
