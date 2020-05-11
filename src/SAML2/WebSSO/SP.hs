@@ -194,19 +194,17 @@ getSsoURI' proxyAPI proxyAPIAuthResp idpid = extpath . (^. cfgSPSsoURI) <$> getC
 --
 -- NOTE: @-XGeneralizedNewtypeDeriving@ does not help with the boilerplate instances below, since
 -- this is a transformer stack and not a concrete 'Monad'.
-newtype JudgeT m a
-  = JudgeT
-      {fromJudgeT :: ExceptT DeniedReason (WriterT [DeniedReason] (ReaderT JudgeCtx m)) a}
+newtype JudgeT m a = JudgeT
+  {fromJudgeT :: ExceptT DeniedReason (WriterT [DeniedReason] (ReaderT JudgeCtx m)) a}
 
 -- | Note on security: we assume that the SP has only one audience, which is defined here.  If you
 -- have different sub-services running on your SP, associate a dedicated IdP with each sub-service.
 -- (To be more specific, construct 'AuthnReq's to different IdPs for each sub-service.)  Secure
 -- association with the service can then be guaranteed via the 'Issuer' in the signed 'Assertion'.
-data JudgeCtx
-  = JudgeCtx
-      { _judgeCtxAudience :: Issuer,
-        _judgeCtxResponseURI :: URI
-      }
+data JudgeCtx = JudgeCtx
+  { _judgeCtxAudience :: Issuer,
+    _judgeCtxResponseURI :: URI
+  }
 
 makeLenses ''JudgeCtx
 

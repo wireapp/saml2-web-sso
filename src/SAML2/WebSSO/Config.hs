@@ -24,15 +24,14 @@ import URI.ByteString.QQ
 ----------------------------------------------------------------------
 -- data types
 
-data Config
-  = Config
-      { _cfgLogLevel :: Level,
-        _cfgSPHost :: String,
-        _cfgSPPort :: Int,
-        _cfgSPAppURI :: URI,
-        _cfgSPSsoURI :: URI,
-        _cfgContacts :: NonEmpty ContactPerson
-      }
+data Config = Config
+  { _cfgLogLevel :: Level,
+    _cfgSPHost :: String,
+    _cfgSPPort :: Int,
+    _cfgSPAppURI :: URI,
+    _cfgSPSsoURI :: URI,
+    _cfgContacts :: NonEmpty ContactPerson
+  }
   deriving (Eq, Show, Generic)
 
 -- | this looks exactly like tinylog's type, but we redefine it here to avoid the dependency.

@@ -11,7 +11,7 @@ extra-deps:
 - invertible-hxt-0.1  # for hsaml2
 - hedgehog-quickcheck-0.1.1
 
-- ormolu-0.0.3.1
+- ormolu-0.0.5.0
 - ghc-lib-parser-8.8.2.20200205@sha256:343f889f7b29f5ec07cf0d18d2a53f250fa5c002b6468a6a05b385d0191b8d34,8408  # for ormolu-0.0.3.1
 
 nix:

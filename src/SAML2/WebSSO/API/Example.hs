@@ -32,13 +32,12 @@ import URI.ByteString
 newtype SimpleSP a = SimpleSP (ReaderT SimpleSPCtx (ExceptT SimpleError IO) a)
   deriving (Functor, Applicative, Monad, MonadIO, MonadReader SimpleSPCtx, MonadError SimpleError)
 
-data SimpleSPCtx
-  = SimpleSPCtx
-      { _spctxConfig :: Config,
-        _spctxIdP :: [IdPConfig_],
-        _spctxReq :: MVar RequestStore,
-        _spctxAss :: MVar AssertionStore
-      }
+data SimpleSPCtx = SimpleSPCtx
+  { _spctxConfig :: Config,
+    _spctxIdP :: [IdPConfig_],
+    _spctxReq :: MVar RequestStore,
+    _spctxAss :: MVar AssertionStore
+  }
 
 type RequestStore = Map.Map (ID AuthnRequest) Time
 
