@@ -1,6 +1,7 @@
 # Status
 
-experimental and incomplete
+- incomplete (some parts of the standard are not supported yet)
+- ready (we are using this in production)
 
 # Introduction
 
