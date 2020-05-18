@@ -49,21 +49,23 @@ vendorCompatibility filePath ssoURI = testAuthRespApp ssoURI $ do
             _idpId = IdPId UUID.nil
             _idpMetadata = idpmeta
             _idpExtraInfo = ()
-        -- NB: the following two bits of info are taken from the unsigned AuthnResponse
-        -- header.  the test still makes perfect sense given the information is available in
-        -- the header.  if it is not, this is legitimate.  in that case, just dig into the
-        -- assertions and take the information from there.
+        sampleidp :: SampleIdP
+        sampleidp = SampleIdP idpmeta (error "no private credentails available") undefined undefined
 
+    let -- NB: reqstore, new are taken from the unsigned AuthnResponse header.  the test still
+        -- makes perfect sense given the information is available in the header.  if it is
+        -- not, just dig into the assertions and take the information from there.
         -- authnresp inResponseTo, with comfortable end of life.
         reqstore :: Map.Map (ID AuthnRequest) Time
         reqstore = Map.singleton (fromJust $ authnresp ^. rspInRespTo) timeInALongTime
         -- 1 second after authnresp IssueInstant
         now :: Time
         now = addTime 1 $ authnresp ^. rspIssueInstant
+
     liftIO . modifyMVar_ ctx $ \ctx' ->
       pure $
         ctx'
-          & ctxIdPs .~ [idpcfg]
+          & ctxIdPs .~ [(idpcfg, sampleidp)]
           -- & ctxConfig . cfgSPAppURI .~ _
           -- (the SPAppURI default is a incorrect, but that should not invalidate the test)
           & ctxConfig . cfgSPSsoURI .~ ssoURI

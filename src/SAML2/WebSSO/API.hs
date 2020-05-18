@@ -80,7 +80,8 @@ api appName handleVerdict =
     :<|> authreq' defSPIssuer
     :<|> authresp' defSPIssuer defResponseURI handleVerdict
 
--- | The 'Issuer' is an identifier of a SAML participant.  In this case, it's the SP, ie., ourselves.
+-- | The 'Issuer' is an identifier of a SAML participant.  In this case, it's the SP, ie.,
+-- ourselves.  For simplicity, we re-use the response URI here.
 defSPIssuer :: HasConfig m => m Issuer
 defSPIssuer = Issuer <$> defResponseURI
 
@@ -93,11 +94,10 @@ defResponseURI = getSsoURI (Proxy @API) (Proxy @APIAuthResp')
 
 -- | An 'AuthnResponseBody' contains a 'AuthnResponse', but you need to give it a trust base for
 -- signature verification first, and you may get an error when you're looking at it.
-data AuthnResponseBody
-  = AuthnResponseBody
-      { authnResponseBodyAction :: forall m err. SPStoreIdP (Error err) m => m AuthnResponse,
-        authnResponseBodyRaw :: MultipartData Mem
-      }
+data AuthnResponseBody = AuthnResponseBody
+  { authnResponseBodyAction :: forall m err. SPStoreIdP (Error err) m => m AuthnResponse,
+    authnResponseBodyRaw :: MultipartData Mem
+  }
 
 renderAuthnResponseBody :: AuthnResponse -> LBS
 renderAuthnResponseBody = EL.encode . cs . encode

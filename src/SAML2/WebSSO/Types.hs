@@ -262,29 +262,27 @@ instance ToJSON Issuer where
 
 -- | high-level, condensed data uesd for constructing an 'SPDesc'.  what is not in here is set to
 -- some constant default.
-data SPMetadata
-  = SPMetadata
-      { _spID :: ID SPMetadata,
-        _spValidUntil :: UTCTime, -- FUTUREWORK: Time
-        _spCacheDuration :: NominalDiffTime, -- FUTUREWORK: Duration
-        _spOrgName :: XmlText,
-        _spOrgDisplayName :: XmlText,
-        _spOrgURL :: URI,
-        _spResponseURL :: URI,
-        _spContacts :: NonEmpty ContactPerson
-      }
+data SPMetadata = SPMetadata
+  { _spID :: ID SPMetadata,
+    _spValidUntil :: UTCTime, -- FUTUREWORK: Time
+    _spCacheDuration :: NominalDiffTime, -- FUTUREWORK: Duration
+    _spOrgName :: XmlText,
+    _spOrgDisplayName :: XmlText,
+    _spOrgURL :: URI,
+    _spResponseURL :: URI,
+    _spContacts :: NonEmpty ContactPerson
+  }
   deriving (Eq, Show, Generic)
 
 -- | [4/2.3.2.2].  Zero or more persons are required in metainfo document [4/2.4.1].
-data ContactPerson
-  = ContactPerson
-      { _cntType :: ContactType,
-        _cntCompany :: Maybe XmlText,
-        _cntGivenName :: Maybe XmlText,
-        _cntSurname :: Maybe XmlText,
-        _cntEmail :: Maybe URI,
-        _cntPhone :: Maybe XmlText
-      }
+data ContactPerson = ContactPerson
+  { _cntType :: ContactType,
+    _cntCompany :: Maybe XmlText,
+    _cntGivenName :: Maybe XmlText,
+    _cntSurname :: Maybe XmlText,
+    _cntEmail :: Maybe URI,
+    _cntPhone :: Maybe XmlText
+  }
   deriving (Eq, Show, Generic)
 
 data ContactType
@@ -295,14 +293,13 @@ data ContactType
   | ContactOther
   deriving (Eq, Enum, Bounded, Show, Generic)
 
-data IdPMetadata
-  = IdPMetadata
-      { _edIssuer :: Issuer,
-        _edRequestURI :: URI,
-        -- | There can be lots of certs for one IdP.  In particular, azure offers more than one key for
-        -- authentication response signing, with no indication in the metadata file which will be used.
-        _edCertAuthnResponse :: NonEmpty X509.SignedCertificate
-      }
+data IdPMetadata = IdPMetadata
+  { _edIssuer :: Issuer,
+    _edRequestURI :: URI,
+    -- | There can be lots of certs for one IdP.  In particular, azure offers more than one key for
+    -- authentication response signing, with no indication in the metadata file which will be used.
+    _edCertAuthnResponse :: NonEmpty X509.SignedCertificate
+  }
   deriving (Eq, Show, Generic)
 
 ----------------------------------------------------------------------
@@ -312,12 +309,11 @@ newtype IdPId = IdPId {fromIdPId :: UUID} deriving (Eq, Show, Generic, Ord)
 
 type IdPConfig_ = IdPConfig ()
 
-data IdPConfig extra
-  = IdPConfig
-      { _idpId :: IdPId,
-        _idpMetadata :: IdPMetadata,
-        _idpExtraInfo :: extra
-      }
+data IdPConfig extra = IdPConfig
+  { _idpId :: IdPId,
+    _idpMetadata :: IdPMetadata,
+    _idpExtraInfo :: extra
+  }
   deriving (Eq, Show, Generic)
 
 ----------------------------------------------------------------------
@@ -330,30 +326,29 @@ data IdPConfig extra
 -- interpretations of individual providers:
 --
 -- * <https://docs.microsoft.com/en-us/azure/active-directory/develop/active-directory-single-sign-on-protocol-reference>
-data AuthnRequest
-  = AuthnRequest
-      { -- abstract xml type
-        _rqID :: ID AuthnRequest,
-        _rqIssueInstant :: Time,
-        _rqIssuer :: Issuer,
-        -- extended xml type
+data AuthnRequest = AuthnRequest
+  { -- abstract xml type
+    _rqID :: ID AuthnRequest,
+    _rqIssueInstant :: Time,
+    _rqIssuer :: Issuer,
+    -- extended xml type
 
-        -- | [1/3.4.1] Allow the IdP to create unknown users implicitly if their subject identifier has
-        -- the right form.
-        --
-        -- NB: Using email addresses as unique identifiers between IdP and SP causes problems, since
-        -- email addresses can change over time.  The best option may be to use UUIDs instead, and
-        -- provide email addresses in SAML 'AuthnResponse' attributes or via scim.
-        --
-        -- Quote from the specs:
-        --
-        -- [3/4.1.4.1] If the service provider wishes to permit the identity provider to establish a new
-        -- identifier for the principal if none exists, it MUST include a NameIDPolicy element with the
-        -- AllowCreate attribute set to "true". Otherwise, only a principal for whom the identity
-        -- provider has previously established an identifier usable by the service provider can be
-        -- authenticated successfully.
-        _rqNameIDPolicy :: Maybe NameIdPolicy
-      }
+    -- | [1/3.4.1] Allow the IdP to create unknown users implicitly if their subject identifier has
+    -- the right form.
+    --
+    -- NB: Using email addresses as unique identifiers between IdP and SP causes problems, since
+    -- email addresses can change over time.  The best option may be to use UUIDs instead, and
+    -- provide email addresses in SAML 'AuthnResponse' attributes or via scim.
+    --
+    -- Quote from the specs:
+    --
+    -- [3/4.1.4.1] If the service provider wishes to permit the identity provider to establish a new
+    -- identifier for the principal if none exists, it MUST include a NameIDPolicy element with the
+    -- AllowCreate attribute set to "true". Otherwise, only a principal for whom the identity
+    -- provider has previously established an identifier usable by the service provider can be
+    -- authenticated successfully.
+    _rqNameIDPolicy :: Maybe NameIdPolicy
+  }
   -- ...  (e.g. attribute requests)
 
   deriving (Eq, Show, Generic)
@@ -362,38 +357,35 @@ data AuthnRequest
 data Comparison = Exact | Minimum | Maximum | Better
   deriving (Eq, Show, Generic)
 
-data RequestedAuthnContext
-  = RequestedAuthnContext
-      { -- | either classRef or declRef
-        _rqacAuthnContexts :: [XmlText],
-        _rqacComparison :: Comparison
-      }
+data RequestedAuthnContext = RequestedAuthnContext
+  { -- | either classRef or declRef
+    _rqacAuthnContexts :: [XmlText],
+    _rqacComparison :: Comparison
+  }
   deriving (Eq, Show, Generic)
 
 -- | [1/3.4.1.1]
-data NameIdPolicy
-  = NameIdPolicy
-      { _nidFormat :: NameIDFormat,
-        _nidSpNameQualifier :: Maybe XmlText,
-        -- | default: 'False'
-        _nidAllowCreate :: Bool
-      }
+data NameIdPolicy = NameIdPolicy
+  { _nidFormat :: NameIDFormat,
+    _nidSpNameQualifier :: Maybe XmlText,
+    -- | default: 'False'
+    _nidAllowCreate :: Bool
+  }
   deriving (Eq, Show, Generic)
 
 -- | [1/3.4]
 type AuthnResponse = Response (NonEmpty Assertion)
 
 -- | [1/3.2.2]
-data Response payload
-  = Response
-      { _rspID :: ID (Response payload),
-        _rspInRespTo :: Maybe (ID AuthnRequest),
-        _rspIssueInstant :: Time,
-        _rspDestination :: Maybe URI,
-        _rspIssuer :: Maybe Issuer,
-        _rspStatus :: Status,
-        _rspPayload :: payload
-      }
+data Response payload = Response
+  { _rspID :: ID (Response payload),
+    _rspInRespTo :: Maybe (ID AuthnRequest),
+    _rspIssueInstant :: Time,
+    _rspDestination :: Maybe URI,
+    _rspIssuer :: Maybe Issuer,
+    _rspStatus :: Status,
+    _rspPayload :: payload
+  }
   deriving (Eq, Show, Generic)
 
 ----------------------------------------------------------------------
@@ -425,25 +417,23 @@ mkID :: ST -> ID m
 mkID = ID . mkXmlText
 
 -- | [1/2.2.1]
-data BaseID
-  = BaseID
-      { _baseID :: XmlText,
-        _baseIDNameQ :: Maybe XmlText,
-        _baseIDSPNameQ :: Maybe XmlText
-      }
+data BaseID = BaseID
+  { _baseID :: XmlText,
+    _baseIDNameQ :: Maybe XmlText,
+    _baseIDSPNameQ :: Maybe XmlText
+  }
   deriving (Eq, Show, Generic)
 
 mkBaseID :: ST -> Maybe ST -> Maybe ST -> BaseID
 mkBaseID i n s = BaseID (mkXmlText i) (mkXmlText <$> n) (mkXmlText <$> s)
 
 -- | [1/2.2.2], [1/2.2.3], [1/3.4.1.1], see 'mkNameID' implementation for constraints on this type.
-data NameID
-  = NameID
-      { _nameID :: UnqualifiedNameID,
-        _nameIDNameQ :: Maybe XmlText,
-        _nameIDSPNameQ :: Maybe XmlText,
-        _nameIDSPProvidedID :: Maybe XmlText
-      }
+data NameID = NameID
+  { _nameID :: UnqualifiedNameID,
+    _nameIDNameQ :: Maybe XmlText,
+    _nameIDSPNameQ :: Maybe XmlText,
+    _nameIDSPProvidedID :: Maybe XmlText
+  }
   deriving (Eq, Ord, Show, Generic)
 
 mkNameID :: MonadError String m => UnqualifiedNameID -> Maybe ST -> Maybe ST -> Maybe ST -> m NameID
@@ -597,53 +587,48 @@ data Status = StatusSuccess | StatusFailure
 
 -- | What the IdP has to say to the SP about the 'Subject'.  In essence, an 'Assertion' is a
 -- 'Subject' and a set of 'Statement's on that 'Subject'.  [1/2.3.3]
-data Assertion
-  = Assertion
-      { _assID :: ID Assertion,
-        _assIssueInstant :: Time,
-        _assIssuer :: Issuer,
-        _assConditions :: Maybe Conditions,
-        _assContents :: SubjectAndStatements
-      }
+data Assertion = Assertion
+  { _assID :: ID Assertion,
+    _assIssueInstant :: Time,
+    _assIssuer :: Issuer,
+    _assConditions :: Maybe Conditions,
+    _assContents :: SubjectAndStatements
+  }
   deriving (Eq, Show, Generic)
 
 -- | Conditions that must hold for an 'Assertion' to be actually asserted by the IdP.  [1/2.5]
-data Conditions
-  = Conditions
-      { _condNotBefore :: Maybe Time,
-        _condNotOnOrAfter :: Maybe Time,
-        -- | [1/2.5.1.5] (it's safe to ignore this)
-        _condOneTimeUse :: Bool,
-        -- | [1/2.5.1.4] this is an and of ors ('[]' means
-        -- do not restrict).
-        _condAudienceRestriction :: [NonEmpty URI]
-      }
+data Conditions = Conditions
+  { _condNotBefore :: Maybe Time,
+    _condNotOnOrAfter :: Maybe Time,
+    -- | [1/2.5.1.5] (it's safe to ignore this)
+    _condOneTimeUse :: Bool,
+    -- | [1/2.5.1.4] this is an and of ors ('[]' means
+    -- do not restrict).
+    _condAudienceRestriction :: [NonEmpty URI]
+  }
   deriving (Eq, Show, Generic)
 
 -- | [1/2.3.3], [3/4.1.4.2]
-data SubjectAndStatements
-  = SubjectAndStatements
-      { _sasSubject :: Subject,
-        _sasStatements :: NonEmpty Statement
-      }
+data SubjectAndStatements = SubjectAndStatements
+  { _sasSubject :: Subject,
+    _sasStatements :: NonEmpty Statement
+  }
   deriving (Eq, Show, Generic)
 
 -- | Information about the client and/or user attempting to authenticate / authorize against the SP.
 -- [1/2.4]
-data Subject
-  = Subject
-      { -- | every 'BaseID' is also a 'NameID'; encryption is not supported.
-        _subjectID :: NameID,
-        _subjectConfirmations :: [SubjectConfirmation]
-      }
+data Subject = Subject
+  { -- | every 'BaseID' is also a 'NameID'; encryption is not supported.
+    _subjectID :: NameID,
+    _subjectConfirmations :: [SubjectConfirmation]
+  }
   deriving (Eq, Show, Generic)
 
 -- | Information about the kind of proof of identity the 'Subject' provided to the IdP.  [1/2.4]
-data SubjectConfirmation
-  = SubjectConfirmation
-      { _scMethod :: SubjectConfirmationMethod,
-        _scData :: Maybe SubjectConfirmationData
-      }
+data SubjectConfirmation = SubjectConfirmation
+  { _scMethod :: SubjectConfirmationMethod,
+    _scData :: Maybe SubjectConfirmationData
+  }
   deriving (Eq, Show, Generic)
 
 -- | [3/3] there is also @holder-of-key@ and @sender-vouches@, but the first seems a bit esoteric
@@ -654,15 +639,14 @@ data SubjectConfirmationMethod
   deriving (Eq, Show, Enum, Bounded, Generic)
 
 -- | See 'SubjectConfirmation'.  [1/2.4.1.2], [3/4.1.4.2]
-data SubjectConfirmationData
-  = SubjectConfirmationData
-      { _scdNotBefore :: Maybe Time,
-        _scdNotOnOrAfter :: Time,
-        _scdRecipient :: URI,
-        _scdInResponseTo :: Maybe (ID AuthnRequest),
-        -- | it's ok to ignore this
-        _scdAddress :: Maybe IP
-      }
+data SubjectConfirmationData = SubjectConfirmationData
+  { _scdNotBefore :: Maybe Time,
+    _scdNotOnOrAfter :: Time,
+    _scdRecipient :: URI,
+    _scdInResponseTo :: Maybe (ID AuthnRequest),
+    -- | it's ok to ignore this
+    _scdAddress :: Maybe IP
+  }
   deriving (Eq, Show, Generic)
 
 data IP
@@ -690,14 +674,13 @@ mkDNSName :: ST -> DNSName
 mkDNSName = DNSName . mkXmlText . cs . DNS.normalize . cs
 
 -- | The core content of the 'Assertion'.  [1/2.7]
-data Statement
-  = AuthnStatement -- [1/2.7.2]
-      { _astAuthnInstant :: Time,
-        -- | safe to ignore
-        _astSessionIndex :: Maybe XmlText,
-        _astSessionNotOnOrAfter :: Maybe Time,
-        _astSubjectLocality :: Maybe Locality
-      }
+data Statement = AuthnStatement -- [1/2.7.2]
+  { _astAuthnInstant :: Time,
+    -- | safe to ignore
+    _astSessionIndex :: Maybe XmlText,
+    _astSessionNotOnOrAfter :: Maybe Time,
+    _astSubjectLocality :: Maybe Locality
+  }
   deriving (Eq, Show, Generic)
 
 -- | (just in case we add other constructors in the future.)
@@ -705,11 +688,10 @@ isAuthnStatement :: Statement -> Bool
 isAuthnStatement AuthnStatement {} = True
 
 -- | [1/2.7.2.1]
-data Locality
-  = Locality
-      { _localityAddress :: Maybe IP,
-        _localityDNSName :: Maybe DNSName
-      }
+data Locality = Locality
+  { _localityAddress :: Maybe IP,
+    _localityDNSName :: Maybe DNSName
+  }
   deriving (Eq, Show, Generic)
 
 ----------------------------------------------------------------------
