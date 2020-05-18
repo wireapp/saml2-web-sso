@@ -145,8 +145,8 @@ isSignature _ = False
 ----------------------------------------------------------------------
 -- helpers
 
-passes :: Expectation
-passes = True `shouldBe` True
+passes :: MonadIO m => m ()
+passes = liftIO $ True `shouldBe` True
 
 newtype SomeSAMLRequest = SomeSAMLRequest {fromSomeSAMLRequest :: XML.Document}
   deriving (Eq, Show)
