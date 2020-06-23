@@ -6,7 +6,7 @@ module Test.Text.XML.DSigSpec
   )
 where
 
-import Control.Monad ((>=>), replicateM_)
+import Control.Monad (replicateM_, (>=>))
 import Data.Either
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.Map as Map

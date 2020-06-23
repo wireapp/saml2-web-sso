@@ -14,5 +14,5 @@ main = do
   let settings =
         defaultSettings
           & setHost (fromString $ config ^. cfgSPHost)
-          . setPort (config ^. cfgSPPort)
+            . setPort (config ^. cfgSPPort)
   runSettings settings =<< app config idps

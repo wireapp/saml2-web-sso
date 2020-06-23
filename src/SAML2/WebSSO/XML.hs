@@ -61,7 +61,7 @@ import Text.XML.Cursor
 import Text.XML.DSig (parseKeyInfo, renderKeyInfo)
 import qualified Text.XML.HXT.Arrow.Pickle.Xml as HS
 import URI.ByteString
-import Prelude hiding ((.), id)
+import Prelude hiding (id, (.))
 
 defNameSpaces :: [(ST, ST)]
 defNameSpaces =
@@ -513,13 +513,14 @@ importStatement ::
   HS.Statement ->
   m (Maybe Statement)
 importStatement (HS.StatementAttribute _) = pure Nothing
-importStatement (HS.StatementAuthn st) = Just <$> do
-  _astAuthnInstant <- importTime $ HS.authnStatementInstant st
-  let _astSessionIndex = mkXmlText . cs <$> HS.authnStatementSessionIndex st
-  _astSessionNotOnOrAfter <- traverse importTime $ HS.authnStatementSessionNotOnOrAfter st
-  _astSubjectLocality <- traverse importLocality $ HS.authnStatementSubjectLocality st
-  -- NB: @HS.authnStatementContext st@ is ignored [1/2.7.2.2].
-  pure $ AuthnStatement _astAuthnInstant _astSessionIndex _astSessionNotOnOrAfter _astSubjectLocality
+importStatement (HS.StatementAuthn st) =
+  Just <$> do
+    _astAuthnInstant <- importTime $ HS.authnStatementInstant st
+    let _astSessionIndex = mkXmlText . cs <$> HS.authnStatementSessionIndex st
+    _astSessionNotOnOrAfter <- traverse importTime $ HS.authnStatementSessionNotOnOrAfter st
+    _astSubjectLocality <- traverse importLocality $ HS.authnStatementSubjectLocality st
+    -- NB: @HS.authnStatementContext st@ is ignored [1/2.7.2.2].
+    pure $ AuthnStatement _astAuthnInstant _astSessionIndex _astSessionNotOnOrAfter _astSubjectLocality
 importStatement bad = die (Proxy @Statement) bad
 
 exportStatement :: (HasCallStack) => Statement -> HS.Statement
@@ -622,9 +623,10 @@ exportURI uri = fromMaybe err . HS.parseURIReference . cs . renderURI $ uri
 
 -- | [1/3.2.2.1;3.2.2.2]
 importStatus :: (HasCallStack, Monad m) => HS.Status -> m Status
-importStatus = pure . \case
-  HS.Status (HS.StatusCode HS.StatusSuccess _) _ _ -> StatusSuccess
-  _ -> StatusFailure
+importStatus =
+  pure . \case
+    HS.Status (HS.StatusCode HS.StatusSuccess _) _ _ -> StatusSuccess
+    _ -> StatusFailure
 
 exportStatus :: HasCallStack => Status -> HS.Status
 exportStatus = \case

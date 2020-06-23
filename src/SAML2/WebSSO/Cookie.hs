@@ -58,20 +58,22 @@ headerValueToCookie txt = do
     [] -> pure (SimpleSetCookie cookie)
 
 toggleCookie :: forall name m. (SP m, KnownSymbol name) => SBS -> Maybe (ST, NominalDiffTime) -> m (SimpleSetCookie name)
-toggleCookie path = fmap SimpleSetCookie . \case
-  Just (value, ttl) -> getNow <&> \now ->
-    cookie
-      { setCookieValue = cs value,
-        setCookieExpires = Just . fromTime $ ttl `addTime` now,
-        setCookieMaxAge = Just $ realToFrac ttl
-      }
-  Nothing ->
-    pure
-      cookie
-        { setCookieValue = "",
-          setCookieExpires = Just $ fromTime beginningOfTime,
-          setCookieMaxAge = Just (-1)
-        }
+toggleCookie path =
+  fmap SimpleSetCookie . \case
+    Just (value, ttl) ->
+      getNow <&> \now ->
+        cookie
+          { setCookieValue = cs value,
+            setCookieExpires = Just . fromTime $ ttl `addTime` now,
+            setCookieMaxAge = Just $ realToFrac ttl
+          }
+    Nothing ->
+      pure
+        cookie
+          { setCookieValue = "",
+            setCookieExpires = Just $ fromTime beginningOfTime,
+            setCookieMaxAge = Just (-1)
+          }
   where
     cookie =
       defaultSetCookie

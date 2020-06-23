@@ -131,9 +131,10 @@ withapp proxy handler mkctx = with (mkctx <&> \ctx -> (ctx, app ctx))
     app ctx = serve proxy (hoistServer (Proxy @api) (nt @SimpleError @TestSP ctx) handler :: Server api)
 
 capture' :: HasCallStack => IO a -> IO a
-capture' action = hCapture [stdout, stderr] action >>= \case
-  ("", out) -> pure out
-  (noise, _) -> error $ show noise
+capture' action =
+  hCapture [stdout, stderr] action >>= \case
+    ("", out) -> pure out
+    (noise, _) -> error $ show noise
 
 captureApplication :: HasCallStack => Application -> Application
 captureApplication app req cont = capture' (app req cont)

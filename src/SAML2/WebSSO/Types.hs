@@ -402,7 +402,7 @@ instance Show Time where
   showsPrec _ (Time t) = showString . show $ formatTime defaultTimeLocale timeFormat t
 
 data Duration = Duration -- TODO: https://www.w3.org/TR/xmlschema-2/#duration. one this is one,
-  -- grep this package for uses of NominalDiffTime and replace them.
+-- grep this package for uses of NominalDiffTime and replace them.
   deriving (Eq, Show, Generic)
 
 addTime :: NominalDiffTime -> Time -> Time
@@ -552,7 +552,7 @@ nameIDToST (NameID (UNameIDUnspecified txt) Nothing Nothing Nothing) = escapeXml
 nameIDToST (NameID (UNameIDEmail (Email txt)) Nothing Nothing Nothing) = cs $ Email.toByteString txt
 nameIDToST (NameID (UNameIDEntity uri) Nothing Nothing Nothing) = renderURI uri
 nameIDToST other = cs $ show other -- (some of the others may also have obvious
-      -- serializations, but we don't need them for now.)
+-- serializations, but we don't need them for now.)
 
 -- | Extract the 'UnqualifiedNameID' part from the input and render it to a 'ST'.  If there are any
 -- qualifiers, return 'Nothing' to prevent name clashes (where two inputs are different, but produce
@@ -928,7 +928,7 @@ rspInResponseTo aresp = case (inResp, inSubjectConf) of
       maybeToList
         . (^. scdInResponseTo)
         =<< maybeToList
-        . (^. scData)
+          . (^. scData)
         =<< (^. assContents . sasSubject . subjectConfirmations)
         =<< toList (aresp ^. rspPayload)
     inResp :: Maybe (ID AuthnRequest)
