@@ -135,21 +135,24 @@ mkpropMimeRender ::
   Proxy t ->
   Gen a ->
   Property
-mkpropMimeRender proxy gen = scaledprop $
-  Hedgehog.forAll gen >>= \a -> Hedgehog.tripping a (mimeRender proxy) (mimeUnrender proxy)
+mkpropMimeRender proxy gen =
+  scaledprop $
+    Hedgehog.forAll gen >>= \a -> Hedgehog.tripping a (mimeRender proxy) (mimeUnrender proxy)
 
 mkpropJSON ::
   forall a.
   (Eq a, Show a, FromJSON a, ToJSON a) =>
   Gen a ->
   Property
-mkpropJSON gen = scaledprop $
-  Hedgehog.forAll gen >>= \a -> Hedgehog.tripping a Aeson.encode Aeson.decode
+mkpropJSON gen =
+  scaledprop $
+    Hedgehog.forAll gen >>= \a -> Hedgehog.tripping a Aeson.encode Aeson.decode
 
 mkpropHttpApiData ::
   forall a.
   (Eq a, Show a, FromHttpApiData a, ToHttpApiData a) =>
   Gen a ->
   Property
-mkpropHttpApiData gen = scaledprop $
-  Hedgehog.forAll gen >>= \a -> Hedgehog.tripping a toUrlPiece parseUrlPiece
+mkpropHttpApiData gen =
+  scaledprop $
+    Hedgehog.forAll gen >>= \a -> Hedgehog.tripping a toUrlPiece parseUrlPiece

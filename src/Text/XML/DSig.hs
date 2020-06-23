@@ -243,9 +243,10 @@ verifyIO creds el signedID = capture' $ do
     [] -> pure $ NL.toList results
   where
     capture' :: IO a -> IO a
-    capture' action = hCapture [stdout, stderr] action >>= \case
-      ("", out) -> pure out
-      (noise, _) -> throwIO . ErrorCall $ "noise on stdout/stderr from hsaml2 package: " <> noise
+    capture' action =
+      hCapture [stdout, stderr] action >>= \case
+        ("", out) -> pure out
+        (noise, _) -> throwIO . ErrorCall $ "noise on stdout/stderr from hsaml2 package: " <> noise
 
 verifyIO' :: SignCreds -> LBS -> String -> IO (Either HS.SignatureError ())
 verifyIO' (SignCreds SignDigestSha256 (SignKeyRSA key)) el signedID = runExceptT $ do
@@ -306,9 +307,9 @@ signRootAt sigPos (SignPrivCreds hashAlg (SignPrivKeyRSA keypair)) doc =
     -- (note that there are two rounds of SHA256 application, hence two mentions of the has alg here)
 
     signedInfoSBS :: SBS <-
-      either (throwError . show) (pure . cs) . unsafePerformIO . try @SomeException
-        $ HS.applyCanonicalization (HS.signedInfoCanonicalizationMethod signedInfo) Nothing
-        $ HS.samlToDoc signedInfo
+      either (throwError . show) (pure . cs) . unsafePerformIO . try @SomeException $
+        HS.applyCanonicalization (HS.signedInfoCanonicalizationMethod signedInfo) Nothing $
+          HS.samlToDoc signedInfo
     sigval :: SBS <-
       either (throwError . show @RSA.Error) pure
         =<< RSA.signSafer

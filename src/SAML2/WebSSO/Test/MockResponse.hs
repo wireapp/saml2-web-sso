@@ -105,8 +105,9 @@ mkAuthnResponseWithModif modifUnsignedAssertion modifAll creds idp sp authnreq g
         | grantAccess = "urn:oasis:names:tc:SAML:2.0:status:Success"
         | otherwise = "urn:oasis:names:tc:SAML:2.0:status:Requester"
   assertion :: [Node] <-
-    liftIO $ signElementIOAt 1 creds . modifUnsignedAssertion . repairNamespaces $
-      [xml|
+    liftIO $
+      signElementIOAt 1 creds . modifUnsignedAssertion . repairNamespaces $
+        [xml|
         <Assertion
           xmlns="urn:oasis:names:tc:SAML:2.0:assertion"
           Version="2.0"

@@ -422,9 +422,9 @@ genXMLName =
     <$> genNiceWord
     <*> Gen.maybe genNiceWord
     <*> pure Nothing -- @Gen.maybe genNiceWord@, but in documents that use the same prefix for two
-      -- different spaces, this breaks the test suite.  (FUTUREWORK: arguably the
-      -- parser libraries (either HXT or xml-conduit) should catch this and throw an
-      -- error.  current behavior is unspecified result of the name space lookup.)
+    -- different spaces, this breaks the test suite.  (FUTUREWORK: arguably the
+    -- parser libraries (either HXT or xml-conduit) should catch this and throw an
+    -- error.  current behavior is unspecified result of the name space lookup.)
 
 genXMLAttrs :: Gen (Map.Map Name ST)
 genXMLAttrs = Map.fromList <$> Gen.list (Range.linear 1 7) genXMLAttr

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -e
+
 cd "$( dirname "${BASH_SOURCE[0]}" )/.."
 
 command -v grep >/dev/null 2>&1 || { echo >&2 "grep is not installed, aborting."; exit 1; }
@@ -72,7 +74,7 @@ FAILURES=0
 
 for hsfile in $(git grep -L "LANGUAGE CPP" | grep '\.hs$'); do
     FAILED=0
-    ormolu --mode $ARG_ORMOLU_MODE --check-idempotency $LANGUAGE_EXTS "$hsfile" || FAILED=1
+    ormolu --mode $ARG_ORMOLU_MODE --check-idempotence $LANGUAGE_EXTS "$hsfile" || FAILED=1
     if [ "$FAILED" == "1" ]; then
         ((FAILURES++))
         echo "$hsfile...  *** FAILED"

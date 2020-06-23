@@ -7,7 +7,7 @@
 module SAML2.WebSSO.Config where
 
 import Control.Exception
-import Control.Lens hiding ((.=), Level)
+import Control.Lens hiding (Level, (.=))
 import Control.Monad (when)
 import Data.Aeson
 import Data.List.NonEmpty
@@ -104,9 +104,9 @@ readConfig filepath =
   where
     info :: Config -> IO ()
     info cfg =
-      when (cfg ^. cfgLogLevel <= Info)
-        $ hPutStrLn stderr . ("\n>>> server config:\n" <>) . cs . Yaml.encode
-        $ cfg
+      when (cfg ^. cfgLogLevel <= Info) $
+        hPutStrLn stderr . ("\n>>> server config:\n" <>) . cs . Yaml.encode $
+          cfg
     warn :: Yaml.ParseException -> IO ()
     warn err =
       hPutStrLn stderr $
@@ -131,9 +131,9 @@ readIdPConfig cfg filepath =
   where
     info :: [IdPConfig_] -> IO ()
     info idps =
-      when (cfg ^. cfgLogLevel <= Info)
-        $ hPutStrLn stderr . ("\n>>>known idps:\n" <>) . cs . Yaml.encode
-        $ idps
+      when (cfg ^. cfgLogLevel <= Info) $
+        hPutStrLn stderr . ("\n>>>known idps:\n" <>) . cs . Yaml.encode $
+          idps
 
 ----------------------------------------------------------------------
 -- class

@@ -37,10 +37,10 @@ render' =
   renderText $
     def
       { rsPretty = True
-        --  , rsNamespaces :: [(Text, Text)]
-        --  , rsAttrOrder :: Name -> Map.Map Name Text -> [(Name, Text)]
-        --  , rsUseCDATA :: Content -> Bool
-        --  , rsXMLDeclaration :: Bool
+      --  , rsNamespaces :: [(Text, Text)]
+      --  , rsAttrOrder :: Name -> Map.Map Name Text -> [(Name, Text)]
+      --  , rsUseCDATA :: Content -> Bool
+      --  , rsXMLDeclaration :: Bool
       }
 
 rerender' :: LT -> LT
