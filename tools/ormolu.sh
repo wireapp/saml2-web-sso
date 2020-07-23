@@ -76,7 +76,7 @@ for hsfile in $(git grep -L "LANGUAGE CPP" | grep '\.hs$'); do
     FAILED=0
     ormolu --mode $ARG_ORMOLU_MODE --check-idempotence $LANGUAGE_EXTS "$hsfile" || FAILED=1
     if [ "$FAILED" == "1" ]; then
-        ((FAILURES++))
+        ((++FAILURES))
         echo "$hsfile...  *** FAILED"
     else
         echo "$hsfile...  ok"
