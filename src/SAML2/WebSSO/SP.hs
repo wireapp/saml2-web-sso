@@ -6,6 +6,7 @@ import Control.Lens hiding (Level)
 import Control.Monad.Except
 import Control.Monad.Extra (ifM)
 import Control.Monad.Reader
+import Data.Kind (Type)
 import Control.Monad.Writer
 import Data.Foldable (toList)
 import Data.List.NonEmpty (NonEmpty)
@@ -56,14 +57,14 @@ class SPStoreID i m where
     m Bool
 
 class (MonadError err m) => SPStoreIdP err m where
-  type IdPConfigExtra m :: *
+  type IdPConfigExtra m :: Type
   storeIdPConfig :: IdPConfig (IdPConfigExtra m) -> m ()
   getIdPConfig :: IdPId -> m (IdPConfig (IdPConfigExtra m))
   getIdPConfigByIssuer :: Issuer -> m (IdPConfig (IdPConfigExtra m))
 
 -- | HTTP handling of the service provider.
 class (SP m, SPStore m, SPStoreIdP err m, MonadError err m) => SPHandler err m where
-  type NTCTX m :: *
+  type NTCTX m :: Type
   nt :: forall x. NTCTX m -> m x -> Handler x
 
 ----------------------------------------------------------------------
@@ -169,7 +170,7 @@ getSsoURI proxyAPI proxyAPIAuthResp = extpath . (^. cfgSPSsoURI) <$> getConfig
 -- FUTUREWORK: this is only sometimes what we need.  it would be nice to have a type class with a
 -- method 'getSsoURI' for arbitrary path arities.
 getSsoURI' ::
-  forall endpoint api a (f :: * -> *) t.
+  forall endpoint api a (f :: Type -> Type) t.
   ( HasConfig f,
     MkLink endpoint ~ (t -> a),
     HasLink endpoint,

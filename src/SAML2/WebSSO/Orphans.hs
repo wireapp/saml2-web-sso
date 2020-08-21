@@ -7,6 +7,7 @@ module SAML2.WebSSO.Orphans where
 import Control.Monad ((<=<))
 import Data.Aeson
 import Data.String.Conversions
+import qualified Data.Text as Text
 import Data.X509 as X509
 import SAML2.Util (normURI, parseURI', renderURI)
 import Servant hiding (URI)
@@ -25,7 +26,7 @@ instance ToHttpApiData URI where
   toUrlPiece = renderURI
 
 instance FromHttpApiData URI where
-  parseUrlPiece = either (fail . show) pure . parseURI' <=< parseUrlPiece
+  parseUrlPiece = either (Left . Text.pack) pure . parseURI' <=< parseUrlPiece
 
 instance FromJSON X509.SignedCertificate where
   parseJSON = withText "KeyInfo element" $ either fail pure . parseKeyInfo False . cs

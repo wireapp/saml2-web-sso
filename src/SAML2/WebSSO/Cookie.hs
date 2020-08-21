@@ -43,7 +43,7 @@ cookieToHeader =
     . renderSetCookie
     . fromSimpleSetCookie
 
-cookieName :: forall (proxy :: Symbol -> *) (name :: Symbol). KnownSymbol name => proxy name -> SBS
+cookieName :: forall (proxy :: Symbol -> Type) (name :: Symbol). KnownSymbol name => proxy name -> SBS
 cookieName _ = cs $ symbolVal (Proxy @name)
 
 headerValueToCookie :: forall name. KnownSymbol name => ST -> Either ST (SimpleSetCookie name)

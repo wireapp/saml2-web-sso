@@ -1,3 +1,5 @@
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE StrictData #-}
 
@@ -163,10 +165,10 @@ import Data.Aeson.TH
 -- depend on that via xml-conduit anyway.  (is it a problem though that it is
 -- string-based?  is it less of a problem because we need it anyway?)
 
+import Data.Bifunctor (first)
 import qualified Data.List as L
 import Data.List.NonEmpty
 import Data.Maybe
-import Data.Monoid ((<>))
 import Data.String.Conversions (ST, cs)
 import qualified Data.Text as ST
 import Data.Time (NominalDiffTime, UTCTime (..), addUTCTime, defaultTimeLocale, formatTime, parseTimeM)
@@ -804,11 +806,17 @@ instance Servant.ToHttpApiData (ID a) where
 
 instance Servant.FromHttpApiData Time where
   parseUrlPiece st =
-    fmap Time . parseTimeM True defaultTimeLocale timeFormat =<< Servant.parseUrlPiece @String st
+    fmap Time . first ST.pack . unwrapEitherFail . parseTimeM True defaultTimeLocale timeFormat =<< Servant.parseUrlPiece @String st
 
 instance Servant.ToHttpApiData Time where
   toUrlPiece =
     Servant.toUrlPiece . formatTime defaultTimeLocale timeFormat . fromTime
+
+newtype EitherFail a = EitherFail {unwrapEitherFail :: Either String a}
+  deriving newtype (Functor, Applicative, Monad)
+
+instance MonadFail EitherFail where
+  fail s = EitherFail (Left s)
 
 instance FromJSON Status
 

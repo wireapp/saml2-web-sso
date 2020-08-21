@@ -1,19 +1,18 @@
-resolver: lts-14.27
+resolver: lts-16.10
 
 packages:
 - .
 
 extra-deps:
 - git: https://github.com/wireapp/hsaml2
-  commit: cc47da1d097b0b26595b8889e40c33c6c0c1c551    # master (Feb 27, 2020)
+  commit: 2ff7b0c11a9d510f1ec411f436bc134b216ebd4a # akshaymankar/pull-upstream-2020-08-18 (Aug 21, 2020)
 - git: https://github.com/wireapp/hspec-wai
-  commit: ca10d13deab929f1cc3a569abea2e7fbe35fdbe3  # https://github.com/hspec/hspec-wai/pull/49
+  commit: 0a5142cd3ba48116ff059c041348b817fb7bdb25  # https://github.com/hspec/hspec-wai/pull/49
 - invertible-hxt-0.1  # for hsaml2
-- hedgehog-quickcheck-0.1.1
+- servant-multipart-0.11.5 # Dropped from stackage
 
-- ormolu-0.1.1.0
+- ormolu-0.1.2.0
 - ghc-lib-parser-8.10.1.20200412@sha256:b0517bb150a02957d7180f131f5b94abd2a7f58a7d1532a012e71618282339c2,8751  # for ormolu-0.0.5.0
-
 nix:
   packages:
   - zlib
