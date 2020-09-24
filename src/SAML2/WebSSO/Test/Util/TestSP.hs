@@ -7,17 +7,16 @@ import Control.Concurrent.MVar
 import Control.Exception (ErrorCall (..), throwIO)
 import Control.Lens
 import Control.Monad.Except
-import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Reader
 import Crypto.Random.Types (MonadRandom (..))
 import Data.EitherR
+import Data.Kind (Type)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.Map as Map
 import Data.Maybe
 import Data.Time
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
-import GHC.Stack (HasCallStack)
 import Network.Wai.Test (runSession)
 import SAML2.WebSSO as SAML
 import SAML2.WebSSO.API.Example (GetAllIdPs (..), simpleGetIdPConfigBy, simpleIsAliveID', simpleStoreID', simpleUnStoreID')
@@ -119,7 +118,7 @@ ioFromTestSP :: CtxV -> TestSP a -> IO a
 ioFromTestSP ctx m = either (throwIO . ErrorCall . show) pure =<< (runExceptT . runHandler' $ handlerFromTestSP ctx m)
 
 withapp ::
-  forall (api :: *).
+  forall (api :: Type).
   (HasServer api '[]) =>
   Proxy api ->
   ServerT api TestSP ->

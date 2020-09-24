@@ -29,13 +29,12 @@ import Control.Monad
 import Control.Monad.Except
 import Data.EitherR
 import Data.Foldable (toList)
+import Data.Kind (Type)
 import qualified Data.List as List
 import Data.List.NonEmpty as NL (NonEmpty ((:|)), nonEmpty)
 import qualified Data.List.NonEmpty as NL
 import qualified Data.Map as Map
 import Data.Maybe
-import Data.Maybe (catMaybes, fromMaybe)
-import Data.Monoid ((<>))
 import Data.String.Conversions
 import qualified Data.Text as ST
 import Data.Time
@@ -232,7 +231,7 @@ class HasXMLImport us them where
   exportXml :: us -> them
 
 wrapParse ::
-  forall (m :: * -> *) them us.
+  forall (m :: Type -> Type) them us.
   (HasCallStack, MonadError String m, HS.XmlPickler them, HasXML us, Typeable us) =>
   (them -> m us) ->
   [Node] ->

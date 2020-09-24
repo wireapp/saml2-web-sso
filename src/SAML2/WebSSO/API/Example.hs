@@ -12,6 +12,7 @@ import Control.Lens
 import Control.Monad.Except
 import Control.Monad.Reader
 import Data.EitherR (fmapL)
+import Data.Kind (Type)
 import Data.Map as Map
 import Data.Proxy
 import Data.String.Conversions
@@ -153,7 +154,7 @@ app :: Config -> [IdPConfig_] -> IO Application
 app cfg idps = app' (Proxy @SimpleSP) =<< mkSimpleSPCtx cfg idps
 
 app' ::
-  forall (m :: * -> *).
+  forall (m :: Type -> Type).
   (SP m, MonadApp m) =>
   Proxy m ->
   NTCTX m ->

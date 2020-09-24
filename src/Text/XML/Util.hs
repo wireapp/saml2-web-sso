@@ -5,8 +5,8 @@ module Text.XML.Util where
 import Control.Monad.Except
 import qualified Data.ByteString.Lazy as BSL
 import Data.Char (isSpace)
-import Data.Default (Default (..))
 import qualified Data.Generics.Uniplate.Data as Uniplate
+import Data.Kind (Type)
 import Data.Map as Map
 import Data.Proxy
 import Data.String.Conversions
@@ -19,10 +19,10 @@ import Text.XML
 import qualified Text.XML.HXT.Core as HXT
 import qualified Text.XML.HXT.DOM.ShowXml
 
-die :: forall (a :: *) b c m. (Typeable a, Show b, MonadError String m) => Proxy a -> b -> m c
+die :: forall (a :: Type) b c m. (Typeable a, Show b, MonadError String m) => Proxy a -> b -> m c
 die = die' Nothing
 
-die' :: forall (a :: *) b c m. (Typeable a, Show b, MonadError String m) => Maybe String -> Proxy a -> b -> m c
+die' :: forall (a :: Type) b c m. (Typeable a, Show b, MonadError String m) => Maybe String -> Proxy a -> b -> m c
 die' mextra Proxy msg =
   throwError $
     "HasXML: could not parse " <> show (typeOf @a undefined) <> ": " <> show msg <> maybe "" ("; " <>) mextra
