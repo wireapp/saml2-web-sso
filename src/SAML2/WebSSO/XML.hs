@@ -659,21 +659,21 @@ exportRequiredIssuer = Just . exportIssuer
 --
 -- The @resp@ argument here must match the @finalize-login@ end-point (as can be constructed by
 -- 'getSsoURL').
-mkSPMetadata :: SP m => ST -> URI -> URI -> NonEmpty ContactPerson -> m SPMetadata
-mkSPMetadata nick org resp contact = do
+mkSPMetadata :: SP m => ST -> URI -> URI -> [ContactPerson] -> m SPMetadata
+mkSPMetadata nick org resp contacts = do
   mid <- createID
   now <- getNow
-  pure $ mkSPMetadata' mid now nick org resp contact
+  pure $ mkSPMetadata' mid now nick org resp contacts
 
-mkSPMetadata' :: ID SPMetadata -> Time -> ST -> URI -> URI -> NonEmpty ContactPerson -> SPMetadata
-mkSPMetadata' mid now (mkXmlText -> nick) org resp contact =
+mkSPMetadata' :: ID SPMetadata -> Time -> ST -> URI -> URI -> [ContactPerson] -> SPMetadata
+mkSPMetadata' mid now (mkXmlText -> nick) org resp contacts =
   let _spID = mid
       _spCacheDuration = months 1
       _spOrgName = nick
       _spOrgDisplayName = nick
       _spOrgURL = org
       _spResponseURL = resp
-      _spContacts = contact
+      _spContacts = contacts
       years n = days n * 365
       months n = days n * 30
       days n = n * 60 * 60 * 24
@@ -715,7 +715,7 @@ importSPMetadata (NL.head . HS.descriptors . HS.entityDescriptors -> desc) = do
     importURI . HS.endpointLocation . HS.indexedEndpoint . NL.head
       . HS.descriptorAssertionConsumerService
       $ desc
-  _spContacts <- fmap NL.fromList . mapM importContactPerson . HS.roleDescriptorContactPerson . HS.descriptorRole $ desc
+  _spContacts <- mapM importContactPerson . HS.roleDescriptorContactPerson . HS.descriptorRole $ desc
   pure SPMetadata {..}
 
 exportSPMetadata :: HasCallStack => SPMetadata -> HS.Metadata
@@ -758,7 +758,7 @@ exportSPMetadata' spdesc =
                     HS.organizationDisplayName = HS.Localized "EN" (cs . escapeXmlText $ spdesc ^. spOrgDisplayName) :| [],
                     HS.organizationURL = HS.Localized "EN" (exportURI $ spdesc ^. spOrgURL) :| [] :: HX.List1 HS.LocalizedURI
                   },
-            HS.roleDescriptorContactPerson = exportContactPerson <$> toList (spdesc ^. spContacts)
+            HS.roleDescriptorContactPerson = exportContactPerson <$> (spdesc ^. spContacts)
           },
       HS.descriptorSSO =
         HS.SSODescriptor
