@@ -272,7 +272,7 @@ data SPMetadata = SPMetadata
     _spOrgDisplayName :: XmlText,
     _spOrgURL :: URI,
     _spResponseURL :: URI,
-    _spContacts :: NonEmpty ContactPerson
+    _spContacts :: [ContactPerson]
   }
   deriving (Eq, Show, Generic)
 

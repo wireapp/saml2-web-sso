@@ -7,7 +7,6 @@ where
 
 import Control.Lens
 import Data.EitherR
-import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.String.Conversions
 import SAML2.WebSSO
 import SAML2.WebSSO.Test.Util
@@ -26,7 +25,7 @@ spec = do
             "drnick"
             [uri|http://example.com/|]
             [uri|http://example.com/sso/login|]
-            (fallbackContact :| [])
+            [fallbackContact]
       let want = testSPMetadata (have ^. spID)
       have `shouldBe` want
   describe "spMeta" $ do
@@ -46,5 +45,5 @@ testSPMetadata mid =
       _spOrgDisplayName = mkXmlText "drnick",
       _spOrgURL = [uri|http://example.com/|],
       _spResponseURL = [uri|http://example.com/sso/login|],
-      _spContacts = fallbackContact :| []
+      _spContacts = [fallbackContact]
     }

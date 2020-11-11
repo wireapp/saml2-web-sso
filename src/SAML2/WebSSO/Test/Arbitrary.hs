@@ -163,7 +163,7 @@ genConfig = do
   _cfgSPPort <- Gen.int (Range.linear 1 9999)
   _cfgSPAppURI <- genHttps
   _cfgSPSsoURI <- genHttps
-  _cfgContacts <- (:|) <$> genSPContactPerson <*> Gen.list (Range.linear 0 3) genSPContactPerson
+  _cfgContacts <- Gen.list (Range.linear 0 3) genSPContactPerson
   pure Config {..}
 
 genSPContactPerson :: Gen ContactPerson
@@ -196,7 +196,7 @@ genSPMetadata = do
   _spOrgDisplayName <- mkXmlText <$> genNiceWord
   _spOrgURL <- genHttps
   _spResponseURL <- genHttps
-  _spContacts <- NL.fromList <$> Gen.list (Range.linear 1 3) genContactPerson
+  _spContacts <- Gen.list (Range.linear 0 3) genContactPerson
   pure SPMetadata {..}
 
 genContactPerson :: Gen ContactPerson

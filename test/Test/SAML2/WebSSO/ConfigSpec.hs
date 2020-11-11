@@ -9,7 +9,6 @@ where
 import Control.Lens
 import Data.Aeson
 import Data.Aeson.Types
-import Data.List.NonEmpty
 import Data.String.Conversions
 import qualified Data.Yaml as Yaml
 import Hedgehog
@@ -32,7 +31,7 @@ spec = describe "Config" $ do
               _cfgSPPort = 443,
               _cfgSPAppURI = [uri|https://me.wire.com/sp|],
               _cfgSPSsoURI = [uri|https://me.wire.com/sso|],
-              _cfgContacts = fallbackContact :| []
+              _cfgContacts = [fallbackContact]
             }
     it "standard" $ do
       want <- readSampleIO "server-config.yaml"
@@ -41,6 +40,6 @@ spec = describe "Config" $ do
     it "minimal contacts" $ do
       want <- readSampleIO "server-config-minimal-contact-details.yaml"
       let pers = ContactPerson ContactAdministrative Nothing Nothing Nothing (Just [uri|email:president@evil.corp|]) Nothing
-          have' = have & cfgContacts .~ (pers :| [])
+          have' = have & cfgContacts .~ [pers]
       over _Left show (Yaml.decodeEither' (cs want))
         `shouldBe` Right have'

@@ -32,7 +32,7 @@ import URI.ByteString.QQ
 spec :: Spec
 spec = describe "API" $ do
   describe "base64 encoding" $ do
-    describe "compatible with /usr/bin/base64" $ do
+    describe "compatible with /usr/bin/env base64" $ do
       let check :: LBS -> Spec
           check input = it (show input) $ do
             o <- base64ours (cs input)

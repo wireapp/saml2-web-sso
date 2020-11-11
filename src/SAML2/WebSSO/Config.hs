@@ -10,7 +10,6 @@ import Control.Exception
 import Control.Lens hiding (Level, (.=))
 import Control.Monad (when)
 import Data.Aeson
-import Data.List.NonEmpty
 import Data.String.Conversions
 import qualified Data.Yaml as Yaml
 import GHC.Generics
@@ -30,7 +29,7 @@ data Config = Config
     _cfgSPPort :: Int,
     _cfgSPAppURI :: URI,
     _cfgSPSsoURI :: URI,
-    _cfgContacts :: NonEmpty ContactPerson
+    _cfgContacts :: [ContactPerson]
   }
   deriving (Eq, Show, Generic)
 
@@ -75,7 +74,7 @@ fallbackConfig =
       _cfgSPPort = 8081,
       _cfgSPAppURI = [uri|https://example-sp.com/landing|],
       _cfgSPSsoURI = [uri|https://example-sp.com/sso|],
-      _cfgContacts = fallbackContact :| []
+      _cfgContacts = [fallbackContact]
     }
 
 fallbackContact :: ContactPerson

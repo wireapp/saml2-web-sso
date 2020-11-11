@@ -196,7 +196,7 @@ mkTestSPMetadata = do
       _spCacheDuration = 2592000
       _spOrgName = mkXmlText "drnick"
       _spOrgDisplayName = mkXmlText "drnick"
-      _spContacts = fallbackContact :| []
+      _spContacts = [fallbackContact]
   _spOrgURL <- (^. fromIssuer) <$> defSPIssuer
   _spResponseURL <- defResponseURI
   pure SPMetadata {..}
