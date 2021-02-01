@@ -163,7 +163,7 @@ instance HasXMLRoot SomeSAMLRequest where
 
 base64ours, base64theirs :: HasCallStack => SBS -> IO SBS
 base64ours = pure . cs . EL.encode . cs
-base64theirs sbs = shelly . silently $ cs <$> (setStdin (cs sbs) >> run "/usr/bin/base64" ["--wrap", "0"])
+base64theirs sbs = shelly . silently $ cs <$> (setStdin (cs sbs) >> run "/usr/bin/env" ["base64", "--wrap", "0"])
 
 ----------------------------------------------------------------------
 -- orphans
