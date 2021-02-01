@@ -22,6 +22,7 @@ module SAML2.WebSSO.XML
   )
 where
 
+import Control.Arrow ((>>>))
 import Control.Category (Category (..))
 import Control.Exception (SomeException)
 import Control.Lens hiding (element)
@@ -852,6 +853,17 @@ parseIdPMetadataList (Element tag _ chs) = do
       let msg = "expected <EntitiesDescriptor> with exactly one child element"
        in throwError $ msg <> "; found " <> show (length bad)
 
+findSome :: MonadError String m => String -> (Cursor -> [a]) -> [Cursor] -> m [a]
+findSome descr axis cursors =
+  case concatMap axis cursors of
+    [] -> throwError ("Couldnt find any matches for: " <> descr)
+    xs -> pure xs
+
+getSingleton :: MonadError String m => String -> [a] -> m a
+getSingleton _ [x] = pure x
+getSingleton descr [] = throwError ("Couldnt find any matches for: " <> descr)
+getSingleton descr _ = throwError ("Expected only one but found multiple matches for: " <> descr)
+
 -- | This is the sane case: since we only want one element, just send that.
 parseIdPMetadataHead :: MonadError String m => Element -> m IdPMetadata
 parseIdPMetadataHead el@(Element tag attrs _) = do
@@ -861,17 +873,18 @@ parseIdPMetadataHead el@(Element tag attrs _) = do
     issueruri :: ST <- maybe (throwError "no issuer") pure (Map.lookup "entityID" attrs)
     Issuer <$> parseURI' issueruri
   _edRequestURI :: URI <- do
-    let cur = fromNode $ NodeElement el
-        target :: [ST]
-        target =
-          cur $// element "{urn:oasis:names:tc:SAML:2.0:metadata}IDPSSODescriptor"
-            &/ element "{urn:oasis:names:tc:SAML:2.0:metadata}SingleSignOnService"
-            >=> attributeIs "Binding" "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
-            >=> attribute "Location"
-    case parseURI' <$> target of
-      [Right uri] -> pure uri
-      [Left msg] -> throwError $ "bad request uri: " <> msg
-      bad -> throwError $ "unexpected request uri: " <> show (target, bad)
+    target :: ST <-
+      [fromNode (NodeElement el)]
+        & ( findSome "IDPSSODescriptor element" (descendant >=> element "{urn:oasis:names:tc:SAML:2.0:metadata}IDPSSODescriptor")
+              >=> findSome "SingleSignOnService" (child >=> element "{urn:oasis:names:tc:SAML:2.0:metadata}SingleSignOnService")
+              >=> findSome "\"Binding\" attribute with value \"HTTP-POST\"" (attributeIs "Binding" "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST")
+              >=> getSingleton "\"Binding\" attribute with value \"HTTP-POST\""
+              >=> attribute "Location" >>> getSingleton "\"Location\""
+          )
+    case parseURI' target of
+      Right uri -> pure uri
+      Left msg -> throwError $ "bad request uri: " <> msg
+
   let cursorToKeyInfo :: MonadError String m => Cursor -> m X509.SignedCertificate
       cursorToKeyInfo = \case
         (node -> NodeElement key) -> parseKeyInfo False . renderText def . mkDocument $ key
