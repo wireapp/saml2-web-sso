@@ -887,13 +887,14 @@ parseIdPMetadataHead el@(Element tag attrs _) = do
     Issuer <$> parseURI' issueruri
   _edRequestURI :: URI <- do
     target :: ST <-
-      [fromNode (NodeElement el)]
-        & ( findSome "IDPSSODescriptor element" (descendant >=> element "{urn:oasis:names:tc:SAML:2.0:metadata}IDPSSODescriptor")
-              >=> findSome "SingleSignOnService element" (child >=> element "{urn:oasis:names:tc:SAML:2.0:metadata}SingleSignOnService")
-              >=> findSome "\"Binding\" attribute with value \"HTTP-POST\"" (attributeIsCI "Binding" "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST")
-              >=> getSingleton "\"Binding\" attribute with value \"HTTP-POST\""
-              >=> attribute "Location" >>> getSingleton "\"Location\""
-          )
+      let bindingDescr = "\"Binding\" attribute with value \"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\""
+       in [fromNode (NodeElement el)]
+            & ( findSome "IDPSSODescriptor element" (descendant >=> element "{urn:oasis:names:tc:SAML:2.0:metadata}IDPSSODescriptor")
+                  >=> findSome "SingleSignOnService element" (child >=> element "{urn:oasis:names:tc:SAML:2.0:metadata}SingleSignOnService")
+                  >=> findSome bindingDescr (attributeIsCI "Binding" "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST")
+                  >=> getSingleton bindingDescr
+                  >=> attribute "Location" >>> getSingleton "\"Location\""
+              )
     case parseURI' target of
       Right uri -> pure uri
       Left msg -> throwError $ "bad request uri: " <> msg

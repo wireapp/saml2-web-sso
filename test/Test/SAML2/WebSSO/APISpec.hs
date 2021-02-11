@@ -249,7 +249,7 @@ spec = describe "API" $ do
 
     it "fails when HTTP-POST with helpful error message" $ do
       res <- parseSample "post-missing.xml"
-      res `shouldBe` Left "Couldnt find any matches for: \"Binding\" attribute with value \"HTTP-POST\""
+      res `shouldBe` Left "Couldnt find any matches for: \"Binding\" attribute with value \"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\""
 
     it "succeeds with HTTP-Post (not all caps)" $ do
       res <- parseSample "authnresponse-case-insensitive.xml"
