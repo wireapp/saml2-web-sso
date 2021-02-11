@@ -6,6 +6,7 @@ module SAML2.WebSSO.XML
   ( HasXML (..),
     HasXMLRoot (..),
     HasXMLImport (..),
+    attributeIsCI,
     defNameSpaces,
     encode,
     decode,
@@ -28,6 +29,8 @@ import Control.Exception (SomeException)
 import Control.Lens hiding (element)
 import Control.Monad
 import Control.Monad.Except
+import Data.CaseInsensitive (CI)
+import qualified Data.CaseInsensitive as CI
 import Data.EitherR
 import Data.Foldable (toList)
 import Data.Kind (Type)
@@ -864,6 +867,16 @@ getSingleton _ [x] = pure x
 getSingleton descr [] = throwError ("Couldnt find any matches for: " <> descr)
 getSingleton descr _ = throwError ("Expected only one but found multiple matches for: " <> descr)
 
+-- | case insensitive version fo 'attributeIs'
+attributeIsCI :: Name -> CI ST -> (Cursor -> [Cursor])
+attributeIsCI name attValue = checkNode $ \case
+  NodeElement (Element _ as _) ->
+    case Map.lookup name as of
+      Nothing -> False
+      Just (CI.mk -> elAttValue) ->
+        elAttValue == attValue
+  _ -> False
+
 -- | This is the sane case: since we only want one element, just send that.
 parseIdPMetadataHead :: MonadError String m => Element -> m IdPMetadata
 parseIdPMetadataHead el@(Element tag attrs _) = do
@@ -877,7 +890,7 @@ parseIdPMetadataHead el@(Element tag attrs _) = do
       [fromNode (NodeElement el)]
         & ( findSome "IDPSSODescriptor element" (descendant >=> element "{urn:oasis:names:tc:SAML:2.0:metadata}IDPSSODescriptor")
               >=> findSome "SingleSignOnService element" (child >=> element "{urn:oasis:names:tc:SAML:2.0:metadata}SingleSignOnService")
-              >=> findSome "\"Binding\" attribute with value \"HTTP-POST\"" (attributeIs "Binding" "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST")
+              >=> findSome "\"Binding\" attribute with value \"HTTP-POST\"" (attributeIsCI "Binding" "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST")
               >=> getSingleton "\"Binding\" attribute with value \"HTTP-POST\""
               >=> attribute "Location" >>> getSingleton "\"Location\""
           )

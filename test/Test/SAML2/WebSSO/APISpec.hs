@@ -251,6 +251,10 @@ spec = describe "API" $ do
       res <- parseSample "post-missing.xml"
       res `shouldBe` Left "Couldnt find any matches for: \"Binding\" attribute with value \"HTTP-POST\""
 
+    it "succeeds with HTTP-Post (not all caps)" $ do
+      res <- parseSample "authnresponse-case-insensitive.xml"
+      res `shouldSatisfy` isRight
+
   describe "vendor compatibility tests" $ do
     vendorCompatibility "okta.com" [uri|https://staging-nginz-https.zinfra.io/sso/finalize-login|]
     -- https://developer.okta.com/signup/

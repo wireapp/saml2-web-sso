@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: c11d0db3c29b8e7b9e2f65bd886ece63bf344f6f4dd9d4510c0d6e166b1ef825
+-- hash: 52bebd38426c08f1d78a6ca88d5f8511740efb741b64c7e0ec1b44eb711be801
 
 name:           saml2-web-sso
 version:        0.18
@@ -60,6 +60,7 @@ library
     , base64-bytestring >=1.0.0.2
     , binary >=0.8.6.0
     , bytestring >=0.10.8.2
+    , case-insensitive >=1.2.1.0
     , containers >=0.6.0.1
     , cookie >=0.4.4
     , cryptonite >=0.25
@@ -132,6 +133,7 @@ executable toy-sp
     , base64-bytestring >=1.0.0.2
     , binary >=0.8.6.0
     , bytestring >=0.10.8.2
+    , case-insensitive >=1.2.1.0
     , containers >=0.6.0.1
     , cookie >=0.4.4
     , cryptonite >=0.25
@@ -218,6 +220,7 @@ test-suite spec
     , base64-bytestring >=1.0.0.2
     , binary >=0.8.6.0
     , bytestring >=0.10.8.2
+    , case-insensitive >=1.2.1.0
     , containers >=0.6.0.1
     , cookie >=0.4.4
     , cryptonite >=0.25
