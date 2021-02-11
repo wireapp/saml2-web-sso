@@ -876,7 +876,7 @@ parseIdPMetadataHead el@(Element tag attrs _) = do
     target :: ST <-
       [fromNode (NodeElement el)]
         & ( findSome "IDPSSODescriptor element" (descendant >=> element "{urn:oasis:names:tc:SAML:2.0:metadata}IDPSSODescriptor")
-              >=> findSome "SingleSignOnService" (child >=> element "{urn:oasis:names:tc:SAML:2.0:metadata}SingleSignOnService")
+              >=> findSome "SingleSignOnService element" (child >=> element "{urn:oasis:names:tc:SAML:2.0:metadata}SingleSignOnService")
               >=> findSome "\"Binding\" attribute with value \"HTTP-POST\"" (attributeIs "Binding" "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST")
               >=> getSingleton "\"Binding\" attribute with value \"HTTP-POST\""
               >=> attribute "Location" >>> getSingleton "\"Location\""
