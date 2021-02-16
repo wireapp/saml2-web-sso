@@ -6,9 +6,9 @@ import Control.Lens hiding (Level)
 import Control.Monad.Except
 import Control.Monad.Extra (ifM)
 import Control.Monad.Reader
-import Data.Kind (Type)
 import Control.Monad.Writer
 import Data.Foldable (toList)
+import Data.Kind (Type)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Maybe
 import qualified Data.Semigroup
