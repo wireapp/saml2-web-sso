@@ -247,7 +247,7 @@ spec = describe "API" $ do
     let parseSample :: FilePath -> IO (Either String IdPMetadata)
         parseSample samplePath = decode <$> readSampleIO samplePath
 
-    it "fails when HTTP-POST with helpful error message" $ do
+    it "fails with helpful error message if HTTP-POST is missing" $ do
       res <- parseSample "post-missing.xml"
       res `shouldBe` Left "Couldnt find any matches for: \"Binding\" attribute with value \"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\""
 

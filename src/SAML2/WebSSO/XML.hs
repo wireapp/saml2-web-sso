@@ -867,7 +867,17 @@ getSingleton _ [x] = pure x
 getSingleton descr [] = throwError ("Couldnt find any matches for: " <> descr)
 getSingleton descr _ = throwError ("Expected only one but found multiple matches for: " <> descr)
 
--- | case insensitive version fo 'attributeIs'
+-- | Case insensitive version fo 'attributeIs'.  NB: this is generally violating the standard
+-- (see below), but in many cases there is clearly no harm in doing so (it's hard to base an
+-- attack on being able to say `HTTP-Post` instead of `HTTP-POST`).
+--
+-- Details:
+-- * According to https://docs.oasis-open.org/security/saml/v2.0/saml-bindings-2.0-os.pdf,
+--   Section 3.5.1, the binding should be "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST",
+--   but what you sent is "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Post".
+-- * According to https://tools.ietf.org/html/rfc8141, page 17, URNs are case sensitive in the
+--   position of "HTTP-Post".  All SAML IdPs that wire supports, including microsoft azure,
+--   okta, and centrify are following this line of reasoning.
 attributeIsCI :: Name -> CI ST -> (Cursor -> [Cursor])
 attributeIsCI name attValue = checkNode $ \case
   NodeElement (Element _ as _) ->
