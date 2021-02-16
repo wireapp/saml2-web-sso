@@ -306,9 +306,9 @@ signRootAt sigPos (SignPrivCreds hashAlg (SignPrivKeyRSA keypair)) doc =
     -- (note that there are two rounds of SHA256 application, hence two mentions of the has alg here)
 
     signedInfoSBS :: SBS <-
-      either (throwError . show) (pure . cs) . unsafePerformIO . try @SomeException
-        $ HS.applyCanonicalization (HS.signedInfoCanonicalizationMethod signedInfo) Nothing
-        $ HS.samlToDoc signedInfo
+      either (throwError . show) (pure . cs) . unsafePerformIO . try @SomeException $
+        HS.applyCanonicalization (HS.signedInfoCanonicalizationMethod signedInfo) Nothing $
+          HS.samlToDoc signedInfo
     sigval :: SBS <-
       either (throwError . show @RSA.Error) pure
         =<< RSA.signSafer

@@ -56,7 +56,7 @@ packages:
     hackage: ghc-lib-parser-8.10.1.20200412@sha256:b0517bb150a02957d7180f131f5b94abd2a7f58a7d1532a012e71618282339c2,8751
 snapshots:
 - completed:
-    size: 532383
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/16/10.yaml
-    sha256: 469d781ab6d2a4eceed6b31b6e4ec842dcd3cd1d11577972e86902603dce24df
-  original: lts-16.10
+    size: 532382
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/16/14.yaml
+    sha256: 1ef27e36f38824abafc43224ca612211b3828fa9ffd31ba0fc2867ae2e19ba90
+  original: lts-16.14
