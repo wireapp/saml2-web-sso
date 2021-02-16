@@ -413,7 +413,7 @@ exportAssertion ass =
       }
 
 importSubject :: (HasCallStack, MonadError String m) => HS.Subject -> m Subject
-importSubject (HS.Subject Nothing _) = die (Proxy @Subject) ("need to provide a subject" :: String)
+importSubject (HS.Subject Nothing _) = die (Proxy @Subject) ("Subject NameID is missing" :: String)
 importSubject (HS.Subject (Just (HS.SoEncrypted _)) _) = die (Proxy @Subject) ("encrypted subjects not supported" :: String)
 importSubject (HS.Subject (Just (HS.NotEncrypted sid)) scs) = case sid of
   HS.IdentifierName nameid -> do
