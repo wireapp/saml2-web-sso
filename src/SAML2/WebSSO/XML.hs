@@ -6,6 +6,7 @@ module SAML2.WebSSO.XML
   ( HasXML (..),
     HasXMLRoot (..),
     HasXMLImport (..),
+    attributeIsCI,
     defNameSpaces,
     encode,
     decode,
@@ -22,11 +23,14 @@ module SAML2.WebSSO.XML
   )
 where
 
+import Control.Arrow ((>>>))
 import Control.Category (Category (..))
 import Control.Exception (SomeException)
 import Control.Lens hiding (element)
 import Control.Monad
 import Control.Monad.Except
+import Data.CaseInsensitive (CI)
+import qualified Data.CaseInsensitive as CI
 import Data.EitherR
 import Data.Foldable (toList)
 import Data.Kind (Type)
@@ -852,6 +856,37 @@ parseIdPMetadataList (Element tag _ chs) = do
       let msg = "expected <EntitiesDescriptor> with exactly one child element"
        in throwError $ msg <> "; found " <> show (length bad)
 
+findSome :: MonadError String m => String -> (Cursor -> [a]) -> [Cursor] -> m [a]
+findSome descr axis cursors =
+  case concatMap axis cursors of
+    [] -> throwError ("Couldnt find any matches for: " <> descr)
+    xs -> pure xs
+
+getSingleton :: MonadError String m => String -> [a] -> m a
+getSingleton _ [x] = pure x
+getSingleton descr [] = throwError ("Couldnt find any matches for: " <> descr)
+getSingleton descr _ = throwError ("Expected only one but found multiple matches for: " <> descr)
+
+-- | Case insensitive version fo 'attributeIs'.  NB: this is generally violating the standard
+-- (see below), but in many cases there is clearly no harm in doing so (it's hard to base an
+-- attack on being able to say `HTTP-Post` instead of `HTTP-POST`).
+--
+-- Details:
+-- * According to https://docs.oasis-open.org/security/saml/v2.0/saml-bindings-2.0-os.pdf,
+--   Section 3.5.1, the binding should be "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST",
+--   but what you sent is "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Post".
+-- * According to https://tools.ietf.org/html/rfc8141, page 17, URNs are case sensitive in the
+--   position of "HTTP-Post".  All SAML IdPs that wire supports, including microsoft azure,
+--   okta, and centrify are following this line of reasoning.
+attributeIsCI :: Name -> CI ST -> (Cursor -> [Cursor])
+attributeIsCI name attValue = checkNode $ \case
+  NodeElement (Element _ as _) ->
+    case Map.lookup name as of
+      Nothing -> False
+      Just (CI.mk -> elAttValue) ->
+        elAttValue == attValue
+  _ -> False
+
 -- | This is the sane case: since we only want one element, just send that.
 parseIdPMetadataHead :: MonadError String m => Element -> m IdPMetadata
 parseIdPMetadataHead el@(Element tag attrs _) = do
@@ -861,17 +896,19 @@ parseIdPMetadataHead el@(Element tag attrs _) = do
     issueruri :: ST <- maybe (throwError "no issuer") pure (Map.lookup "entityID" attrs)
     Issuer <$> parseURI' issueruri
   _edRequestURI :: URI <- do
-    let cur = fromNode $ NodeElement el
-        target :: [ST]
-        target =
-          cur $// element "{urn:oasis:names:tc:SAML:2.0:metadata}IDPSSODescriptor"
-            &/ element "{urn:oasis:names:tc:SAML:2.0:metadata}SingleSignOnService"
-            >=> attributeIs "Binding" "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"
-            >=> attribute "Location"
-    case parseURI' <$> target of
-      [Right uri] -> pure uri
-      [Left msg] -> throwError $ "bad request uri: " <> msg
-      bad -> throwError $ "unexpected request uri: " <> show (target, bad)
+    target :: ST <-
+      let bindingDescr = "\"Binding\" attribute with value \"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\""
+       in [fromNode (NodeElement el)]
+            & ( findSome "IDPSSODescriptor element" (descendant >=> element "{urn:oasis:names:tc:SAML:2.0:metadata}IDPSSODescriptor")
+                  >=> findSome "SingleSignOnService element" (child >=> element "{urn:oasis:names:tc:SAML:2.0:metadata}SingleSignOnService")
+                  >=> findSome bindingDescr (attributeIsCI "Binding" "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST")
+                  >=> getSingleton bindingDescr
+                  >=> attribute "Location" >>> getSingleton "\"Location\""
+              )
+    case parseURI' target of
+      Right uri -> pure uri
+      Left msg -> throwError $ "bad request uri: " <> msg
+
   let cursorToKeyInfo :: MonadError String m => Cursor -> m X509.SignedCertificate
       cursorToKeyInfo = \case
         (node -> NodeElement key) -> parseKeyInfo False . renderText def . mkDocument $ key

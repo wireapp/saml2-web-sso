@@ -19,3 +19,4 @@
 *.pem
 /server.yaml
 TAGS
+**/do-not-commit

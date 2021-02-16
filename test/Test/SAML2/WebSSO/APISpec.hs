@@ -208,6 +208,7 @@ spec = describe "API" $ do
       it "responds with 303" . runtest $ \ctx -> do
         postTestAuthnResp ctx False False
           `shouldRespondWith` 303 {matchBody = bodyContains "<body><p>SSO successful, redirecting to"}
+
   describe "mkAuthnResponse (this is testing the test helpers)" $ do
     it "Produces output that decodes into 'AuthnResponse'" $ do
       ctx <- mkTestCtxWithIdP
@@ -241,6 +242,19 @@ spec = describe "API" $ do
       check True isRight
     it "Produces output that is rejected by 'simpleVerifyAuthnResponse' if the signature is wrong" $ do
       check False isLeft
+
+  describe "IdPMetadata parsing" $ do
+    let parseSample :: FilePath -> IO (Either String IdPMetadata)
+        parseSample samplePath = decode <$> readSampleIO samplePath
+
+    it "fails with helpful error message if HTTP-POST is missing" $ do
+      res <- parseSample "post-missing.xml"
+      res `shouldBe` Left "Couldnt find any matches for: \"Binding\" attribute with value \"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\""
+
+    it "succeeds with HTTP-Post (not all caps)" $ do
+      res <- parseSample "authnresponse-case-insensitive.xml"
+      res `shouldSatisfy` isRight
+
   describe "vendor compatibility tests" $ do
     vendorCompatibility "okta.com" [uri|https://staging-nginz-https.zinfra.io/sso/finalize-login|]
     -- https://developer.okta.com/signup/
