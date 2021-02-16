@@ -1,4 +1,4 @@
-resolver: lts-16.10
+resolver: lts-16.14
 
 packages:
 - .
@@ -11,8 +11,8 @@ extra-deps:
 - invertible-hxt-0.1  # for hsaml2
 - servant-multipart-0.11.5 # Dropped from stackage
 
-- ormolu-0.1.2.0
-- ghc-lib-parser-8.10.1.20200412@sha256:b0517bb150a02957d7180f131f5b94abd2a7f58a7d1532a012e71618282339c2,8751  # for ormolu-0.0.5.0
+- ormolu-0.1.4.1
+- ghc-lib-parser-8.10.1.20200412@sha256:b0517bb150a02957d7180f131f5b94abd2a7f58a7d1532a012e71618282339c2,8751  # for ormolu
 nix:
   packages:
   - zlib
