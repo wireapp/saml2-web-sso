@@ -85,5 +85,8 @@ vendorCompatibility filePath ssoURI = testAuthRespApp ssoURI $ do
         "/sso/authresp"
         [("SAMLResponse", cs . EL.encode . cs $ authnrespRaw)]
     when (statusCode (simpleStatus verdict) /= 303) . liftIO $ do
-      putStrLn . ppShow . (verdict,) =<< readMVar ctx
+      putStrLn . ppShow . (verdict,) . eraseSampleIdPs =<< readMVar ctx
     liftIO $ statusCode (simpleStatus verdict) `shouldBe` 303
+
+eraseSampleIdPs :: Ctx -> Ctx
+eraseSampleIdPs = ctxIdPs .~ mempty -- SampleIdPs as we create them here have undefineds that will break showing.
