@@ -58,7 +58,7 @@ vendorCompatibility filePath ssoURI = testAuthRespApp ssoURI $ do
             _idpMetadata = idpmeta
             _idpExtraInfo = ()
         sampleidp :: SampleIdP
-        sampleidp = SampleIdP idpmeta (error "no private credentails available") undefined undefined
+        sampleidp = SampleIdP idpmeta (error "no private credentials available") undefined undefined
 
     let -- NB: reqstore, new are taken from the unsigned AuthnResponse header.  the test still
         -- makes perfect sense given the information is available in the header.  if it is
