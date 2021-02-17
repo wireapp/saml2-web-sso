@@ -179,6 +179,7 @@ allVerifies creds raw nodeids = do
 
 -- | ADFS illegally breaks whitespace after signing documents; here we try to fix that.
 -- https://github.com/wireapp/wire-server/issues/656
+-- (This may also have been a copy&paste issue in customer support, but let's just leave it in just in case.)
 verifyADFS :: MonadError String m => NonEmpty SignCreds -> LBS -> [String] -> m ()
 verifyADFS creds raw nodeids = verify creds raw' `mapM_` nodeids
   where
