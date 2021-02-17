@@ -10,11 +10,11 @@ packages:
     git: https://github.com/wireapp/hsaml2
     pantry-tree:
       size: 3918
-      sha256: c2f2849bc28cc7fb8a4ec843dbc7606df179915dc54c5cc2aa2e30b974ef3d61
-    commit: 2ff7b0c11a9d510f1ec411f436bc134b216ebd4a
+      sha256: 6c6c8daf85417a28c9327d4b485a3ab5f344f86d47eb80d065009be6d9443dda
+    commit: 72083aec07ac98e4c3f8311c2cdf7c484b143169
   original:
     git: https://github.com/wireapp/hsaml2
-    commit: 2ff7b0c11a9d510f1ec411f436bc134b216ebd4a
+    commit: 72083aec07ac98e4c3f8311c2cdf7c484b143169
 - completed:
     name: hspec-wai
     version: 0.9.2
