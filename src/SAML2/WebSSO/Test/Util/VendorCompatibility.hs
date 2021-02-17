@@ -79,8 +79,8 @@ vendorCompatibility filePath ssoURI = testAuthRespApp ssoURI $ do
           & ctxConfig . cfgSPSsoURI .~ ssoURI
           & ctxRequestStore .~ reqstore
           & ctxNow .~ now
-    -- it is essential to not use @encode authnresp@ here, as that has no signature!
     verdict :: SResponse <-
+      -- it is essential to not use @encode authnresp@ here, as that has no signature!
       postHtmlForm
         "/sso/authresp"
         [("SAMLResponse", cs . EL.encode . cs $ authnrespRaw)]
