@@ -19,6 +19,7 @@ import GHC.Stack
 import SAML2.WebSSO
 import Servant
 import Shelly (run, setStdin, shelly, silently)
+import System.Directory (doesFileExist)
 import System.Environment
 import System.FilePath
 import System.IO.Temp
@@ -81,6 +82,11 @@ readSampleIO :: MonadIO m => FilePath -> m LT
 readSampleIO fpath = liftIO $ do
   root <- getEnv "SAML2_WEB_SSO_ROOT"
   LT.readFile $ root </> "test/samples" </> fpath
+
+doesSampleExistIO :: MonadIO m => FilePath -> m Bool
+doesSampleExistIO fpath = liftIO $ do
+  root <- getEnv "SAML2_WEB_SSO_ROOT"
+  doesFileExist $ root </> "test/samples" </> fpath
 
 roundtrip :: forall a. (Eq a, Show a, HasXMLRoot a) => Int -> IO LT -> a -> Spec
 roundtrip serial mkrendered parsed = describe ("roundtrip-" <> show serial) $ do

@@ -46,44 +46,55 @@ vendorParseAuthResponse filePath ssoURI = testAuthRespApp ssoURI $ do
 
 vendorCompatibility :: HasCallStack => FilePath -> URI.URI -> Spec
 vendorCompatibility filePath ssoURI = testAuthRespApp ssoURI $ do
+  let filePathMeta = "vendors/" <> filePath <> "-metadata.xml"
+      filePathResp = "vendors/" <> filePath <> "-authnresp.xml"
+
   it filePath . runtest $ \ctx -> do
-    authnrespRaw :: LT <- readSampleIO ("vendors/" <> filePath <> "-authnresp.xml")
-    authnresp :: AuthnResponse <- either (error . show) pure $ decode authnrespRaw
-    idpmeta :: IdPMetadata <-
-      readSampleIO ("vendors/" <> filePath <> "-metadata.xml")
-        >>= either (error . show) pure . decode
-    let idpcfg = IdPConfig {..}
-          where
-            _idpId = IdPId UUID.nil
-            _idpMetadata = idpmeta
-            _idpExtraInfo = ()
-        sampleidp :: SampleIdP
-        sampleidp = SampleIdP idpmeta (error "no private credentails available") undefined undefined
+    idpmeta :: IdPMetadata <- readSampleIO filePathMeta >>= either (error . show) pure . decode
+    liftIO $ length (show idpmeta) `shouldNotBe` 0
 
-    let -- NB: reqstore, new are taken from the unsigned AuthnResponse header.  the test still
-        -- makes perfect sense given the information is available in the header.  if it is
-        -- not, just dig into the assertions and take the information from there.
-        -- authnresp inResponseTo, with comfortable end of life.
-        reqstore :: Map.Map (ID AuthnRequest) Time
-        reqstore = Map.singleton (fromJust $ authnresp ^. rspInRespTo) timeInALongTime
-        -- 1 second after authnresp IssueInstant
-        now :: Time
-        now = addTime 1 $ authnresp ^. rspIssueInstant
+    checkAuthResp <- liftIO $ doesSampleExistIO filePathResp
+    if not checkAuthResp
+      then liftIO $ do
+        putStrLn $ "*** no response for filePath (" <> filePathResp <> ") [skipping]"
+      else do
+        authnrespRaw :: LT <- readSampleIO filePathResp
+        authnresp :: AuthnResponse <- either (error . show) pure $ decode authnrespRaw
+        let idpcfg = IdPConfig {..}
+              where
+                _idpId = IdPId UUID.nil
+                _idpMetadata = idpmeta
+                _idpExtraInfo = ()
+            sampleidp :: SampleIdP
+            sampleidp = SampleIdP idpmeta (error "no private credentials available") undefined undefined
 
-    liftIO . modifyMVar_ ctx $ \ctx' ->
-      pure $
-        ctx'
-          & ctxIdPs .~ [(idpcfg, sampleidp)]
-          -- & ctxConfig . cfgSPAppURI .~ _
-          -- (the SPAppURI default is a incorrect, but that should not invalidate the test)
-          & ctxConfig . cfgSPSsoURI .~ ssoURI
-          & ctxRequestStore .~ reqstore
-          & ctxNow .~ now
-    -- it is essential to not use @encode authnresp@ here, as that has no signature!
-    verdict :: SResponse <-
-      postHtmlForm
-        "/sso/authresp"
-        [("SAMLResponse", cs . EL.encode . cs $ authnrespRaw)]
-    when (statusCode (simpleStatus verdict) /= 303) . liftIO $ do
-      putStrLn . ppShow . (verdict,) =<< readMVar ctx
-    liftIO $ statusCode (simpleStatus verdict) `shouldBe` 303
+        let -- NB: reqstore, new are taken from the unsigned AuthnResponse header.  the test still
+            -- makes perfect sense given the information is available in the header.  if it is
+            -- not, just dig into the assertions and take the information from there.
+            -- authnresp inResponseTo, with comfortable end of life.
+            reqstore :: Map.Map (ID AuthnRequest) Time
+            reqstore = Map.singleton (fromJust $ authnresp ^. rspInRespTo) timeInALongTime
+            -- 1 second after authnresp IssueInstant
+            now :: Time
+            now = addTime 1 $ authnresp ^. rspIssueInstant
+
+        liftIO . modifyMVar_ ctx $ \ctx' ->
+          pure $
+            ctx'
+              & ctxIdPs .~ [(idpcfg, sampleidp)]
+              -- & ctxConfig . cfgSPAppURI .~ _
+              -- (the SPAppURI default is a incorrect, but that should not invalidate the test)
+              & ctxConfig . cfgSPSsoURI .~ ssoURI
+              & ctxRequestStore .~ reqstore
+              & ctxNow .~ now
+        verdict :: SResponse <-
+          -- it is essential to not use @encode authnresp@ here, as that has no signature!
+          postHtmlForm
+            "/sso/authresp"
+            [("SAMLResponse", cs . EL.encode . cs $ authnrespRaw)]
+        when (statusCode (simpleStatus verdict) /= 303) . liftIO $ do
+          putStrLn $ ppShow verdict
+        liftIO $ statusCode (simpleStatus verdict) `shouldBe` 303
+
+eraseSampleIdPs :: Ctx -> Ctx
+eraseSampleIdPs = ctxIdPs .~ mempty -- SampleIdPs as we create them here have undefineds that will break showing.
