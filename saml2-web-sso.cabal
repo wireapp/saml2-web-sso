@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 52bebd38426c08f1d78a6ca88d5f8511740efb741b64c7e0ec1b44eb711be801
+-- hash: 5291fba66e21d262c827b52ff6a763e8e6dd4642b7edee7dcfa736d6a5ce7c46
 
 name:           saml2-web-sso
 version:        0.18
@@ -40,6 +40,7 @@ library
       SAML2.WebSSO.Test.Util.Types
       SAML2.WebSSO.Test.Util.VendorCompatibility
       SAML2.WebSSO.Types
+      SAML2.WebSSO.Types.Email
       SAML2.WebSSO.Types.TH
       SAML2.WebSSO.XML
       Text.XML.DSig
