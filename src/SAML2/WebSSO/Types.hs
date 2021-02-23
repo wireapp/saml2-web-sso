@@ -93,7 +93,6 @@ module SAML2.WebSSO.Types
     unsafeShowNameID,
     NameIDFormat (..),
     nameIDFormat,
-    Email (..),
     UnqualifiedNameID (..),
     mkUNameIDUnspecified,
     mkUNameIDEmail,
@@ -182,9 +181,9 @@ import GHC.Stack
 import qualified Network.DNS.Utils as DNS
 import SAML2.Util
 import SAML2.WebSSO.Orphans ()
+import qualified SAML2.WebSSO.Types.Email as Email
 import SAML2.WebSSO.Types.TH (deriveJSONOptions)
 import qualified Servant
-import qualified Text.Email.Validate as Email
 import URI.ByteString
 
 -- | Text that needs to be escaped when rendered into XML.  See 'mkXmlText', 'escapeXmlText'.
@@ -490,7 +489,7 @@ data NameIDFormat
 data UnqualifiedNameID
   = -- | 'nameIDNameQ', 'nameIDSPNameQ' SHOULD be omitted.
     UNameIDUnspecified XmlText
-  | UNameIDEmail Email
+  | UNameIDEmail Email.Email
   | UNameIDX509 XmlText
   | UNameIDWindows XmlText
   | UNameIDKerberos XmlText
@@ -500,14 +499,11 @@ data UnqualifiedNameID
   | UNameIDTransient XmlText
   deriving (Eq, Ord, Show, Generic)
 
-newtype Email = Email {fromEmail :: Email.EmailAddress}
-  deriving (Eq, Ord, Show)
-
 mkUNameIDUnspecified :: ST -> UnqualifiedNameID
 mkUNameIDUnspecified = UNameIDUnspecified . mkXmlText
 
 mkUNameIDEmail :: MonadError String m => ST -> m UnqualifiedNameID
-mkUNameIDEmail = either throwError (pure . UNameIDEmail . Email) . Email.validate . cs
+mkUNameIDEmail = either throwError (pure . UNameIDEmail) . Email.validate
 
 mkUNameIDX509 :: ST -> UnqualifiedNameID
 mkUNameIDX509 = UNameIDX509 . mkXmlText
@@ -551,7 +547,7 @@ unameIDFormat = \case
 
 nameIDToST :: NameID -> ST
 nameIDToST (NameID (UNameIDUnspecified txt) Nothing Nothing Nothing) = escapeXmlText txt
-nameIDToST (NameID (UNameIDEmail (Email txt)) Nothing Nothing Nothing) = cs $ Email.toByteString txt
+nameIDToST (NameID (UNameIDEmail em) Nothing Nothing Nothing) = Email.render em
 nameIDToST (NameID (UNameIDEntity uri) Nothing Nothing Nothing) = renderURI uri
 nameIDToST other = cs $ show other -- (some of the others may also have obvious
 -- serializations, but we don't need them for now.)
@@ -571,7 +567,7 @@ shortShowNameID _ = Nothing
 unsafeShowNameID :: NameID -> ST
 unsafeShowNameID (NameID uqn _ _ _) = case uqn of
   UNameIDUnspecified st -> escapeXmlText st
-  UNameIDEmail em -> cs . Email.toByteString . fromEmail $ em
+  UNameIDEmail em -> Email.render em
   UNameIDX509 st -> escapeXmlText st
   UNameIDWindows st -> escapeXmlText st
   UNameIDKerberos st -> escapeXmlText st
@@ -879,12 +875,6 @@ instance ToJSON (ID a)
 instance FromJSON NameID
 
 instance ToJSON NameID
-
-instance FromJSON Email where
-  parseJSON = withText "email address" $ either fail (pure . Email) . Email.validate . cs
-
-instance ToJSON Email where
-  toJSON = String . cs . Email.toByteString . fromEmail
 
 instance FromJSON UnqualifiedNameID
 

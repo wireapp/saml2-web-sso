@@ -53,11 +53,11 @@ import qualified SAML2.Profiles as HS
 import SAML2.Util
 import SAML2.WebSSO.SP
 import SAML2.WebSSO.Types
+import qualified SAML2.WebSSO.Types.Email as Email
 import qualified SAML2.XML as HS
 import qualified SAML2.XML as HX
 import qualified SAML2.XML.Schema.Datatypes as HX (Boolean, Duration, UnsignedShort)
 import qualified SAML2.XML.Signature.Types as HX (Signature)
-import qualified Text.Email.Validate as Email
 import Text.Hamlet.XML
 import Text.XML
 import Text.XML.Cursor
@@ -591,7 +591,7 @@ exportNameID name =
     unform (UNameIDUnspecified n) = (HS.Identified HS.NameIDFormatUnspecified, escapeXmlText n)
     unform (UNameIDEmail n) =
       ( HS.Identified HS.NameIDFormatEmail,
-        escapeXmlText . mkXmlText . cs . Email.toByteString $ fromEmail n
+        escapeXmlText . mkXmlText . Email.render $ n
       )
     unform (UNameIDX509 n) = (HS.Identified HS.NameIDFormatX509, escapeXmlText n)
     unform (UNameIDWindows n) = (HS.Identified HS.NameIDFormatWindows, escapeXmlText n)
