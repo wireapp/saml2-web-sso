@@ -24,6 +24,7 @@ import Control.Lens hiding (element)
 import Control.Monad.Except hiding (ap)
 import qualified Data.ByteString.Base64.Lazy as EL (decodeLenient, encode)
 import qualified Data.ByteString.Lazy as LBS
+import qualified Data.CaseInsensitive as CI
 import Data.Either (isRight)
 import Data.EitherR
 import Data.List.NonEmpty (NonEmpty)
@@ -323,6 +324,9 @@ simpleOnSuccess uid = do
   cky <- Cky.toggleCookie "/" $ Just (userRefToST uid, defReqTTL)
   appuri <- (^. cfgSPAppURI) <$> getConfig
   pure (cky, appuri)
+  where
+    userRefToST :: UserRef -> ST
+    userRefToST (UserRef (Issuer tenant) subject) = "{" <> renderURI tenant <> "}" <> CI.foldedCase (nameIDToST subject)
 
 -- | We support two cases: redirect with a cookie, and a generic response with arbitrary status,
 -- headers, and body.  The latter case fits the 'ServerError' type well, but we give it a more

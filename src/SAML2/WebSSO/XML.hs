@@ -17,7 +17,6 @@ module SAML2.WebSSO.XML
     unsafeReadTime,
     decodeTime,
     renderTime,
-    userRefToST,
     explainDeniedReason,
     mkSPMetadata,
   )
@@ -152,9 +151,6 @@ renderTime (Time utctime) =
         (t, u) -> case List.splitAt 8 u of
           (_, "") -> t <> u
           (v, _) -> t <> v <> "Z"
-
-userRefToST :: UserRef -> ST
-userRefToST (UserRef (Issuer tenant) subject) = "{" <> renderURI tenant <> "}" <> nameIDToST subject
 
 defAuthnRequest :: HS.ProtocolType -> HS.AuthnRequest
 defAuthnRequest proto =
