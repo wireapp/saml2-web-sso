@@ -159,12 +159,8 @@ where
 
 import Control.Lens
 import Control.Monad.Except
-import Data.Aeson as Aeson
+import Data.Aeson
 import Data.Aeson.TH
--- FUTUREWORK: should saml2-web-sso also use the URI from http-types?  we already
--- depend on that via xml-conduit anyway.  (is it a problem though that it is
--- string-based?  is it less of a problem because we need it anyway?)
-
 import Data.Bifunctor (first)
 import qualified Data.List as L
 import Data.List.NonEmpty
@@ -817,86 +813,6 @@ newtype EitherFail a = EitherFail {unwrapEitherFail :: Either String a}
 
 instance MonadFail EitherFail where
   fail s = EitherFail (Left s)
-
-instance FromJSON Status
-
-instance ToJSON Status
-
-instance FromJSON DeniedReason
-
-instance ToJSON DeniedReason
-
-instance FromJSON AuthnResponse
-
-instance ToJSON AuthnResponse
-
-instance FromJSON Assertion
-
-instance ToJSON Assertion
-
-instance FromJSON SubjectAndStatements
-
-instance ToJSON SubjectAndStatements
-
-instance FromJSON Subject
-
-instance ToJSON Subject
-
-instance FromJSON SubjectConfirmation
-
-instance ToJSON SubjectConfirmation
-
-instance FromJSON SubjectConfirmationMethod
-
-instance ToJSON SubjectConfirmationMethod
-
-instance FromJSON SubjectConfirmationData
-
-instance ToJSON SubjectConfirmationData
-
-instance FromJSON IP where
-  parseJSON = withText "IP address" $ either fail pure . mkIP
-
-instance ToJSON IP where
-  toJSON = String . ipToST
-
-instance FromJSON DNSName
-
-instance ToJSON DNSName
-
-instance FromJSON Statement
-
-instance ToJSON Statement
-
-instance FromJSON Locality
-
-instance ToJSON Locality
-
-instance FromJSON (ID a)
-
-instance ToJSON (ID a)
-
-instance FromJSON NameID
-
-instance ToJSON NameID
-
-instance FromJSON Email where
-  parseJSON = withText "email address" $ either fail (pure . Email) . Email.validate . cs
-
-instance ToJSON Email where
-  toJSON = String . cs . Email.toByteString . fromEmail
-
-instance FromJSON UnqualifiedNameID
-
-instance ToJSON UnqualifiedNameID
-
-instance FromJSON Time
-
-instance ToJSON Time
-
-instance FromJSON Conditions
-
-instance ToJSON Conditions
 
 ----------------------------------------------------------------------
 -- hand-crafted lenses, accessors
