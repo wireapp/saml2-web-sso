@@ -4,6 +4,7 @@
 module SAML2.WebSSO.Test.Arbitrary where
 
 import Control.Lens
+import qualified Data.CaseInsensitive as CI
 import Data.List.NonEmpty as NL
 import qualified Data.Map as Map
 import Data.Proxy
@@ -214,7 +215,7 @@ genEmailURI = do
   loc <- genNiceWord
   pure . unsafeParseURI $ "email:" <> loc <> "@example.com"
 
-genEmail :: HasCallStack => Gen Email.Email
+genEmail :: HasCallStack => Gen (CI.CI Email.Email)
 genEmail = do
   loc <- genNiceWord
   either (error . ("genEmail: " <>)) pure . Email.validate $ loc <> "@example.com"

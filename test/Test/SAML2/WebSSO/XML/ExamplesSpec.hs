@@ -12,6 +12,7 @@ import Control.Monad (forM_)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader
 import qualified Data.ByteString.Base64.Lazy as EL (decodeLenient)
+import qualified Data.CaseInsensitive as CI
 import Data.Either
 import qualified Data.List as List
 import Data.List.NonEmpty as NL
@@ -90,7 +91,7 @@ spec = describe "XML serialization" $ do
             Just subj -> do
               parsed `shouldSatisfy` isRight
               let Right (subjid :: NameID) = parsed <&> (^. assertionL . assContents . sasSubject . subjectID)
-              shortShowNameID subjid `shouldBe` Just subj
+              (CI.original <$> shortShowNameID subjid) `shouldBe` Just subj
         mknid = NodeElement . Element "{urn:oasis:names:tc:SAML:2.0:assertion}NameID" mempty
     check
       "good"

@@ -161,6 +161,7 @@ import Control.Monad.Except
 import Data.Aeson
 import Data.Aeson.TH
 import Data.Bifunctor (first)
+import qualified Data.CaseInsensitive as CI
 import qualified Data.List as L
 import Data.List.NonEmpty
 import Data.Maybe
@@ -485,7 +486,7 @@ data NameIDFormat
 data UnqualifiedNameID
   = -- | 'nameIDNameQ', 'nameIDSPNameQ' SHOULD be omitted.
     UNameIDUnspecified XmlText
-  | UNameIDEmail Email.Email
+  | UNameIDEmail (CI.CI Email.Email)
   | UNameIDX509 XmlText
   | UNameIDWindows XmlText
   | UNameIDKerberos XmlText
@@ -541,17 +542,17 @@ unameIDFormat = \case
   UNameIDPersistent _ -> "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
   UNameIDTransient _ -> "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"
 
-nameIDToST :: NameID -> ST
-nameIDToST (NameID (UNameIDUnspecified txt) Nothing Nothing Nothing) = escapeXmlText txt
-nameIDToST (NameID (UNameIDEmail em) Nothing Nothing Nothing) = Email.render em
-nameIDToST (NameID (UNameIDEntity uri) Nothing Nothing Nothing) = renderURI uri
-nameIDToST other = cs $ show other -- (some of the others may also have obvious
+nameIDToST :: NameID -> CI.CI ST
+nameIDToST (NameID (UNameIDUnspecified txt) Nothing Nothing Nothing) = CI.mk $ escapeXmlText txt
+nameIDToST (NameID (UNameIDEmail em) Nothing Nothing Nothing) = CI.mk . Email.render . CI.original $ em
+nameIDToST (NameID (UNameIDEntity uri) Nothing Nothing Nothing) = CI.mk $ renderURI uri
+nameIDToST other = CI.mk . cs $ show other -- (some of the others may also have obvious
 -- serializations, but we don't need them for now.)
 
 -- | Extract the 'UnqualifiedNameID' part from the input and render it to a 'ST'.  If there are any
 -- qualifiers, return 'Nothing' to prevent name clashes (where two inputs are different, but produce
 -- the same output).
-shortShowNameID :: NameID -> Maybe ST
+shortShowNameID :: NameID -> Maybe (CI.CI ST)
 shortShowNameID uqn@(NameID _ Nothing Nothing Nothing) = Just $ unsafeShowNameID uqn
 shortShowNameID _ = Nothing
 
@@ -560,10 +561,10 @@ shortShowNameID _ = Nothing
 --
 -- WARNING: This may lead to name clashes where two inputs are different, but produce the same
 -- output.
-unsafeShowNameID :: NameID -> ST
-unsafeShowNameID (NameID uqn _ _ _) = case uqn of
+unsafeShowNameID :: NameID -> CI.CI ST
+unsafeShowNameID (NameID uqn _ _ _) = CI.mk $ case uqn of
   UNameIDUnspecified st -> escapeXmlText st
-  UNameIDEmail em -> Email.render em
+  UNameIDEmail em -> Email.render (CI.original em)
   UNameIDX509 st -> escapeXmlText st
   UNameIDWindows st -> escapeXmlText st
   UNameIDKerberos st -> escapeXmlText st

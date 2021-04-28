@@ -591,7 +591,7 @@ exportNameID name =
     unform (UNameIDUnspecified n) = (HS.Identified HS.NameIDFormatUnspecified, escapeXmlText n)
     unform (UNameIDEmail n) =
       ( HS.Identified HS.NameIDFormatEmail,
-        escapeXmlText . mkXmlText . Email.render $ n
+        escapeXmlText . mkXmlText . Email.render . CI.original $ n
       )
     unform (UNameIDX509 n) = (HS.Identified HS.NameIDFormatX509, escapeXmlText n)
     unform (UNameIDWindows n) = (HS.Identified HS.NameIDFormatWindows, escapeXmlText n)
