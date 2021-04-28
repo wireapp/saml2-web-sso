@@ -17,10 +17,10 @@
 module SAML2.WebSSO.Types.Email (Email, render, validate) where
 
 import Data.Aeson
-import Data.ByteString.Internal
+import qualified Data.ByteString as BS
 import qualified Data.CaseInsensitive as CI
 import Data.String.Conversions
-import Data.Text (toLower)
+import Data.Word8 (toLower)
 import qualified Text.Email.Validate as Email
 
 newtype Email = Email {fromEmail :: Email.EmailAddress}
@@ -30,14 +30,14 @@ instance CI.FoldCase Email where
   foldCase (Email eml) =
     Email
       ( Email.unsafeEmailAddress
-          (cs . toLower . cs . Email.localPart $ eml)
-          (cs . toLower . cs . Email.domainPart $ eml)
+          (BS.map toLower . Email.localPart $ eml)
+          (BS.map toLower . Email.domainPart $ eml)
       )
 
-render :: (CI.FoldCase s, ConvertibleStrings ByteString s) => Email -> s
+render :: (CI.FoldCase s, ConvertibleStrings BS.ByteString s) => Email -> s
 render = cs . Email.toByteString . fromEmail
 
-validate :: forall s. ConvertibleStrings s ByteString => s -> Either String (CI.CI Email)
+validate :: forall s. ConvertibleStrings s BS.ByteString => s -> Either String (CI.CI Email)
 validate = fmap (CI.mk . Email) . Email.validate . cs
 
 instance FromJSON (CI.CI Email) where
