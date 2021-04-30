@@ -180,7 +180,7 @@ spapi :: (MonadApp m) => ServerT SPAPI m
 spapi = loginStatus :<|> localLogout :<|> singleLogout
 
 appapi :: (MonadApp m) => ServerT APPAPI m
-appapi = spapi :<|> api "toy-sp" (HandleVerdictRedirect simpleOnSuccess)
+appapi = spapi :<|> api "toy-sp" (HandleVerdictRedirect (simpleOnSuccess SubjectFoldCase))
 
 loginStatus :: (GetAllIdPs err m, SP m) => Maybe Cky -> m LoginStatus
 loginStatus cookie = do

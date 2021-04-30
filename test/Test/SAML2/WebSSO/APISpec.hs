@@ -194,7 +194,7 @@ spec = describe "API" $ do
         testAuthRespApp =
           withapp
             (Proxy @APIAuthResp')
-            (authresp' defSPIssuer defResponseURI (HandleVerdictRedirect simpleOnSuccess))
+            (authresp' defSPIssuer defResponseURI (HandleVerdictRedirect (simpleOnSuccess SubjectFoldCase)))
 
     context "unknown idp" . testAuthRespApp mkTestCtxSimple $ do
       it "responds with 404" . runtest $ \ctx -> do
