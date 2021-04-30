@@ -4,6 +4,7 @@
 module SAML2.WebSSO.Test.Arbitrary where
 
 import Control.Lens
+import qualified Data.CaseInsensitive as CI
 import Data.List.NonEmpty as NL
 import qualified Data.Map as Map
 import Data.Proxy
@@ -21,11 +22,11 @@ import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Gen.QuickCheck as THQ
 import qualified Hedgehog.Range as Range
 import SAML2.WebSSO
+import qualified SAML2.WebSSO.Types.Email as Email
 import Servant.Multipart
 import Test.QuickCheck (Arbitrary (arbitrary, shrink))
 import qualified Test.QuickCheck.Hedgehog as TQH
 import Test.QuickCheck.Instances ()
-import qualified Text.Email.Validate as Email
 import Text.XML
 import qualified Text.XML.DSig as DSig
 import URI.ByteString
@@ -214,10 +215,10 @@ genEmailURI = do
   loc <- genNiceWord
   pure . unsafeParseURI $ "email:" <> loc <> "@example.com"
 
-genEmail :: HasCallStack => Gen Email
+genEmail :: HasCallStack => Gen (CI.CI Email.Email)
 genEmail = do
   loc <- genNiceWord
-  maybe (error "genEmail") (pure . Email) . Email.emailAddress . cs $ loc <> "@example.com"
+  either (error . ("genEmail: " <>)) pure . Email.validate $ loc <> "@example.com"
 
 genAuthnRequest :: Gen AuthnRequest
 genAuthnRequest =

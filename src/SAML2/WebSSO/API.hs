@@ -24,6 +24,7 @@ import Control.Lens hiding (element)
 import Control.Monad.Except hiding (ap)
 import qualified Data.ByteString.Base64.Lazy as EL (decodeLenient, encode)
 import qualified Data.ByteString.Lazy as LBS
+import qualified Data.CaseInsensitive as CI
 import Data.Either (isRight)
 import Data.EitherR
 import Data.List.NonEmpty (NonEmpty)
@@ -316,13 +317,25 @@ type Cky = Cky.SimpleSetCookie CookieName
 
 type CookieName = "saml2-web-sso"
 
+data SubjectFoldCase
+  = SubjectFoldCase
+  | SubjectDontFoldCase
+
 simpleOnSuccess ::
   SP m =>
+  SubjectFoldCase ->
   OnSuccessRedirect m
-simpleOnSuccess uid = do
+simpleOnSuccess foldCase uid = do
   cky <- Cky.toggleCookie "/" $ Just (userRefToST uid, defReqTTL)
   appuri <- (^. cfgSPAppURI) <$> getConfig
   pure (cky, appuri)
+  where
+    userRefToST :: UserRef -> ST
+    userRefToST (UserRef (Issuer tenant) subject) = "{" <> renderURI tenant <> "}" <> renderSubject subject
+    renderSubject subject =
+      case foldCase of
+        SubjectFoldCase -> CI.foldedCase (nameIDToST subject)
+        SubjectDontFoldCase -> CI.original (nameIDToST subject)
 
 -- | We support two cases: redirect with a cookie, and a generic response with arbitrary status,
 -- headers, and body.  The latter case fits the 'ServerError' type well, but we give it a more

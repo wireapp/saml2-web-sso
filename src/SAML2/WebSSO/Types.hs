@@ -93,7 +93,6 @@ module SAML2.WebSSO.Types
     unsafeShowNameID,
     NameIDFormat (..),
     nameIDFormat,
-    Email (..),
     UnqualifiedNameID (..),
     mkUNameIDUnspecified,
     mkUNameIDEmail,
@@ -159,13 +158,10 @@ where
 
 import Control.Lens
 import Control.Monad.Except
-import Data.Aeson as Aeson
+import Data.Aeson
 import Data.Aeson.TH
--- FUTUREWORK: should saml2-web-sso also use the URI from http-types?  we already
--- depend on that via xml-conduit anyway.  (is it a problem though that it is
--- string-based?  is it less of a problem because we need it anyway?)
-
 import Data.Bifunctor (first)
+import qualified Data.CaseInsensitive as CI
 import qualified Data.List as L
 import Data.List.NonEmpty
 import Data.Maybe
@@ -182,9 +178,9 @@ import GHC.Stack
 import qualified Network.DNS.Utils as DNS
 import SAML2.Util
 import SAML2.WebSSO.Orphans ()
+import qualified SAML2.WebSSO.Types.Email as Email
 import SAML2.WebSSO.Types.TH (deriveJSONOptions)
 import qualified Servant
-import qualified Text.Email.Validate as Email
 import URI.ByteString
 
 -- | Text that needs to be escaped when rendered into XML.  See 'mkXmlText', 'escapeXmlText'.
@@ -490,7 +486,7 @@ data NameIDFormat
 data UnqualifiedNameID
   = -- | 'nameIDNameQ', 'nameIDSPNameQ' SHOULD be omitted.
     UNameIDUnspecified XmlText
-  | UNameIDEmail Email
+  | UNameIDEmail (CI.CI Email.Email)
   | UNameIDX509 XmlText
   | UNameIDWindows XmlText
   | UNameIDKerberos XmlText
@@ -500,14 +496,11 @@ data UnqualifiedNameID
   | UNameIDTransient XmlText
   deriving (Eq, Ord, Show, Generic)
 
-newtype Email = Email {fromEmail :: Email.EmailAddress}
-  deriving (Eq, Ord, Show)
-
 mkUNameIDUnspecified :: ST -> UnqualifiedNameID
 mkUNameIDUnspecified = UNameIDUnspecified . mkXmlText
 
 mkUNameIDEmail :: MonadError String m => ST -> m UnqualifiedNameID
-mkUNameIDEmail = either throwError (pure . UNameIDEmail . Email) . Email.validate . cs
+mkUNameIDEmail = either throwError (pure . UNameIDEmail) . Email.validate
 
 mkUNameIDX509 :: ST -> UnqualifiedNameID
 mkUNameIDX509 = UNameIDX509 . mkXmlText
@@ -549,17 +542,17 @@ unameIDFormat = \case
   UNameIDPersistent _ -> "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
   UNameIDTransient _ -> "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"
 
-nameIDToST :: NameID -> ST
-nameIDToST (NameID (UNameIDUnspecified txt) Nothing Nothing Nothing) = escapeXmlText txt
-nameIDToST (NameID (UNameIDEmail (Email txt)) Nothing Nothing Nothing) = cs $ Email.toByteString txt
-nameIDToST (NameID (UNameIDEntity uri) Nothing Nothing Nothing) = renderURI uri
-nameIDToST other = cs $ show other -- (some of the others may also have obvious
+nameIDToST :: NameID -> CI.CI ST
+nameIDToST (NameID (UNameIDUnspecified txt) Nothing Nothing Nothing) = CI.mk $ escapeXmlText txt
+nameIDToST (NameID (UNameIDEmail em) Nothing Nothing Nothing) = CI.mk . Email.render . CI.original $ em
+nameIDToST (NameID (UNameIDEntity uri) Nothing Nothing Nothing) = CI.mk $ renderURI uri
+nameIDToST other = CI.mk . cs $ show other -- (some of the others may also have obvious
 -- serializations, but we don't need them for now.)
 
 -- | Extract the 'UnqualifiedNameID' part from the input and render it to a 'ST'.  If there are any
 -- qualifiers, return 'Nothing' to prevent name clashes (where two inputs are different, but produce
 -- the same output).
-shortShowNameID :: NameID -> Maybe ST
+shortShowNameID :: NameID -> Maybe (CI.CI ST)
 shortShowNameID uqn@(NameID _ Nothing Nothing Nothing) = Just $ unsafeShowNameID uqn
 shortShowNameID _ = Nothing
 
@@ -568,10 +561,10 @@ shortShowNameID _ = Nothing
 --
 -- WARNING: This may lead to name clashes where two inputs are different, but produce the same
 -- output.
-unsafeShowNameID :: NameID -> ST
-unsafeShowNameID (NameID uqn _ _ _) = case uqn of
+unsafeShowNameID :: NameID -> CI.CI ST
+unsafeShowNameID (NameID uqn _ _ _) = CI.mk $ case uqn of
   UNameIDUnspecified st -> escapeXmlText st
-  UNameIDEmail em -> cs . Email.toByteString . fromEmail $ em
+  UNameIDEmail em -> Email.render (CI.original em)
   UNameIDX509 st -> escapeXmlText st
   UNameIDWindows st -> escapeXmlText st
   UNameIDKerberos st -> escapeXmlText st
@@ -817,86 +810,6 @@ newtype EitherFail a = EitherFail {unwrapEitherFail :: Either String a}
 
 instance MonadFail EitherFail where
   fail s = EitherFail (Left s)
-
-instance FromJSON Status
-
-instance ToJSON Status
-
-instance FromJSON DeniedReason
-
-instance ToJSON DeniedReason
-
-instance FromJSON AuthnResponse
-
-instance ToJSON AuthnResponse
-
-instance FromJSON Assertion
-
-instance ToJSON Assertion
-
-instance FromJSON SubjectAndStatements
-
-instance ToJSON SubjectAndStatements
-
-instance FromJSON Subject
-
-instance ToJSON Subject
-
-instance FromJSON SubjectConfirmation
-
-instance ToJSON SubjectConfirmation
-
-instance FromJSON SubjectConfirmationMethod
-
-instance ToJSON SubjectConfirmationMethod
-
-instance FromJSON SubjectConfirmationData
-
-instance ToJSON SubjectConfirmationData
-
-instance FromJSON IP where
-  parseJSON = withText "IP address" $ either fail pure . mkIP
-
-instance ToJSON IP where
-  toJSON = String . ipToST
-
-instance FromJSON DNSName
-
-instance ToJSON DNSName
-
-instance FromJSON Statement
-
-instance ToJSON Statement
-
-instance FromJSON Locality
-
-instance ToJSON Locality
-
-instance FromJSON (ID a)
-
-instance ToJSON (ID a)
-
-instance FromJSON NameID
-
-instance ToJSON NameID
-
-instance FromJSON Email where
-  parseJSON = withText "email address" $ either fail (pure . Email) . Email.validate . cs
-
-instance ToJSON Email where
-  toJSON = String . cs . Email.toByteString . fromEmail
-
-instance FromJSON UnqualifiedNameID
-
-instance ToJSON UnqualifiedNameID
-
-instance FromJSON Time
-
-instance ToJSON Time
-
-instance FromJSON Conditions
-
-instance ToJSON Conditions
 
 ----------------------------------------------------------------------
 -- hand-crafted lenses, accessors
