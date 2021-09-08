@@ -492,7 +492,7 @@ genAuthnResponseBody :: Gen AuthnResponseBody
 genAuthnResponseBody = do
   aresp <- genAuthnResponse
   raw <- genRawAuthnResponseBody
-  pure (AuthnResponseBody (pure aresp) raw)
+  pure (AuthnResponseBody (\_ -> pure aresp) raw)
 
 genRawAuthnResponseBody :: Gen (MultipartData Mem)
 genRawAuthnResponseBody = do
