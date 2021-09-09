@@ -99,7 +99,7 @@ instance SPStoreIdP SimpleError TestSP where
   type IdPConfigSPId TestSP = Void -- FUTUREWORK: can we do better than this?
   storeIdPConfig _ = pure ()
   getIdPConfig = simpleGetIdPConfigBy readIdPs (^. idpId)
-  getIdPConfigByIssuer issuer _ = simpleGetIdPConfigBy readIdPs (^. idpMetadata . edIssuer) issuer
+  getIdPConfigByIssuerOptionalSPId issuer _ = simpleGetIdPConfigBy readIdPs (^. idpMetadata . edIssuer) issuer
 
 instance GetAllIdPs SimpleError TestSP where
   getAllIdPs = fmap fst . (^. ctxIdPs) <$> (ask >>= liftIO . readMVar)

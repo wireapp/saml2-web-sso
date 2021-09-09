@@ -136,7 +136,7 @@ instance FromMultipart Mem AuthnResponseBody where
 issuerToCreds :: forall m err. SPStoreIdP (Error err) m => Maybe Issuer -> Maybe (IdPConfigSPId m) -> m (NonEmpty SignCreds)
 issuerToCreds Nothing _ = throwError BadSamlResponseIssuerMissing
 issuerToCreds (Just issuer) mbSPId = do
-  certs <- (^. idpMetadata . edCertAuthnResponse) <$> getIdPConfigByIssuer issuer mbSPId
+  certs <- (^. idpMetadata . edCertAuthnResponse) <$> getIdPConfigByIssuerOptionalSPId issuer mbSPId
   let err = throwError . InvalidCert . ((encodeElem issuer <> ": ") <>) . cs
   forM certs $ either err pure . certToCreds
 

@@ -127,7 +127,7 @@ instance SPStoreIdP SimpleError SimpleSP where
   type IdPConfigSPId SimpleSP = Void
   storeIdPConfig _ = error "instance SPStoreIdP SimpleError SimpleSP: storeIdPConfig not implemented."
   getIdPConfig = simpleGetIdPConfigBy (asks (^. spctxIdP)) (^. idpId)
-  getIdPConfigByIssuer issuer _ = simpleGetIdPConfigBy (asks (^. spctxIdP)) (^. idpMetadata . edIssuer) issuer
+  getIdPConfigByIssuerOptionalSPId issuer _ = simpleGetIdPConfigBy (asks (^. spctxIdP)) (^. idpMetadata . edIssuer) issuer
 
 simpleGetIdPConfigBy ::
   (MonadError (Error err) m, HasConfig m, Show a, Ord a) =>
