@@ -118,7 +118,7 @@ spec = describe "API" $ do
                 missuer = (^. _1 . idpMetadata . edIssuer) <$> midpcfg
                 go :: TestSP ()
                 go = do
-                  creds <- issuerToCreds missuer
+                  creds <- issuerToCreds missuer Nothing
                   simpleVerifyAuthnResponse creds resp
             if expectOutcome
               then run go `shouldReturn` ()
@@ -194,7 +194,7 @@ spec = describe "API" $ do
         testAuthRespApp =
           withapp
             (Proxy @APIAuthResp')
-            (authresp' defSPIssuer defResponseURI (HandleVerdictRedirect (simpleOnSuccess SubjectFoldCase)))
+            (authresp' Nothing defSPIssuer defResponseURI (HandleVerdictRedirect (simpleOnSuccess SubjectFoldCase)))
 
     context "unknown idp" . testAuthRespApp mkTestCtxSimple $ do
       it "responds with 404" . runtest $ \ctx -> do
@@ -235,7 +235,7 @@ spec = describe "API" $ do
             SignedAuthnResponse authnrespDoc <-
               liftIO . ioFromTestSP ctx $ mkAuthnResponse privkey (idpcfg ^. _1) spmeta authnreq True
             let authnrespLBS = renderLBS def authnrespDoc
-            creds <- issuerToCreds (Just idpissuer)
+            creds <- issuerToCreds (Just idpissuer) Nothing
             simpleVerifyAuthnResponse creds authnrespLBS
           result `shouldSatisfy` expectation
     it "Produces output that passes 'simpleVerifyAuthnResponse'" $ do
@@ -247,7 +247,7 @@ spec = describe "API" $ do
     let parseSample :: FilePath -> IO (Either String IdPMetadata)
         parseSample samplePath = decode <$> readSampleIO samplePath
 
-    it "fails with helpful error message if HTTP-POST is missing" $ do
+    it "fails with helpful error message if HTTP-POST is missing (eg., if only HTTP-Redirect is provided)" $ do
       res <- parseSample "post-missing.xml"
       res `shouldBe` Left "Couldnt find any matches for: \"Binding\" attribute with value \"urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST\""
 

@@ -92,7 +92,10 @@ spec = describe "XML serialization" $ do
               parsed `shouldSatisfy` isRight
               let Right (subjid :: NameID) = parsed <&> (^. assertionL . assContents . sasSubject . subjectID)
               (CI.original <$> shortShowNameID subjid) `shouldBe` Just subj
+
+        mknid :: [Node] -> Node
         mknid = NodeElement . Element "{urn:oasis:names:tc:SAML:2.0:assertion}NameID" mempty
+
     check
       "good"
       [mknid [NodeContent "xkcd"]]

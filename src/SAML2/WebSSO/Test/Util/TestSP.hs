@@ -17,6 +17,7 @@ import Data.Maybe
 import Data.Time
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
+import Data.Void (Void)
 import Network.Wai.Test (runSession)
 import SAML2.WebSSO as SAML
 import SAML2.WebSSO.API.Example (GetAllIdPs (..), simpleGetIdPConfigBy, simpleIsAliveID', simpleStoreID', simpleUnStoreID')
@@ -95,9 +96,10 @@ instance SPStoreID Assertion TestSP where
 
 instance SPStoreIdP SimpleError TestSP where
   type IdPConfigExtra TestSP = ()
+  type IdPConfigSPId TestSP = Void -- FUTUREWORK: can we do better than this?
   storeIdPConfig _ = pure ()
   getIdPConfig = simpleGetIdPConfigBy readIdPs (^. idpId)
-  getIdPConfigByIssuer = simpleGetIdPConfigBy readIdPs (^. idpMetadata . edIssuer)
+  getIdPConfigByIssuerOptionalSPId issuer _ = simpleGetIdPConfigBy readIdPs (^. idpMetadata . edIssuer) issuer
 
 instance GetAllIdPs SimpleError TestSP where
   getAllIdPs = fmap fst . (^. ctxIdPs) <$> (ask >>= liftIO . readMVar)

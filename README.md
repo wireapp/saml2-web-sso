@@ -85,8 +85,9 @@ You need:
 Now run:
 
 ```
+export SAML2_WEB_SSO_ROOT=`pwd`
 stack test --fast
-SAML2_WEB_SSO_ROOT=`pwd` stack exec toy-sp
+stack exec toy-sp
 ```
 
 This should start the `toy-sp` app.  Now you can connect to

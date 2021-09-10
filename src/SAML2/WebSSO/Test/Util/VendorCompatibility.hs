@@ -31,7 +31,7 @@ testAuthRespApp :: HasCallStack => URI.URI -> SpecWith (CtxV, Application) -> Sp
 testAuthRespApp ssoURI =
   withapp
     (Proxy @("sso" :> APIAuthResp'))
-    (authresp' spissuer respuri (HandleVerdictRedirect (simpleOnSuccess SubjectFoldCase)))
+    (authresp' Nothing spissuer respuri (HandleVerdictRedirect (simpleOnSuccess SubjectFoldCase)))
     mkTestCtxSimple
   where
     spissuer = Issuer <$> respuri

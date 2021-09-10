@@ -58,9 +58,12 @@ class SPStoreID i m where
 
 class (MonadError err m) => SPStoreIdP err m where
   type IdPConfigExtra m :: Type
+  type IdPConfigSPId m :: Type
   storeIdPConfig :: IdPConfig (IdPConfigExtra m) -> m ()
   getIdPConfig :: IdPId -> m (IdPConfig (IdPConfigExtra m))
-  getIdPConfigByIssuer :: Issuer -> m (IdPConfig (IdPConfigExtra m))
+  getIdPConfigByIssuer :: Issuer -> IdPConfigSPId m -> m (IdPConfig (IdPConfigExtra m))
+  getIdPConfigByIssuer issuer spid = getIdPConfigByIssuerOptionalSPId issuer (Just spid)
+  getIdPConfigByIssuerOptionalSPId :: Issuer -> Maybe (IdPConfigSPId m) -> m (IdPConfig (IdPConfigExtra m))
 
 -- | HTTP handling of the service provider.
 class (SP m, SPStore m, SPStoreIdP err m, MonadError err m) => SPHandler err m where

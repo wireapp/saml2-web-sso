@@ -17,6 +17,7 @@ import Data.Map as Map
 import Data.Proxy
 import Data.String.Conversions
 import Data.UUID as UUID
+import Data.Void (Void)
 import GHC.Stack
 import Network.Wai hiding (Response)
 import SAML2.Util
@@ -123,9 +124,10 @@ instance HasConfig SimpleSP where
 
 instance SPStoreIdP SimpleError SimpleSP where
   type IdPConfigExtra SimpleSP = ()
+  type IdPConfigSPId SimpleSP = Void
   storeIdPConfig _ = error "instance SPStoreIdP SimpleError SimpleSP: storeIdPConfig not implemented."
   getIdPConfig = simpleGetIdPConfigBy (asks (^. spctxIdP)) (^. idpId)
-  getIdPConfigByIssuer = simpleGetIdPConfigBy (asks (^. spctxIdP)) (^. idpMetadata . edIssuer)
+  getIdPConfigByIssuerOptionalSPId issuer _ = simpleGetIdPConfigBy (asks (^. spctxIdP)) (^. idpMetadata . edIssuer) issuer
 
 simpleGetIdPConfigBy ::
   (MonadError (Error err) m, HasConfig m, Show a, Ord a) =>

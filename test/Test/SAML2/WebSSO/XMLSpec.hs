@@ -99,15 +99,15 @@ spec = describe "XML Sanitization" $ do
       -- this test case reproduces an issue with hsaml2 that motivates us manually escaping
       -- the 'XmlText's in the serialization functions here in saml2-web-sso.
 
+      -- it really shouldn't, though!
       HS.samlToXML (HS.simpleNameID HS.NameIDFormatUnspecified "<something>")
         `shouldBe` "<NameID xmlns=\"urn:oasis:names:tc:SAML:2.0:assertion\"><something></NameID>"
-      -- it really shouldn't, though!
 
+      -- this is good!
       HS.xmlToSAML @HS.NameID "<NameID xmlns=\"urn:oasis:names:tc:SAML:2.0:assertion\"><something></NameID>"
         `shouldSatisfy` isLeft
-      -- this is good!
 
+      -- this is good!
       HS.xmlToSAML @HS.NameID "<NameID xmlns=\"urn:oasis:names:tc:SAML:2.0:assertion\">&lt;something&gt;</NameID>"
         `shouldBe` Right (HS.simpleNameID HS.NameIDFormatUnspecified "<something>")
 
--- this is good!
