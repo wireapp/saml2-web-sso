@@ -209,6 +209,7 @@ data JudgeCtx = JudgeCtx
   { _judgeCtxAudience :: Issuer,
     _judgeCtxResponseURI :: URI
   }
+  deriving (Eq, Show)
 
 makeLenses ''JudgeCtx
 
