@@ -292,7 +292,7 @@ authresp mbSPId getSPIssuer getResponseURI handleVerdictAction body = do
   enterH "authresp: entering"
   jctx :: JudgeCtx <- JudgeCtx <$> getSPIssuer <*> getResponseURI
   resp :: AuthnResponse <- authnResponseBodyAction body mbSPId
-  logger Debug $ "authresp: " <> ppShow resp
+  logger Debug $ "authresp: " <> ppShow (jctx, resp)
   verdict <- judge resp jctx
   logger Debug $ "authresp: " <> show verdict
   handleVerdictAction resp verdict
