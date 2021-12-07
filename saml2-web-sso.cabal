@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 75e35512ef3af4dae35ff34a07647dd316348c29640c2c3d64479d061a9c31cd
+-- hash: 2dbbf1c82946326cc2199fc787becd8e252feeacb3356aae63bc5b63d0fe35f4
 
 name:           saml2-web-sso
 version:        0.18
@@ -49,7 +49,33 @@ library
       Paths_saml2_web_sso
   hs-source-dirs:
       src
-  default-extensions: NoOverloadedStrings ConstraintKinds DataKinds DefaultSignatures DeriveGeneric FlexibleContexts FlexibleInstances GADTs InstanceSigs KindSignatures LambdaCase MultiParamTypeClasses NoMonomorphismRestriction PolyKinds QuasiQuotes RankNTypes RecordWildCards ScopedTypeVariables StandaloneDeriving TemplateHaskell TupleSections TypeApplications TypeFamilies TypeOperators TypeSynonymInstances ViewPatterns
+  default-extensions:
+      NoOverloadedStrings
+      ConstraintKinds
+      DataKinds
+      DefaultSignatures
+      DeriveGeneric
+      FlexibleContexts
+      FlexibleInstances
+      GADTs
+      InstanceSigs
+      KindSignatures
+      LambdaCase
+      MultiParamTypeClasses
+      NoMonomorphismRestriction
+      PolyKinds
+      QuasiQuotes
+      RankNTypes
+      RecordWildCards
+      ScopedTypeVariables
+      StandaloneDeriving
+      TemplateHaskell
+      TupleSections
+      TypeApplications
+      TypeFamilies
+      TypeOperators
+      TypeSynonymInstances
+      ViewPatterns
   ghc-options: -j -O2 -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wtabs -Werror
   build-depends:
       QuickCheck >=2.13.2
@@ -94,7 +120,7 @@ library
     , quickcheck-instances >=0.3.22
     , random >=1.1
     , servant >=0.16.2
-    , servant-multipart >=0.11.4
+    , servant-multipart >=0.12
     , servant-server >=0.16.2
     , shelly >=1.8.1
     , silently >=1.2.5.1
@@ -124,7 +150,33 @@ executable toy-sp
       Paths_saml2_web_sso
   hs-source-dirs:
       toy-sp
-  default-extensions: NoOverloadedStrings ConstraintKinds DataKinds DefaultSignatures DeriveGeneric FlexibleContexts FlexibleInstances GADTs InstanceSigs KindSignatures LambdaCase MultiParamTypeClasses NoMonomorphismRestriction PolyKinds QuasiQuotes RankNTypes RecordWildCards ScopedTypeVariables StandaloneDeriving TemplateHaskell TupleSections TypeApplications TypeFamilies TypeOperators TypeSynonymInstances ViewPatterns
+  default-extensions:
+      NoOverloadedStrings
+      ConstraintKinds
+      DataKinds
+      DefaultSignatures
+      DeriveGeneric
+      FlexibleContexts
+      FlexibleInstances
+      GADTs
+      InstanceSigs
+      KindSignatures
+      LambdaCase
+      MultiParamTypeClasses
+      NoMonomorphismRestriction
+      PolyKinds
+      QuasiQuotes
+      RankNTypes
+      RecordWildCards
+      ScopedTypeVariables
+      StandaloneDeriving
+      TemplateHaskell
+      TupleSections
+      TypeApplications
+      TypeFamilies
+      TypeOperators
+      TypeSynonymInstances
+      ViewPatterns
   ghc-options: -j -O2 -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wtabs -Werror
   build-depends:
       QuickCheck >=2.13.2
@@ -170,7 +222,7 @@ executable toy-sp
     , random >=1.1
     , saml2-web-sso
     , servant >=0.16.2
-    , servant-multipart >=0.11.4
+    , servant-multipart >=0.12
     , servant-server >=0.16.2
     , shelly >=1.8.1
     , silently >=1.2.5.1
@@ -213,7 +265,33 @@ test-suite spec
       Paths_saml2_web_sso
   hs-source-dirs:
       test
-  default-extensions: NoOverloadedStrings ConstraintKinds DataKinds DefaultSignatures DeriveGeneric FlexibleContexts FlexibleInstances GADTs InstanceSigs KindSignatures LambdaCase MultiParamTypeClasses NoMonomorphismRestriction PolyKinds QuasiQuotes RankNTypes RecordWildCards ScopedTypeVariables StandaloneDeriving TemplateHaskell TupleSections TypeApplications TypeFamilies TypeOperators TypeSynonymInstances ViewPatterns
+  default-extensions:
+      NoOverloadedStrings
+      ConstraintKinds
+      DataKinds
+      DefaultSignatures
+      DeriveGeneric
+      FlexibleContexts
+      FlexibleInstances
+      GADTs
+      InstanceSigs
+      KindSignatures
+      LambdaCase
+      MultiParamTypeClasses
+      NoMonomorphismRestriction
+      PolyKinds
+      QuasiQuotes
+      RankNTypes
+      RecordWildCards
+      ScopedTypeVariables
+      StandaloneDeriving
+      TemplateHaskell
+      TupleSections
+      TypeApplications
+      TypeFamilies
+      TypeOperators
+      TypeSynonymInstances
+      ViewPatterns
   ghc-options: -j -O2 -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wtabs -Werror -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       QuickCheck >=2.13.2
@@ -261,7 +339,7 @@ test-suite spec
     , random >=1.1
     , saml2-web-sso
     , servant >=0.16.2
-    , servant-multipart >=0.11.4
+    , servant-multipart >=0.12
     , servant-server >=0.16.2
     , shelly >=1.8.1
     , silently >=1.2.5.1
