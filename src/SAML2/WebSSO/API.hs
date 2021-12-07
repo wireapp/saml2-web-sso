@@ -124,12 +124,12 @@ authnResponseBodyToMultipart :: AuthnResponse -> MultipartData tag
 authnResponseBodyToMultipart resp = MultipartData [Input "SAMLResponse" (cs $ renderAuthnResponseBody resp)] []
 
 instance FromMultipart Mem AuthnResponseBody where
-  fromMultipart resp = Just (AuthnResponseBody eval resp)
+  fromMultipart resp = Right (AuthnResponseBody eval resp)
     where
       eval :: forall m err. SPStoreIdP (Error err) m => Maybe (IdPConfigSPId m) -> m AuthnResponse
       eval mbSPId = do
         base64 <-
-          maybe (throwError BadSamlResponseFormFieldMissing) pure $
+          either (const $ throwError BadSamlResponseFormFieldMissing) pure $
             lookupInput "SAMLResponse" resp
         parseAuthnResponseBody mbSPId base64
 

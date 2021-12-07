@@ -9,7 +9,7 @@ import Control.Monad.IO.Class
 import qualified Data.ByteString.Base64.Lazy as EL (encode)
 import Data.EitherR
 import Data.Generics.Uniplate.Data
-import Data.List
+import Data.List (sort)
 import Data.String
 import Data.String.Conversions
 import qualified Data.Text.Lazy.IO as LT
