@@ -8,7 +8,7 @@ where
 
 import Control.Lens
 import Data.Aeson as Aeson
-import Data.List
+import Data.List (sort)
 import qualified Data.List.NonEmpty as NL
 import Data.Proxy
 import Hedgehog

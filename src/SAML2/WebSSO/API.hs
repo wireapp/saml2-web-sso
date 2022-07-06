@@ -97,15 +97,24 @@ defResponseURI = getSsoURI (Proxy @API) (Proxy @APIAuthResp')
 -- IdP lookup and trust base for signature verification first, plus you may get an error when
 -- you're looking at it.
 data AuthnResponseBody = AuthnResponseBody
-  { authnResponseBodyAction :: forall m err. SPStoreIdP (Error err) m => Maybe (IdPConfigSPId m) -> m AuthnResponse,
+  { authnResponseBodyAction ::
+      forall m err spid extra.
+      (SPStoreIdP (Error err) m, spid ~ IdPConfigSPId m, extra ~ IdPConfigExtra m) =>
+      Maybe spid ->
+      m (AuthnResponse, IdPConfig extra),
     authnResponseBodyRaw :: MultipartData Mem
   }
 
 renderAuthnResponseBody :: AuthnResponse -> LBS
 renderAuthnResponseBody = EL.encode . cs . encode
 
--- | Implies verification, hence the constraint.
-parseAuthnResponseBody :: forall m err. SPStoreIdP (Error err) m => Maybe (IdPConfigSPId m) -> ST -> m AuthnResponse
+-- | Implies verification, hence the constraints.
+parseAuthnResponseBody ::
+  forall m err spid extra.
+  (SPStoreIdP (Error err) m, spid ~ IdPConfigSPId m, extra ~ IdPConfigExtra m) =>
+  Maybe spid ->
+  ST ->
+  m (AuthnResponse, IdPConfig extra)
 parseAuthnResponseBody mbSPId base64 = do
   -- https://www.ietf.org/rfc/rfc4648.txt states that all "noise" characters should be rejected
   -- unless another standard says they should be ignored.  'EL.decodeLenient' chooses the radical
@@ -116,9 +125,11 @@ parseAuthnResponseBody mbSPId base64 = do
   resp <-
     either (throwError . BadSamlResponseXmlError . cs) pure $
       decode (cs xmltxt)
-  creds <- issuerToCreds (resp ^. rspIssuer) mbSPId
+  issuer <- maybe (throwError BadSamlResponseIssuerMissing) pure (resp ^. rspIssuer)
+  idp :: IdPConfig extra <- getIdPConfigByIssuerOptionalSPId issuer mbSPId
+  creds <- idpToCreds issuer idp
   simpleVerifyAuthnResponse creds xmltxt
-  pure resp
+  pure (resp, idp)
 
 authnResponseBodyToMultipart :: AuthnResponse -> MultipartData tag
 authnResponseBodyToMultipart resp = MultipartData [Input "SAMLResponse" (cs $ renderAuthnResponseBody resp)] []
@@ -126,7 +137,11 @@ authnResponseBodyToMultipart resp = MultipartData [Input "SAMLResponse" (cs $ re
 instance FromMultipart Mem AuthnResponseBody where
   fromMultipart resp = Right (AuthnResponseBody eval resp)
     where
-      eval :: forall m err. SPStoreIdP (Error err) m => Maybe (IdPConfigSPId m) -> m AuthnResponse
+      eval ::
+        forall m err spid extra.
+        (SPStoreIdP (Error err) m, spid ~ IdPConfigSPId m, extra ~ IdPConfigExtra m) =>
+        Maybe spid ->
+        m (AuthnResponse, IdPConfig extra)
       eval mbSPId = do
         base64 <-
           either (const $ throwError BadSamlResponseFormFieldMissing) pure $
@@ -135,8 +150,16 @@ instance FromMultipart Mem AuthnResponseBody where
 
 issuerToCreds :: forall m err. SPStoreIdP (Error err) m => Maybe Issuer -> Maybe (IdPConfigSPId m) -> m (NonEmpty SignCreds)
 issuerToCreds Nothing _ = throwError BadSamlResponseIssuerMissing
-issuerToCreds (Just issuer) mbSPId = do
-  certs <- (^. idpMetadata . edCertAuthnResponse) <$> getIdPConfigByIssuerOptionalSPId issuer mbSPId
+issuerToCreds (Just issuer) mbSPId = idpToCreds issuer =<< getIdPConfigByIssuerOptionalSPId issuer mbSPId
+
+idpToCreds ::
+  forall m err extra.
+  (SPStoreIdP (Error err) m, extra ~ IdPConfigExtra m) =>
+  Issuer ->
+  IdPConfig extra ->
+  m (NonEmpty SignCreds)
+idpToCreds issuer idp = do
+  let certs = idp ^. idpMetadata . edCertAuthnResponse
   let err = throwError . InvalidCert . ((encodeElem issuer <> ": ") <>) . cs
   forM certs $ either err pure . certToCreds
 
@@ -281,21 +304,21 @@ defReqTTL = 15 * 60 -- seconds
 -- handler takes a response and a verdict (provided by this package), and can cause any effects in
 -- 'm' and return anything it likes.
 authresp ::
-  (SP m, SPStoreIdP (Error err) m, SPStoreID Assertion m, SPStoreID AuthnRequest m) =>
+  (SP m, SPStoreIdP (Error err) m, extra ~ IdPConfigExtra m, SPStoreID Assertion m, SPStoreID AuthnRequest m) =>
   Maybe (IdPConfigSPId m) ->
   m Issuer ->
   m URI ->
-  (AuthnResponse -> AccessVerdict -> m resp) ->
+  (AuthnResponse -> IdPConfig extra -> AccessVerdict -> m resp) ->
   AuthnResponseBody ->
   m resp
 authresp mbSPId getSPIssuer getResponseURI handleVerdictAction body = do
   enterH "authresp: entering"
   jctx :: JudgeCtx <- JudgeCtx <$> getSPIssuer <*> getResponseURI
-  resp :: AuthnResponse <- authnResponseBodyAction body mbSPId
+  (resp :: AuthnResponse, idp :: IdPConfig extra) <- authnResponseBodyAction body mbSPId
   logger Debug $ "authresp: " <> ppShow (jctx, resp)
   verdict <- judge resp jctx
   logger Debug $ "authresp: " <> show verdict
-  handleVerdictAction resp verdict
+  handleVerdictAction resp idp verdict
 
 -- | a variant of 'authresp' with a less general verdict handler.
 authresp' ::
@@ -307,7 +330,7 @@ authresp' ::
   AuthnResponseBody ->
   m (WithCookieAndLocation ST)
 authresp' mbSPId getRequestIssuerURI getResponseURI handleVerdict body = do
-  let handleVerdictAction resp verdict = case handleVerdict of
+  let handleVerdictAction resp _idp verdict = case handleVerdict of
         HandleVerdictRedirect onsuccess -> simpleHandleVerdict onsuccess verdict
         HandleVerdictRaw action -> throwError . CustomServant =<< action resp verdict
   authresp mbSPId getRequestIssuerURI getResponseURI handleVerdictAction body

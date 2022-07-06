@@ -488,11 +488,17 @@ genSimpleSetCookie = do
         setCookieSameSite = samesite
       }
 
+{-
+-- FUTUREWORK: this would be much more possible to implement if 'AuthnResponseBody' would be
+-- defined with type parameters rather than existentially quantified types in
+-- 'authnResponseBodyAction'.)
 genAuthnResponseBody :: Gen AuthnResponseBody
 genAuthnResponseBody = do
   aresp <- genAuthnResponse
+  idp <- genIdPConfig (pure ())
   raw <- genRawAuthnResponseBody
-  pure (AuthnResponseBody (\_ -> pure aresp) raw)
+  pure (AuthnResponseBody (\_ -> pure (aresp, idp)) raw)
+-}
 
 genRawAuthnResponseBody :: Gen (MultipartData Mem)
 genRawAuthnResponseBody = do
