@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 
 -- FUTUREWORK: consider using http://hackage.haskell.org/package/xml-conduit-parse
 
@@ -62,7 +63,7 @@ import Text.XML
 import Text.XML.Cursor
 import Text.XML.DSig (parseKeyInfo, renderKeyInfo)
 import qualified Text.XML.HXT.Arrow.Pickle.Xml as HS
-import URI.ByteString
+import URI.ByteString as U
 import Prelude hiding (id, (.))
 
 defNameSpaces :: [(ST, ST)]
@@ -659,7 +660,7 @@ exportRequiredIssuer = Just . exportIssuer
 --
 -- The @resp@ argument here must match the @finalize-login@ end-point (as can be constructed by
 -- 'getSsoURL').
-mkSPMetadata :: SP m => ST -> URI -> URI -> [ContactPerson] -> m SPMetadata
+mkSPMetadata :: (Monad m, SP m) => ST -> URI -> URI -> [ContactPerson] -> m SPMetadata
 mkSPMetadata nick org resp contacts = do
   mid <- createID
   now <- getNow

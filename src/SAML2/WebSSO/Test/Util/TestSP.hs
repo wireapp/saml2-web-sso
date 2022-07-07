@@ -191,7 +191,7 @@ makeIssuer = do
     (pure . Issuer)
     (SAML.parseURI' ("https://issuer.net/_" <> UUID.toText uuid))
 
-mkTestSPMetadata :: HasConfig m => m SPMetadata
+mkTestSPMetadata :: (Monad m, HasConfig m) => m SPMetadata
 mkTestSPMetadata = do
   let _spID = mkID "_4b7e1488-c0c6-11e8-aef0-9fe604f9513a"
       _spValidUntil = fromTime $ addTime (60 * 60 * 24 * 365) timeNow

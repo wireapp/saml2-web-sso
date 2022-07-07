@@ -57,7 +57,7 @@ headerValueToCookie txt = do
     errs@(_ : _) -> throwError $ ST.intercalate ", " errs
     [] -> pure (SimpleSetCookie cookie)
 
-toggleCookie :: forall name m. (SP m, KnownSymbol name) => SBS -> Maybe (ST, NominalDiffTime) -> m (SimpleSetCookie name)
+toggleCookie :: forall name m. (Applicative m, SP m, KnownSymbol name) => SBS -> Maybe (ST, NominalDiffTime) -> m (SimpleSetCookie name)
 toggleCookie path =
   fmap SimpleSetCookie . \case
     Just (value, ttl) ->

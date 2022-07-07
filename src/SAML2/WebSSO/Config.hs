@@ -137,5 +137,8 @@ readIdPConfig cfg filepath =
 ----------------------------------------------------------------------
 -- class
 
-class (Monad m) => HasConfig m where
+class HasConfig m where
   getConfig :: m Config
+
+instance HasConfig ((->) Config) where
+  getConfig = id

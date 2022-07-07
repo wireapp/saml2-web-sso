@@ -31,17 +31,17 @@ import URI.ByteString
 -- | Application logic of the service provider.
 type SP m = (HasConfig m, HasLogger m, HasCreateUUID m, HasNow m)
 
-class (HasConfig m) => HasLogger m where
+class HasLogger m where
   logger :: Level -> String -> m ()
-  default logger :: MonadIO m => Level -> String -> m ()
+  default logger :: (HasConfig m, MonadIO m) => Level -> String -> m ()
   logger = loggerConfIO
 
-class Monad m => HasCreateUUID m where
+class HasCreateUUID m where
   createUUID :: m UUID
   default createUUID :: MonadIO m => m UUID
   createUUID = createUUIDIO
 
-class Monad m => HasNow m where
+class HasNow m where
   getNow :: m Time
   default getNow :: MonadIO m => m Time
   getNow = getNowIO
@@ -76,7 +76,7 @@ class (SP m, SPStore m, SPStoreIdP err m, MonadError err m) => SPHandler err m w
 -- | Store 'Assertion's to prevent replay attack.  'Time' argument is end of life (IDs may be
 -- garbage collected after that time).  Iff assertion has already been stored and is still alive,
 -- return 'False'.
-storeAssertion :: SPStore m => ID Assertion -> Time -> m Bool
+storeAssertion :: (Monad m, SPStore m) => ID Assertion -> Time -> m Bool
 storeAssertion item endOfLife =
   ifM
     (isAliveID item)
@@ -103,7 +103,7 @@ getNowIO = Time <$> liftIO getCurrentTime
 -- | (Microsoft Active Directory likes IDs to be of the form @id<32 hex digits>@: @ID . cs . ("id"
 -- <>) . filter (/= '-') . cs . UUID.toText <$> createUUID@.  Hopefully the more common form
 -- produced by this function is also ok.)
-createID :: SP m => m (ID a)
+createID :: (Functor m, SP m) => m (ID a)
 createID = mkID . ("_" <>) . UUID.toText <$> createUUID
 
 -- | Generate an 'AuthnRequest' value for the initiate-login response.  The 'NameIdPolicy' is
@@ -120,7 +120,7 @@ createID = mkID . ("_" <>) . UUID.toText <$> createUUID
 -- rejected by us.  (3) The nameID policy is expected to be configured on the IdP side to not
 -- support any set of name spaces that overlap (e.g. because user A has an email that is the account
 -- name of user B).
-createAuthnRequest :: (SP m, SPStore m) => NominalDiffTime -> m Issuer -> m AuthnRequest
+createAuthnRequest :: (Monad m, SP m, SPStore m) => NominalDiffTime -> m Issuer -> m AuthnRequest
 createAuthnRequest lifeExpectancySecs getIssuer = do
   _rqID <- createID
   _rqIssueInstant <- getNow
@@ -155,6 +155,7 @@ noLater early late = early <= addTime tolerance late
 getSsoURI ::
   forall m endpoint api.
   ( HasCallStack,
+    Functor m,
     HasConfig m,
     IsElem endpoint api,
     HasLink endpoint,
@@ -174,7 +175,8 @@ getSsoURI proxyAPI proxyAPIAuthResp = extpath . (^. cfgSPSsoURI) <$> getConfig
 -- method 'getSsoURI' for arbitrary path arities.
 getSsoURI' ::
   forall endpoint api a (f :: Type -> Type) t.
-  ( HasConfig f,
+  ( Functor f,
+    HasConfig f,
     MkLink endpoint ~ (t -> a),
     HasLink endpoint,
     ToHttpApiData a,
@@ -242,16 +244,16 @@ instance (Functor m, Applicative m, Monad m) => Applicative (JudgeT m) where
 instance (Functor m, Applicative m, Monad m) => Monad (JudgeT m) where
   (JudgeT x) >>= f = JudgeT (x >>= fromJudgeT . f)
 
-instance (HasConfig m) => HasConfig (JudgeT m) where
+instance (Monad m, HasConfig m) => HasConfig (JudgeT m) where
   getConfig = JudgeT . lift . lift . lift $ getConfig
 
-instance HasLogger m => HasLogger (JudgeT m) where
+instance (Monad m, HasLogger m) => HasLogger (JudgeT m) where
   logger level = JudgeT . lift . lift . lift . logger level
 
-instance HasCreateUUID m => HasCreateUUID (JudgeT m) where
+instance (Monad m, HasCreateUUID m) => HasCreateUUID (JudgeT m) where
   createUUID = JudgeT . lift . lift . lift $ createUUID
 
-instance HasNow m => HasNow (JudgeT m) where
+instance (Monad m, HasNow m) => HasNow (JudgeT m) where
   getNow = JudgeT . lift . lift . lift $ getNow
 
 instance (Monad m, SPStoreID i m) => SPStoreID i (JudgeT m) where
@@ -274,7 +276,7 @@ instance (Monad m, SPStoreID i m) => SPStoreID i (JudgeT m) where
 -- 'Assertion's, but not the entire response, and we make taht an assumption when validating
 -- signatures.  So the status info is not signed, and could easily be changed by an attacker
 -- attempting to authenticate.
-judge :: (SP m, SPStore m) => AuthnResponse -> JudgeCtx -> m AccessVerdict
+judge :: (Monad m, SP m, SPStore m) => AuthnResponse -> JudgeCtx -> m AccessVerdict
 judge resp ctx = runJudgeT ctx (judge' resp)
 
 judge' :: (HasCallStack, MonadJudge m, SP m, SPStore m) => AuthnResponse -> m AccessVerdict

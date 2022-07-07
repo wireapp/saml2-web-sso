@@ -110,4 +110,3 @@ spec = describe "XML Sanitization" $ do
       -- this is good!
       HS.xmlToSAML @HS.NameID "<NameID xmlns=\"urn:oasis:names:tc:SAML:2.0:assertion\">&lt;something&gt;</NameID>"
         `shouldBe` Right (HS.simpleNameID HS.NameIDFormatUnspecified "<something>")
-
