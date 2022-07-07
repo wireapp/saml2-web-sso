@@ -4,10 +4,10 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 2dbbf1c82946326cc2199fc787becd8e252feeacb3356aae63bc5b63d0fe35f4
+-- hash: 98e0ba4505ff584cbb9ff97b304b0ee5796e3e501ccace8b4ca2d904bf01c7dd
 
 name:           saml2-web-sso
-version:        0.18
+version:        0.19
 synopsis:       Library and example web app for the SAML Web-based SSO profile.
 description:    See README.md
 category:       System
