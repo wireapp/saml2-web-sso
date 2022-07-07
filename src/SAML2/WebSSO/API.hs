@@ -83,11 +83,11 @@ api appName handleVerdict =
 
 -- | The 'Issuer' is an identifier of a SAML participant.  In this case, it's the SP, ie.,
 -- ourselves.  For simplicity, we re-use the response URI here.
-defSPIssuer :: HasConfig m => m Issuer
+defSPIssuer :: (Functor m, HasConfig m) => m Issuer
 defSPIssuer = Issuer <$> defResponseURI
 
 -- | The URI that 'AuthnResponse' values are delivered to ('APIAuthResp').
-defResponseURI :: HasConfig m => m URI
+defResponseURI :: (Functor m, HasConfig m) => m URI
 defResponseURI = getSsoURI (Proxy @API) (Proxy @APIAuthResp')
 
 ----------------------------------------------------------------------
@@ -348,7 +348,7 @@ data SubjectFoldCase
   | SubjectDontFoldCase
 
 simpleOnSuccess ::
-  SP m =>
+  (Monad m, SP m) =>
   SubjectFoldCase ->
   OnSuccessRedirect m
 simpleOnSuccess foldCase uid = do
@@ -395,7 +395,7 @@ enterH :: SP m => String -> m ()
 enterH msg =
   logger Debug $ "entering handler: " <> msg
 
-leaveH :: (Show a, SP m) => a -> m a
+leaveH :: (Monad m, Show a, SP m) => a -> m a
 leaveH x = do
   logger Debug $ "leaving handler: " <> show x
   pure x

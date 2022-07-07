@@ -191,7 +191,7 @@ loginStatus cookie = do
   logoutPath <- getPath' SpPathLocalLogout
   pure $ maybe (NotLoggedIn loginOpts) (LoggedInAs logoutPath . cs . setSimpleCookieValue) cookie
 
-mkLoginOption :: SP m => IdPConfig a -> m (ST, ST)
+mkLoginOption :: (Monad m, SP m) => IdPConfig a -> m (ST, ST)
 mkLoginOption icfg = (renderURI $ icfg ^. idpMetadata . edIssuer . fromIssuer,) <$> getPath' (SsoPathAuthnReq (icfg ^. idpId))
 
 -- | only logout on this SP.
@@ -249,10 +249,10 @@ data Path
   | SsoPathAuthnResp IdPId
   deriving (Eq, Show)
 
-getPath' :: forall m. (HasConfig m) => Path -> m ST
+getPath' :: forall m. (Monad m, HasConfig m) => Path -> m ST
 getPath' = fmap renderURI . getPath
 
-getPath :: forall m. (HasConfig m) => Path -> m URI
+getPath :: forall m. (Monad m, HasConfig m) => Path -> m URI
 getPath path = do
   cfg <- getConfig
   let sp, sso :: ST -> URI
