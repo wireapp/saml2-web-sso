@@ -174,7 +174,7 @@ spec = describe "API" $ do
     let -- Create an AuthnRequest in the SP, then call 'mkAuthnResponse' to make an 'AuthnResponse'
         -- in the IdP, then post the 'AuthnResponse' to the appropriate SP end-point.  @spmeta@ is
         -- needed for making the 'AuthnResponse'.
-        postTestAuthnResp :: HasCallStack => CtxV -> Bool -> Bool -> WaiSession SResponse
+        postTestAuthnResp :: HasCallStack => CtxV -> Bool -> Bool -> WaiSession st SResponse
         postTestAuthnResp ctxv badIdP badTimeStamp = do
           aresp <- liftIO . ioFromTestSP ctxv $ do
             (testIdPConfig, SampleIdP _ privkey _ _) <- do
