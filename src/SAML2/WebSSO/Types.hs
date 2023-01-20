@@ -787,9 +787,9 @@ instance Servant.FromHttpApiData IdPId where
 instance Servant.ToHttpApiData IdPId where
   toUrlPiece = idPIdToST
 
-deriveJSON deriveJSONOptions ''ContactPerson
-
 deriveJSON deriveJSONOptions ''ContactType
+
+deriveJSON deriveJSONOptions ''ContactPerson
 
 instance Servant.FromHttpApiData (ID a) where
   parseUrlPiece = fmap (ID . mkXmlText) . Servant.parseUrlPiece
