@@ -11,8 +11,6 @@ import Data.Proxy
 import Data.String.Conversions
 import qualified Data.Text as ST
 import Data.Time
-import Data.Time.Lens as TL
-import qualified Data.Time.Lens as TimeL
 import qualified Data.UUID as UUID
 import qualified Data.X509 as X509
 import GHC.Stack
@@ -31,6 +29,7 @@ import Text.XML
 import qualified Text.XML.DSig as DSig
 import URI.ByteString
 import Web.Cookie
+import Data.Fixed
 
 genHttps :: Gen URI
 genHttps = genHttps' Nothing
@@ -233,7 +232,7 @@ genAuthnRequest =
 genTime :: Gen Time
 genTime = Time . picoToMicro <$> THQ.quickcheck arbitrary
   where
-    picoToMicro = TimeL.seconds %~ ((* (1000 * 1000)) . (/ (1000 * 1000)))
+    picoToMicro = seconds %~ ((* (1000 * 1000)) . (/ (1000 * 1000)))
 
 genDuration :: Gen Duration
 genDuration = pure Duration
@@ -469,7 +468,7 @@ genSimpleSetCookie = do
         pure $ Just "/",
         pure Nothing
       ]
-  expires <- Gen.maybe (THQ.quickcheck arbitrary <&> TL.seconds %~ (* 10e12) . (/ 10e12)) -- only full seconds
+  expires <- Gen.maybe (THQ.quickcheck arbitrary <&> seconds %~ (* 10e12) . (/ 10e12)) -- only full seconds
   maxage <- Gen.maybe $ fromIntegral <$> Gen.int (Range.linear 0 1000) -- only non-negative, full seconds
   domain <- Gen.maybe (cs . ST.intercalate "." <$> Gen.list (Range.linear 2 3) genNiceWord)
   httponly <- Gen.bool
@@ -604,3 +603,20 @@ shallowShrinkList :: Eq a => [a] -> [[a]]
 shallowShrinkList [] = []
 shallowShrinkList [_] = []
 shallowShrinkList xs@(_ : _ : _) = [] : ((: []) <$> xs)
+
+-- copied from from lens-datetime
+
+diffTOD :: Iso' DiffTime TimeOfDay
+diffTOD = iso timeToTimeOfDay timeOfDayToTime
+
+timeAsDiff :: Lens' UTCTime DiffTime
+timeAsDiff f (UTCTime d t) = UTCTime d <$> f t
+
+-- | Lens into the second value of a 'Timeable'.
+--
+-- Warning: this is not a proper lens for 'UTCTime': it only obeys the
+-- lens laws if used with valid values.
+seconds :: Lens' UTCTime Pico
+seconds = timeAsDiff . diffTOD . seconds'
+  where
+    seconds' f (TimeOfDay h m s) = TimeOfDay h m <$> f s
