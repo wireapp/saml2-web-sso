@@ -18,7 +18,6 @@ import Data.Time
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
 import Data.Void (Void)
-import Network.Wai.Test (runSession)
 import SAML2.WebSSO as SAML
 import SAML2.WebSSO.API.Example (GetAllIdPs (..), simpleGetIdPConfigBy, simpleIsAliveID', simpleStoreID', simpleUnStoreID')
 import SAML2.WebSSO.Test.Util.Types
@@ -27,7 +26,7 @@ import System.IO
 import System.IO.Silently (hCapture)
 import Test.Hspec
 import Test.Hspec.Wai
-import Test.Hspec.Wai.Internal (unWaiSession)
+import Test.Hspec.Wai.Internal (runWaiSession)
 import Text.XML.DSig as SAML
 import URI.ByteString (pathL)
 import URI.ByteString.QQ (uri)
@@ -127,7 +126,7 @@ withapp ::
   IO CtxV ->
   SpecWith (CtxV, Application) ->
   Spec
-withapp proxy handler mkctx = with (mkctx <&> \ctx -> (ctx, app ctx))
+withapp proxy handler mkctx = withState (mkctx <&> \ctx -> (ctx, app ctx))
   where
     app ctx = serve proxy (hoistServer (Proxy @api) (nt @SimpleError @TestSP ctx) handler :: Server api)
 
@@ -140,10 +139,11 @@ capture' action =
 captureApplication :: HasCallStack => Application -> Application
 captureApplication app req cont = capture' (app req cont)
 
-runtest :: (CtxV -> WaiSession a) -> ((CtxV, Application) -> IO a)
-runtest test (ctx, app) = unWaiSession (test ctx) `runSession` app
+runtest :: (CtxV -> WaiSession () a) -> (CtxV, Application) -> IO a
+runtest test (ctx, app) = runWaiSession (test ctx) app
 
-runtest' :: WaiSession a -> ((CtxV, Application) -> IO a)
+
+runtest' :: WaiSession () a -> ((CtxV, Application) -> IO a)
 runtest' action = runtest (\_ctx -> action)
 
 mkTestCtxSimple :: MonadIO m => m CtxV
