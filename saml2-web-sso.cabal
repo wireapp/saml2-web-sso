@@ -1,10 +1,8 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.4.
+-- This file has been generated from package.yaml by hpack version 0.35.2.
 --
 -- see: https://github.com/sol/hpack
---
--- hash: 98e0ba4505ff584cbb9ff97b304b0ee5796e3e501ccace8b4ca2d904bf01c7dd
 
 name:           saml2-web-sso
 version:        0.19
@@ -90,7 +88,8 @@ library
     , case-insensitive >=1.2.1.0
     , containers >=0.6.0.1
     , cookie >=0.4.4
-    , cryptonite >=0.25
+    , crypton >=0.30
+    , crypton-x509 >=1.7.5
     , data-default >=0.7.1.1
     , directory >=1.3.6.0
     , dns >=4.0.0
@@ -111,6 +110,7 @@ library
     , http-types >=0.12.3
     , hxt >=9.3.1.18
     , lens >=4.17.1
+    , lens-datetime >=0.3
     , memory >=0.14.18
     , mtl >=2.2.2
     , network-uri >=2.6.1.0
@@ -135,7 +135,6 @@ library
     , wai-extra >=3.0.28
     , warp >=3.2.28
     , word8 >=0.1.3
-    , x509 >=1.7.5
     , xml-conduit >=1.8.0.1
     , xml-conduit-writer >=0.1.1.2
     , xml-hamlet >=0.5.0.1
@@ -190,7 +189,8 @@ executable toy-sp
     , case-insensitive >=1.2.1.0
     , containers >=0.6.0.1
     , cookie >=0.4.4
-    , cryptonite >=0.25
+    , crypton >=0.30
+    , crypton-x509 >=1.7.5
     , data-default >=0.7.1.1
     , directory >=1.3.6.0
     , dns >=4.0.0
@@ -211,6 +211,7 @@ executable toy-sp
     , http-types >=0.12.3
     , hxt >=9.3.1.18
     , lens >=4.17.1
+    , lens-datetime >=0.3
     , memory >=0.14.18
     , mtl >=2.2.2
     , network-uri >=2.6.1.0
@@ -236,7 +237,6 @@ executable toy-sp
     , wai-extra >=3.0.28
     , warp >=3.2.28
     , word8 >=0.1.3
-    , x509 >=1.7.5
     , xml-conduit >=1.8.0.1
     , xml-conduit-writer >=0.1.1.2
     , xml-hamlet >=0.5.0.1
@@ -304,7 +304,8 @@ test-suite spec
     , case-insensitive >=1.2.1.0
     , containers >=0.6.0.1
     , cookie >=0.4.4
-    , cryptonite >=0.25
+    , crypton >=0.30
+    , crypton-x509 >=1.7.5
     , data-default >=0.7.1.1
     , directory >=1.3.6.0
     , dns >=4.0.0
@@ -327,6 +328,7 @@ test-suite spec
     , http-types >=0.12.3
     , hxt >=9.3.1.18
     , lens >=4.17.1
+    , lens-datetime >=0.3
     , memory >=0.14.18
     , mtl >=2.2.2
     , network-uri >=2.6.1.0
@@ -352,7 +354,6 @@ test-suite spec
     , wai-extra >=3.0.28
     , warp >=3.2.28
     , word8 >=0.1.3
-    , x509 >=1.7.5
     , xml-conduit >=1.8.0.1
     , xml-conduit-writer >=0.1.1.2
     , xml-hamlet >=0.5.0.1
