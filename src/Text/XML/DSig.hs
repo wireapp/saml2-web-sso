@@ -23,6 +23,7 @@ module Text.XML.DSig
     certToPublicKey,
     mkSignCreds,
     mkSignCredsWithCert,
+    mkSignCredsWithCertDSA,
 
     -- * signature verification
     verify,
@@ -46,6 +47,7 @@ import Control.Exception (ErrorCall (ErrorCall), SomeException, throwIO, try)
 import Control.Lens
 import Control.Monad.Except
 import qualified Crypto.Hash as Crypto
+import qualified Crypto.PubKey.DSA as DSA
 import qualified Crypto.PubKey.RSA as RSA
 import qualified Crypto.PubKey.RSA.PKCS15 as RSA
 import qualified Crypto.PubKey.RSA.Types as RSA
@@ -85,7 +87,9 @@ data SignCreds = SignCreds SignDigest SignKey
 data SignDigest = SignDigestSha256
   deriving (Eq, Show, Bounded, Enum)
 
-data SignKey = SignKeyRSA RSA.PublicKey
+data SignKey
+  = SignKeyRSA RSA.PublicKey
+  | SignKeyDSA DSA.PublicKey
   deriving (Eq, Show)
 
 data SignPrivCreds = SignPrivCreds SignDigest SignPrivKey
@@ -105,9 +109,17 @@ verifySelfSignature cert = do
           signatureValue = X509.signedSignature $ X509.getSigned cert
       unless (RSA.verify (Just Crypto.SHA256) pubkey signedMessage signatureValue) $
         throwError "verifySelfSignature: invalid signature."
+    SignCreds SignDigestSha256 (SignKeyDSA pubkey) -> do
+      let signedMessage = X509.getSignedData cert
+          signatureValue = X509.signedSignature $ X509.getSigned cert
+      unless (DSA.verify (Just Crypto.SHA256) pubkey signedMessage signatureValue) $
+        throwError "verifySelfSignature: invalid signature."
 
--- | Read the KeyInfo element of a meta file's IDPSSODescriptor into a public key that can be used
--- for signing.  Tested for KeyInfo elements that contain an x509 certificate.
+-- does hsaml2 / cryptonite even really support DSA keys?  how?  i think it does, check test suite there!
+
+-- | Read the KeyInfo element of a meta file's IDPSSODescriptor into a certificate that
+-- contains a private/public key pair and that can be used for signing.  Tested for KeyInfo
+-- elements that contain an x509 certificate.
 --
 -- Self-signatures are only verified if first argument is 'True'.  The reason for this flag is
 -- that some IdPs (e.g. centrify) sign their certificates with external CAs.  Verification
@@ -164,6 +176,47 @@ mkSignCredsWithCert ::
 mkSignCredsWithCert mValidSince size = do
   let rsaexp = 17
   (pubkey, privkey) <- RSA.generate size rsaexp
+  let -- https://github.com/vincenthz/hs-certificate/issues/119
+      cropToSecs :: Hourglass.DateTime -> Hourglass.DateTime
+      cropToSecs dt = dt {Hourglass.dtTime = (Hourglass.dtTime dt) {Hourglass.todNSec = 0}}
+  validSince :: Hourglass.DateTime <- cropToSecs <$> maybe (liftIO Hourglass.dateCurrent) pure mValidSince
+  let validUntil = validSince `Hourglass.timeAdd` mempty {Hourglass.durationHours = 24 * 365 * 20}
+      signcert :: SBS -> m (SBS, X509.SignatureALG)
+      signcert sbs = (,sigalg) <$> sigval
+        where
+          sigalg = X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_RSA
+          sigval :: m SBS =
+            liftIO $
+              RSA.signSafer (Just Crypto.SHA256) privkey sbs
+                >>= either (throwIO . ErrorCall . show) pure
+  cert <-
+    X509.objectToSignedExactF
+      signcert
+      X509.Certificate
+        { X509.certVersion = 2 :: Int,
+          X509.certSerial = 387928798798718181888591698169861 :: Integer,
+          X509.certSignatureAlg = X509.SignatureALG X509.HashSHA256 X509.PubKeyALG_RSA,
+          X509.certIssuerDN = X509.DistinguishedName [],
+          X509.certValidity = (validSince, validUntil),
+          X509.certSubjectDN = X509.DistinguishedName [],
+          X509.certPubKey = X509.PubKeyRSA pubkey,
+          X509.certExtensions = X509.Extensions Nothing
+        }
+  pure
+    ( SignPrivCreds SignDigestSha256 . SignPrivKeyRSA $ RSA.KeyPair privkey,
+      SignCreds SignDigestSha256 . SignKeyRSA $ pubkey,
+      cert
+    )
+
+-- | If first argument @validSince@ is @Nothing@, use current system time.
+mkSignCredsWithCertDSA ::
+  forall m.
+  (Crypto.MonadRandom m, MonadIO m) =>
+  Maybe Hourglass.DateTime ->
+  Int ->
+  m (SignPrivCreds, SignCreds, X509.SignedCertificate)
+mkSignCredsWithCertDSA mValidSince size = do
+  (pubkey, privkey) <- undefined -- DSA.generate size rsaexp
   let -- https://github.com/vincenthz/hs-certificate/issues/119
       cropToSecs :: Hourglass.DateTime -> Hourglass.DateTime
       cropToSecs dt = dt {Hourglass.dtTime = (Hourglass.dtTime dt) {Hourglass.todNSec = 0}}
