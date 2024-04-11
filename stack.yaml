@@ -4,8 +4,8 @@ packages:
 - .
 
 extra-deps:
-- git: https://github.com/wireapp/hsaml2
-  commit: 51d1fcecebf2417e658b9a78943c84a76a0ed347
+- git: https://github.com/dylex/hsaml2
+  commit: 95d9dc7502c2533f7927de00cbc2bd20ad989ace
 - git: https://github.com/wireapp/hspec-wai
   commit: 08176f07fa893922e2e78dcaf996c33d79d23ce2 # https://github.com/hspec/hspec-wai/pull/49
 - invertible-hxt-0.1  # for hsaml2
