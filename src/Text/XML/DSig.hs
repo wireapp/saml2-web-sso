@@ -250,7 +250,7 @@ verifyIO creds el signedID = capture' $ do
 verifyIO' :: SignCreds -> LBS -> String -> IO (Either HS.SignatureError ())
 verifyIO' (SignCreds SignDigestSha256 (SignKeyRSA key)) el signedID = runExceptT $ do
   el' <- either (throwError . HS.SignatureParseError) pure $ HS.xmlToDocE el
-  ExceptT $ HS.verifySignatureLegacy (HS.PublicKeys Nothing . Just $ key) signedID el'
+  ExceptT $ HS.verifySignatureUnenvelopedSigs (HS.PublicKeys Nothing . Just $ key) signedID el'
 
 ----------------------------------------------------------------------
 -- signature creation
