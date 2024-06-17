@@ -3,6 +3,8 @@
 module SAML2.WebSSO.SP where
 
 import Control.Lens hiding (Level)
+import Control.Monad
+import Control.Monad.IO.Class
 import Control.Monad.Except
 import Control.Monad.Extra (ifM)
 import Control.Monad.Reader

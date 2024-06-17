@@ -9,7 +9,8 @@ where
 import Control.Concurrent.MVar
 import Control.Exception (SomeException, try)
 import Control.Lens
-import Control.Monad.Except
+import Control.Monad
+import Control.Monad.IO.Class
 import qualified Data.ByteString.Base64.Lazy as EL (decodeLenient, encode)
 import Data.Either
 import Data.EitherR
