@@ -21,7 +21,8 @@ module SAML2.WebSSO.API
 where
 
 import Control.Lens hiding (element)
-import Control.Monad.Except hiding (ap)
+import Control.Monad hiding (ap)
+import Control.Monad.Except
 import qualified Data.ByteString.Base64.Lazy as EL (decodeLenient, encode)
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.CaseInsensitive as CI

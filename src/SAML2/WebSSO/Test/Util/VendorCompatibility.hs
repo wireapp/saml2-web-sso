@@ -9,7 +9,7 @@ where
 
 import Control.Concurrent.MVar
 import Control.Lens
-import Control.Monad.Except
+import Control.Monad
 import qualified Data.ByteString.Base64.Lazy as EL (encode)
 import qualified Data.Map as Map
 import Data.Maybe (fromJust)
