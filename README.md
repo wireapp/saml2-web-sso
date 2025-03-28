@@ -1,7 +1,6 @@
 # Status
 
-- incomplete (some parts of the standard are not supported yet)
-- ready (we are using this in production)
+<h1>this repo has been moved to https://github.com/wireapp/wire-server and is not actively maintained any more.</h1>
 
 # Introduction
 
